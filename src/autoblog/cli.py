@@ -263,6 +263,47 @@ def stickers_label(
     typer.echo(f"라벨링 완료: {tagged}/{len(labeled.stickers)}개에 태그. config/stickers.yaml에서 검수하세요.")
 
 
+@stickers_app.command("review")
+def stickers_review(
+    port: int = typer.Option(8765, help="로컬 검수 UI 포트"),
+    open_browser: bool = typer.Option(True, help="브라우저 자동 열기"),
+):
+    """스티커를 눈으로 보며 태그 수정·즐겨찾기 지정(로컬 웹 UI, 저장 시 config/stickers.yaml).
+
+    명령 한 줄로 서버 기동 + 브라우저 자동 오픈. (Electron 셸에선 이 화면을 그대로 창에 띄움)
+    """
+    import webbrowser
+
+    from autoblog.publish.sticker_review import serve_review
+    from autoblog.publish.stickers import load_sticker_catalog
+
+    if not load_sticker_catalog().stickers:
+        typer.echo("카탈로그가 비었습니다 — 먼저 autoblog stickers pull (+ label)")
+        raise typer.Exit(1)
+    # 포트가 쓰이면 다음 포트로
+    server = None
+    for p in range(port, port + 10):
+        try:
+            server = serve_review(port=p)
+            port = p
+            break
+        except OSError:
+            continue
+    if server is None:
+        typer.echo("빈 포트를 찾지 못했습니다.")
+        raise typer.Exit(1)
+    url = f"http://127.0.0.1:{port}/"
+    typer.echo(f"검수 UI 열림 → {url}  (종료: Ctrl+C)")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        typer.echo("\n검수 종료.")
+    finally:
+        server.shutdown()
+
+
 @stickers_app.command("list")
 def stickers_list():
     """카탈로그 요약 — 보유 상황 라벨과 스티커 수."""
