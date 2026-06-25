@@ -158,6 +158,11 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .promptbox summary{cursor:pointer;font-size:13px;font-weight:600;padding:8px 0}
  .promptbox pre{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:12px;line-height:1.65;white-space:pre-wrap;max-height:320px;overflow:auto;font-family:ui-monospace,Menlo,monospace;margin:4px 0 10px}
  .mcmd{background:#1f2329;color:#e8eaed;border-radius:10px;padding:14px 16px;font-size:13px;font-family:ui-monospace,Menlo,monospace;line-height:1.8;white-space:pre-wrap}
+ .logflags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+ .lf{font-size:11px;padding:3px 8px;border-radius:6px;background:#eef1f4;color:#555}
+ .lf.ok{background:#eafaf0;color:#02b350}.lf.no{background:#fdecef;color:#d9534f}
+ .logpre{background:#f6f8fa;border:1px solid var(--line);border-radius:9px;padding:12px;font-size:11.5px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow:auto;font-family:ui-monospace,Menlo,monospace;margin:4px 0 8px}
+ .logsum{cursor:pointer;font-size:12px;font-weight:600;padding:6px 0;color:#4b5563}
 </style></head><body>
 <aside class=side>
   <div class=brand>🖋️ 블로그 자동작성</div>
@@ -214,6 +219,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
       </div>
       <div class=col>
         <div class="doc empty" id=preview>왼쪽에서 메모를 쓰고 [초안 생성]을 누르세요.</div>
+        <details id=logbox style="display:none;margin-top:14px" class=card>
+          <summary style="cursor:pointer;font-weight:700;font-size:13px">🔍 이번 생성 로그 — 들어간 프롬프트 + 모델 원본 출력</summary>
+          <div id=logbody style="margin-top:10px"></div>
+        </details>
       </div>
     </div>
   </section>
@@ -357,6 +366,7 @@ $('#gen').onclick=async()=>{
     const d=await r.json();
     if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); return;}
     genDone(true); PLAN=d; setTimeout(()=>renderPreview(d),350); st('생성 완료. 검토 후 임시저장하세요.'); $('#save').disabled=false;
+    if(d.debug)showLog(d.debug);
   }catch(e){genDone(false); st('오류: '+e);}finally{$('#gen').disabled=false;}
 };
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
@@ -374,6 +384,22 @@ function renderPreview(d){
     else if(b.kind==='image')h+=`<div class=ph>🖼 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
   }
   const p=$('#preview'); p.classList.remove('empty'); p.innerHTML=h;
+}
+function showLog(dbg){
+  const raw=dbg.raw||'';
+  const cnt=(re)=>(raw.match(re)||[]).length;
+  const flags=`<div class=logflags>
+    <span class="lf ${raw.includes('<<')?'ok':'no'}">강조마킹 &lt;&lt; ${raw.includes('<<')?'있음':'없음'}</span>
+    <span class="lf ${cnt(/\[구분선/g)?'ok':'no'}">구분선 ${cnt(/\[구분선/g)}</span>
+    <span class="lf ${cnt(/\[인용구\]/g)?'ok':'no'}">인용구 ${cnt(/\[인용구\]/g)}</span>
+    <span class="lf ${cnt(/\[스티커/g)?'ok':'no'}">스티커 ${cnt(/\[스티커/g)}</span>
+    <span class=lf>줄바꿈 ${cnt(/\n/g)}</span>
+    <span class=lf>모델 ${dbg.model||'기본'}</span></div>`;
+  $('#logbody').innerHTML=flags
+    +'<div class=sub-h>모델 원본 출력 (후처리 전)</div><pre class=logpre>'+esc(raw)+'</pre>'
+    +'<details><summary class=logsum>시스템 프롬프트 전체 보기</summary><pre class=logpre>'+esc(dbg.system||'')+'</pre></details>'
+    +'<details><summary class=logsum>유저 프롬프트(재료) 보기</summary><pre class=logpre>'+esc(dbg.user||'')+'</pre></details>';
+  $('#logbox').style.display='block';
 }
 $('#catload').onclick=async()=>{
   $('#catload').disabled=true; $('#catstat').textContent='블로그에서 불러오는 중… 브라우저가 열려요(수십 초)';
@@ -755,7 +781,9 @@ def _make_handler(state: dict):
                         for e in b.emphases
                     ]
                 blocks.append(blk)
-            self._send(200, json.dumps({"title": result.plan.title, "blocks": blocks}).encode())
+            self._send(200, json.dumps(
+                {"title": result.plan.title, "blocks": blocks, "debug": result.draft.debug}
+            ).encode())
 
         def _publish(self, body):
             from autoblog.publish.editor import BlogPublisher

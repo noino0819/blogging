@@ -47,6 +47,7 @@ class DraftResult(BaseModel):
     text: str
     checklist: list[CheckItem] = Field(default_factory=list)
     emphases: list[StyledSpan] = Field(default_factory=list)
+    debug: dict = Field(default_factory=dict)  # {system, user, raw, model} — 프롬프트/원본 출력 확인용
 
     @property
     def passed(self) -> bool:
@@ -72,10 +73,12 @@ def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
         if instr:
             system = f"{system}\n\n{instr}"
     user = build_user_prompt(req.fact_card, req.experience_memo)
-    text = chat(
+    raw = chat(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
         model=model,
     ).strip()
+    text = raw
+    debug = {"system": system, "user": user, "raw": raw, "model": model or ""}
 
     # 강조 마킹 추출(포맷 후처리 전에 — 줄바꿈이 <<>>를 깨지 않도록)
     emphases: list[StyledSpan] = []
@@ -99,4 +102,4 @@ def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
         if photo_count is None and req.fact_card.photos:
             photo_count = len(req.fact_card.photos)
         checklist = check_guidelines(text, req.guidelines, photo_count)
-    return DraftResult(text=text, checklist=checklist, emphases=emphases)
+    return DraftResult(text=text, checklist=checklist, emphases=emphases, debug=debug)
