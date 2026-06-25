@@ -186,6 +186,18 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .promptbox summary{cursor:pointer;font-size:13px;font-weight:600;padding:8px 0}
  .promptbox pre{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:12px;line-height:1.65;white-space:pre-wrap;max-height:320px;overflow:auto;font-family:ui-monospace,Menlo,monospace;margin:4px 0 10px}
  .mcmd{background:#1f2329;color:#e8eaed;border-radius:10px;padding:14px 16px;font-size:13px;font-family:ui-monospace,Menlo,monospace;line-height:1.8;white-space:pre-wrap}
+ .mgroup{font-size:12px;color:var(--sub);font-weight:700;margin:16px 0 8px;display:flex;align-items:center;gap:7px}
+ .mgrid{display:flex;flex-wrap:wrap;gap:9px}
+ .mcard{position:relative;border:1.5px solid #d6dade;border-radius:12px;padding:12px 16px 11px;cursor:pointer;background:#fbfcfd;min-width:150px;transition:.12s}
+ .mcard:hover{border-color:#9aa5b1;background:#fff}
+ .mcard.on{border-color:var(--green);background:var(--green-soft);box-shadow:0 0 0 2px #03c75a22}
+ .mcard.miss{opacity:.62}
+ .mc-t{font-weight:700;font-size:14px;color:var(--ink)}
+ .mc-s{font-size:11.5px;color:var(--sub);margin-top:3px}
+ .mc-ck{display:inline-block;margin-top:7px;font-size:11px;color:var(--green-d);font-weight:800}
+ .keychip{font-size:10.5px;padding:1px 7px;border-radius:5px;font-weight:700}
+ .keychip.ok{background:var(--green-soft);color:var(--green-d)}
+ .keychip.no{background:#fdecec;color:#d6453c}
  .logflags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
  .lf{font-size:11px;padding:3px 8px;border-radius:6px;background:#eef1f4;color:#555}
  .lf.ok{background:#eafaf0;color:#02b350}.lf.no{background:#fdecef;color:#d9534f}
@@ -670,10 +682,18 @@ function renderRules(){const c=$('#rules'); c.innerHTML='';
 }
 // provider별 메타: 라벨·키 발급처·플레이스홀더
 const PROV={
-  anthropic:{name:'Claude API',color:'#7b61ff',ph:'sk-ant-...',issuer:'console.anthropic.com › API Keys'},
-  openai:{name:'OpenAI API',color:'#10a37f',ph:'sk-...',issuer:'platform.openai.com › API keys'},
-  gemini:{name:'Gemini API',color:'#1a73e8',ph:'AIza...',issuer:'aistudio.google.com › API keys'},
+  anthropic:{name:'Claude API',short:'Claude',color:'#7b61ff',ph:'sk-ant-...',issuer:'console.anthropic.com › API Keys'},
+  openai:{name:'OpenAI API',short:'OpenAI',color:'#10a37f',ph:'sk-...',issuer:'platform.openai.com › API keys'},
+  gemini:{name:'Gemini API',short:'Gemini',color:'#1a73e8',ph:'AIza...',issuer:'aistudio.google.com › API keys'},
 };
+// 모델 표시명 — 코드명 대신 사람이 읽기 좋게(없으면 원본)
+const MODELNAME={'claude-opus-4-8':'Opus 4.8','claude-sonnet-4-6':'Sonnet 4.6','gpt-4o':'GPT-4o','gemini-2.5-pro':'2.5 Pro'};
+const nicer=v=>MODELNAME[v]||v;
+// 선택 카드 한 장
+function mcard(val,title,sub,active,miss){
+  return `<div class="mcard${active?' on':''}${miss?' miss':''}" data-model="${val}">
+    <div class=mc-t>${title}</div>${sub?`<div class=mc-s>${sub}</div>`:''}
+    ${active?'<div class=mc-ck>✓ 사용 중</div>':''}</div>`;}
 let MODEL_KEYS={};
 function provOf(model){const s=(model||'').toLowerCase();
   if(s.startsWith('claude'))return 'anthropic';
@@ -686,13 +706,13 @@ async function applyModel(payload, okmsg, btn){
   try{const r=await fetch('/api/models',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
     if(r.ok){toast(okmsg,'ok'); await loadModels();} else toast('적용 실패','err');
   }catch(e){toast('적용 오류: '+e,'err');}finally{if(btn)btn.disabled=false;}}
-// API 키 입력 박스(텍스트가 외부 API인데 키 없을 때)
+// API 키 입력 박스(텍스트가 외부 API일 때)
 function apiKeyBox(provider){
   const pv=PROV[provider]; const has=!!MODEL_KEYS[provider];
-  return `<div class=sub-h style="margin-top:14px">${pv.name} 키</div>
-    <div class=muted style="margin-bottom:8px">${has?`저장됨 ✓ — 이 모델로 바로 생성됩니다(토큰당 과금).`:`이 모델을 쓰려면 키가 필요해요. <b>${pv.issuer}</b>에서 발급 → .env에 저장됩니다(토큰당 과금).`}</div>
+  return `<div class=sub-h style="margin-top:16px">${pv.short} API 키</div>
+    <div class=muted style="margin-bottom:8px">${has?`등록됨 ✓ — 다시 입력하면 교체돼요.`:`이 모델을 쓰려면 키가 필요해요. <b>${pv.issuer}</b>에서 발급 → .env에 저장됩니다.`}</div>
     <div style="display:flex;gap:8px">
-      <input type=password id=apikey placeholder="${has?'키 저장됨 ✓ (다시 입력해 교체)':pv.ph}" style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
+      <input type=password id=apikey placeholder="${has?'키 등록됨 ✓ (교체하려면 입력)':pv.ph}" style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
       <button class=btn id=apikeysave data-prov="${provider}" style="width:auto;padding:9px 16px">저장</button>
     </div>`;
 }
@@ -701,75 +721,72 @@ async function loadModels(){try{const m=await (await fetch('/api/models')).json(
   const installed=m.installed||[];
   const instSet=new Set(installed.map(x=>x.name));
   const tApi=m.text_provider!=='ollama';
-  const sizeTag=n=>{const i=installed.find(x=>x.name===n); return i&&i.size_gb?` <span class=muted>· ${i.size_gb}GB</span>`:'';};
-  // ── 텍스트 옵션: 내장(설치본) + 외부 API ──
+  // ── 텍스트: 내장 카드 ──
   const localTextNames=installed.map(x=>x.name);
   if(!tApi && m.text && !instSet.has(m.text)) localTextNames.unshift(m.text);  // 적용 중인데 미설치면 노출
-  const localOpts=localTextNames.map(n=>`<option value="${n}"${n===m.text?' selected':''}>${n}${instSet.has(n)?'':' (미설치)'}</option>`).join('');
-  const apiOpts=(m.api_text||[]).map(a=>`<option value="${a.model}"${a.model===m.text?' selected':''}>${a.model} · ${PROV[a.provider]?PROV[a.provider].name:a.provider}${MODEL_KEYS[a.provider]?'':' (키 필요)'}</option>`).join('');
-  // ── 비전 옵션: 설치된 로컬 모델(비전 추정 우선 표시) ──
+  const localCards=localTextNames.map(n=>{const i=installed.find(x=>x.name===n), miss=!instSet.has(n);
+    return mcard(n, n, miss?'미설치':(i&&i.size_gb?i.size_gb+'GB':'로컬'), n===m.text, miss);}).join('')
+    || '<div class=muted>설치된 모델이 없어요</div>';
+  // ── 텍스트: 외부 API 카드(공급자별 묶음) ──
+  const byProv={}; (m.api_text||[]).forEach(a=>{(byProv[a.provider]=byProv[a.provider]||[]).push(a);});
+  const apiCards=Object.entries(byProv).map(([prov,list])=>{const pv=PROV[prov]||{short:prov}; const key=!!MODEL_KEYS[prov];
+    return `<div class=mgroup>${pv.short} <span class="keychip ${key?'ok':'no'}">${key?'키 있음':'키 필요'}</span></div>
+      <div class=mgrid>${list.map(a=>mcard(a.model, nicer(a.model), pv.short, a.model===m.text)).join('')}</div>`;}).join('');
+  // ── 비전: 카드(비전 추정 우선) ──
   const visNames=[...installed].sort((a,b)=>(b.vision?1:0)-(a.vision?1:0)).map(x=>x.name);
   if(m.vision && !instSet.has(m.vision)) visNames.unshift(m.vision);
-  const visOpts=visNames.map(n=>{const i=installed.find(x=>x.name===n);
-    return `<option value="${n}"${n===m.vision?' selected':''}>${i&&i.vision?'🖼 ':''}${n}${instSet.has(n)?'':' (미설치)'}</option>`;}).join('');
+  const visCards=visNames.map(n=>{const i=installed.find(x=>x.name===n), miss=!instSet.has(n);
+    return mcard(n, (i&&i.vision?'🖼 ':'')+n, miss?'미설치':(i&&i.size_gb?i.size_gb+'GB':'로컬'), n===m.vision, miss);}).join('');
 
   const noLocal=installed.length===0;
   $('#models').innerHTML=`
     <h3>텍스트 모델 <span class=muted style="font-weight:400">— 초안 글 작성</span></h3>
-    <div class=setrow><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <select id=txtsel style="min-width:280px;border:1px solid #d6dade;border-radius:8px;padding:8px">
-        ${localOpts?`<optgroup label="내장 (로컬 GPU)">${localOpts}</optgroup>`:''}
-        ${apiOpts?`<optgroup label="외부 API">${apiOpts}</optgroup>`:''}
-      </select>
-      <button class=btn id=txtapply style="width:auto;padding:8px 16px">적용</button></div></div>
-    <div class=muted style="margin-top:8px">적용 중: <b>${m.text||'-'}</b> ${tApi?`<span style="color:${(PROV[m.text_provider]||{}).color||'#666'}">· ${(PROV[m.text_provider]||{}).name||m.text_provider}</span>`:'<span class=muted>· 로컬</span>'}</div>
+    <div class=muted style="margin-bottom:4px">카드를 누르면 바로 적용돼요. 적용 중: <b>${m.text||'-'}</b> ${tApi?`<span style="color:${(PROV[m.text_provider]||{}).color||'#666'}">· ${(PROV[m.text_provider]||{}).short||m.text_provider}</span>`:'<span class=muted>· 내장</span>'}</div>
+    <div id=txtsection>
+      <div class=mgroup>내장 (내 컴퓨터 · Ollama)</div>
+      <div class=mgrid>${localCards}</div>
+      ${apiCards}
+    </div>
     <div id=txtnote></div>
     <div id=apikeybox></div>
 
-    <h3 style="margin-top:22px">비전 모델 <span class=muted style="font-weight:400">— 사진·상품 이미지 분석 (로컬 전용)</span></h3>
+    <h3 style="margin-top:26px">비전 모델 <span class=muted style="font-weight:400">— 사진·상품 이미지 분석 (내장 전용)</span></h3>
     ${noLocal
       ? `<div class=muted>로컬 모델이 안 보여요 — Ollama가 꺼져 있거나 설치된 모델이 없어요. <b>ollama.com</b>에서 설치 후 아래 명령으로 받으세요.<pre class=mcmd>ollama pull qwen2.5vl:7b</pre></div>`
-      : `<div class=setrow><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <select id=vissel style="min-width:280px;border:1px solid #d6dade;border-radius:8px;padding:8px">${visOpts}</select>
-          <button class=btn id=visapply style="width:auto;padding:8px 16px">적용</button></div></div>
-         <div class=muted style="margin-top:8px">적용 중: <b>${m.vision||'-'}</b> <span class=muted>· 로컬</span> · 🖼 표시가 비전 가능 모델이에요.</div>
+      : `<div class=muted style="margin-bottom:4px">적용 중: <b>${m.vision||'-'}</b> · 🖼 표시가 비전 모델이에요.</div>
+         <div class=mgrid id=viscards>${visCards}</div>
          <div id=visnote></div>`}
 
-    <details style="margin-top:22px"><summary style="cursor:pointer;font-weight:700;font-size:13px">🎁 추천 조합 (GPU별 한 번에 적용)</summary>
-      <div class=muted style="margin:8px 0">내 그래픽카드 사양에 맞는 조합을 고르면 텍스트·비전을 한 번에 설정해요.</div>
+    <details style="margin-top:26px"><summary style="cursor:pointer;font-weight:700;font-size:13px">🎁 추천 조합 (내 그래픽카드 사양별 한 번에)</summary>
+      <div class=muted style="margin:8px 0">사양에 맞는 조합을 고르면 텍스트·비전을 한 번에 설정해요.</div>
       <div id=presets></div></details>`;
 
-  // 텍스트: 설치/키 안내 + 적용
-  function txtNote(){
-    const v=$('#txtsel').value, prov=provOf(v);
-    $('#txtnote').innerHTML = prov==='ollama' && !instSet.has(v)
-      ? `<div class=sub-h style="margin-top:12px">설치 필요 — 터미널에 입력</div><pre class=mcmd>ollama pull ${v}</pre>`
-      : '';
+  // 텍스트 적용 중 안내(설치/키)
+  function txtNote(){const prov=m.text_provider;
+    $('#txtnote').innerHTML = (prov==='ollama' && !instSet.has(m.text))
+      ? `<div class=sub-h style="margin-top:14px">설치 필요 — 터미널에 입력</div><pre class=mcmd>ollama pull ${m.text}</pre>` : '';
     $('#apikeybox').innerHTML = (prov!=='ollama') ? apiKeyBox(prov) : '';
-    const sv=$('#apikeysave'); if(sv)sv.onclick=()=>saveKey(prov);
-  }
-  $('#txtsel').onchange=txtNote; txtNote();
-  $('#txtapply').onclick=function(){const v=$('#txtsel').value;
-    if(v===m.text){toast('이미 적용 중인 모델이에요.','info');return;}
-    applyModel({text:v}, '텍스트 모델 적용됨 ✓', this);};
+    const sv=$('#apikeysave'); if(sv)sv.onclick=()=>saveKey(prov);}
+  txtNote();
+  $$('#txtsection [data-model]').forEach(c=>c.onclick=()=>{const v=c.dataset.model;
+    if(v===m.text){toast('이미 쓰는 모델이에요.','info');return;}
+    applyModel({text:v}, '텍스트 모델 적용됨 ✓');});
 
-  // 비전: 설치/비전 여부 안내 + 적용
+  // 비전 적용 중 안내 + 카드 클릭
   if(!noLocal){
-    function visNote(){const v=$('#vissel').value, i=installed.find(x=>x.name===v);
-      let h='';
-      if(!instSet.has(v))h+=`<div class=sub-h style="margin-top:12px">설치 필요 — 터미널에 입력</div><pre class=mcmd>ollama pull ${v}</pre>`;
-      else if(i&&!i.vision)h+=`<div class=muted style="margin-top:8px">⚠️ 이 모델은 비전(이미지) 모델이 아닐 수 있어요. 사진 분석이 안 되면 🖼 표시 모델을 고르세요.</div>`;
-      $('#visnote').innerHTML=h;}
-    $('#vissel').onchange=visNote; visNote();
-    $('#visapply').onclick=function(){const v=$('#vissel').value;
-      if(v===m.vision){toast('이미 적용 중인 모델이에요.','info');return;}
-      applyModel({vision:v}, '비전 모델 적용됨 ✓', this);};
+    const vi=installed.find(x=>x.name===m.vision);
+    $('#visnote').innerHTML = !instSet.has(m.vision)
+      ? `<div class=sub-h style="margin-top:14px">설치 필요 — 터미널에 입력</div><pre class=mcmd>ollama pull ${m.vision}</pre>`
+      : (vi&&!vi.vision?`<div class=muted style="margin-top:8px">⚠️ 이 모델은 비전(이미지) 모델이 아닐 수 있어요. 사진 분석이 안 되면 🖼 표시 모델을 고르세요.</div>`:'');
+    $$('#viscards [data-model]').forEach(c=>c.onclick=()=>{const v=c.dataset.model;
+      if(v===m.vision){toast('이미 쓰는 모델이에요.','info');return;}
+      applyModel({vision:v}, '비전 모델 적용됨 ✓');});
   }
 
-  // 추천 조합(프리셋)
-  $('#presets').innerHTML=(m.presets||[]).map(p=>{const pv=PROV[p.provider];
-    return `<div class=setrow><div><div class=t>${p.label}</div><div class=d>텍스트 ${p.text}${pv?` <span style="color:${pv.color}">· ${pv.name}</span>`:''} · 비전 ${p.vision}</div></div>
-      <button class=btn data-preset="${p.key}" style="width:auto;padding:7px 14px">적용</button></div>`;}).join('');
+  // 추천 조합 — 내장(로컬) 프리셋만(GPU 사양 가이드)
+  $('#presets').innerHTML=(m.presets||[]).filter(p=>p.provider==='ollama').map(p=>
+    `<div class=setrow><div><div class=t>${p.label}</div><div class=d>텍스트 ${p.text} · 비전 ${p.vision}</div></div>
+      <button class=btn data-preset="${p.key}" style="width:auto;padding:7px 14px">적용</button></div>`).join('');
   $$('#presets [data-preset]').forEach(b=>b.onclick=()=>applyModel({preset:b.dataset.preset}, '프리셋 적용됨 ✓', b));
 }catch(e){$('#models').innerHTML='<div class=muted>로드 실패</div>';}}
 async function saveKey(provider){const v=$('#apikey').value.trim(); if(!v){toast('키를 입력하세요.','info');return;}
@@ -1030,8 +1047,8 @@ def _make_handler(state: dict):
                     self._send(200, json.dumps({"ok": True, "enabled": cfg[key]}).encode())
                 elif path == "/api/emphasis":
                     body = self._json_body()
-                    _save_emphasis_role_desc(body.get("role", ""), body.get("desc", ""))
-                    self._send(200, b'{"ok":true}')
+                    _save_emphasis_preset_tag(body.get("id"), body.get("tag", ""))
+                    self._send(200, json.dumps(_emphasis_preview()).encode())
                 elif path == "/api/label":
                     lab = state["label"]
                     if lab.get("running"):
@@ -1297,8 +1314,8 @@ def _emphasis_preview() -> dict:
     프로젝트 프리셋(config/power_shortcuts.json)이 있으면 그 색으로, 없으면 내장 기본으로 해석.
     """
     from autoblog.publish.emphasis import (
-        DEFAULT_ROLE_DESC,
         DEFAULT_STYLES,
+        build_emphasis_instruction,
         load_default_power_shortcuts,
         load_emphasis_config,
     )
@@ -1308,82 +1325,67 @@ def _emphasis_preview() -> dict:
     source = "파워 단축키 프리셋" if load_default_power_shortcuts() else "내장 기본"
     fonts = {f.get("value"): f.get("name", "").split("\n")[0] for f in _editor_options().get("fonts", [])}
 
+    # 프리셋ID → 태그(용도). preset_tags가 있으면 그대로, 없으면 레거시에서 파생해 보여준다.
+    pools = cfg.tag_pools()
+    tag_of = {pid: tag for tag, ids in pools.items() for pid in ids}
+
     def resolve(pid):
         st = presets.get(pid)
+        base = {"id": pid, "tag": tag_of.get(pid, "")}
         if not st:
-            return {"id": pid, "defined": False}
-        return {"id": pid, "defined": True, "text_color": st.text_color,
+            return {**base, "defined": False}
+        return {**base, "defined": True, "text_color": st.text_color,
                 "background_color": st.background_color, "bold": st.bold,
                 "font": st.font_family, "font_name": fonts.get(st.font_family),
                 "size": st.font_size}
 
-    used = {}
-    for i in cfg.cycling_pool or []:
-        used.setdefault(i, "순환")
-    for i in cfg.negative_pool or []:
-        used.setdefault(i, "부정")
-    for k, v in (cfg.fixed_map or {}).items():
-        used[v] = k
-    all_styles = [{**resolve(i), "use": used.get(i)} for i in sorted(presets)]
-
-    # role(강조색)별 용도 설명 행 — UI에서 편집, LLM 프롬프트로 전달.
-    # cycle/neg는 풀 전체, fixed_map 키는 색 하나. 설명은 role_desc 우선, 없으면 기본값.
-    rdesc = {**DEFAULT_ROLE_DESC, **(cfg.role_desc or {})}
-    role_label = {"cycle": "순환(긍정·일반)", "neg": "부정·주의", "price": "가격", "name": "가게/상품명"}
-    roles, seen = [], set()
-
-    def add_role(role, ids):
-        if role in seen:
-            return
-        seen.add(role)
-        roles.append({"role": role, "label": role_label.get(role, role),
-                      "desc": rdesc.get(role, ""), "ids": ids})
-
-    add_role("cycle", list(cfg.cycling_pool or []))
-    add_role("neg", list(cfg.negative_pool or []))
-    for k, v in (cfg.fixed_map or {}).items():
-        add_role(k, [v])
-    for k in (cfg.role_desc or {}):  # 설명만 단 커스텀 role(아직 색 미배정)
-        add_role(k, [])
-
+    all_styles = [resolve(i) for i in sorted(presets)]
+    # 같은 태그가 몇 색에 걸렸는지(순환 여부 표시용)
+    groups = [{"tag": t, "ids": ids} for t, ids in pools.items()]
     return {
         "source": source,
         "all": all_styles,
-        "roles": roles,
-        "cycling": list(cfg.cycling_pool or []),
-        "negative": list(cfg.negative_pool or []),
-        "fixed": cfg.fixed_map or {},
+        "groups": groups,
+        # LLM에게 실제로 들어가는 강조 지시문(가시성 — 어떻게 쓰이는지 그대로 보여줌)
+        "instruction": build_emphasis_instruction(cfg),
         "max_per_paragraph": cfg.max_per_paragraph,
         "min_sentence_gap": cfg.min_sentence_gap,
     }
 
 
-def _save_emphasis_role_desc(role: str, desc: str) -> None:
-    """강조 role 용도 설명을 config/emphasis.yaml의 role_desc에 저장(기존 주석·내용 보존)."""
+def _save_emphasis_preset_tag(preset_id, tag: str) -> None:
+    """프리셋(강조색)의 태그를 config/emphasis.yaml의 preset_tags에 저장(기존 주석·내용 보존).
+
+    빈 태그를 주면 해당 프리셋의 태그를 제거(= 안 쓰는 색). 콜론·꺾쇠는 마커와 충돌하므로 제거.
+    """
     import re
 
     import yaml
 
     from autoblog.publish.emphasis import _EMPHASIS_CONFIG_PATH, load_emphasis_config
 
-    role, desc = (role or "").strip(), (desc or "").strip()
-    if not role:
+    try:
+        pid = int(preset_id)
+    except (TypeError, ValueError):
         return
-    rd = dict(load_emphasis_config().role_desc or {})
-    if desc:
-        rd[role] = desc
+    tag = re.sub(r"[:<>]", "", tag or "").strip()
+    pt = {int(k): v for k, v in (load_emphasis_config().preset_tags or {}).items()}
+    if tag:
+        pt[pid] = tag
     else:
-        rd.pop(role, None)
+        pt.pop(pid, None)
 
     path = _EMPHASIS_CONFIG_PATH
     raw = path.read_text(encoding="utf-8") if path.exists() else ""
-    # 기존 role_desc 블록(헤더 주석 + 매핑)을 통째로 제거 후 끝에 다시 쓴다.
-    raw = re.sub(r"\n*# 역할별 용도 설명[^\n]*\n", "\n", raw)
-    raw = re.sub(r"(?ms)^role_desc:\n(?:[ \t]+.*\n?)*", "", raw)
+    # 기존 preset_tags 블록(헤더 주석 + 매핑) 제거 후 끝에 다시 쓴다.
+    raw = re.sub(r"\n*# 프리셋\(강조색\)별 태그[^\n]*\n", "\n", raw)
+    raw = re.sub(r"(?ms)^preset_tags:\n(?:[ \t]+.*\n?)*", "", raw)
     block = ""
-    if rd:
-        body = yaml.safe_dump({"role_desc": rd}, allow_unicode=True, sort_keys=False)
-        block = "\n# 역할별 용도 설명 (서식 탭에서 편집) — 각 강조 role을 언제 쓸지 LLM에 안내\n" + body
+    if pt:
+        body = yaml.safe_dump({"preset_tags": dict(sorted(pt.items()))},
+                              allow_unicode=True, sort_keys=False)
+        block = ("\n# 프리셋(강조색)별 태그 (서식 탭에서 편집) — 색마다 용도. "
+                 "같은 태그를 여러 색에 주면 자동 순환. LLM은 <<태그:어구>>로 고름\n" + body)
     path.write_text(raw.rstrip("\n") + "\n" + block, encoding="utf-8")
 
 
