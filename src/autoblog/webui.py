@@ -401,13 +401,17 @@ function showLog(dbg){
     +'<details><summary class=logsum>유저 프롬프트(재료) 보기</summary><pre class=logpre>'+esc(dbg.user||'')+'</pre></details>';
   $('#logbox').style.display='block';
 }
+function fillCategories(cats){const sel=$('#category');
+  sel.innerHTML='<option value="">— 선택 안 함 —</option>'+cats.map(c=>
+    `<option value="${esc(c.name)}">${'　'.repeat(c.depth||0)}${c.depth?'└ ':''}${esc(c.name)}</option>`).join('');}
+async function loadCategories(){try{const d=await (await fetch('/api/categories')).json();
+  if(d.categories&&d.categories.length){fillCategories(d.categories); $('#catstat').textContent=`저장된 ${d.categories.length}개 · 갱신하려면 [불러오기]`;}
+}catch(e){}}
 $('#catload').onclick=async()=>{
   $('#catload').disabled=true; $('#catstat').textContent='블로그에서 불러오는 중… 브라우저가 열려요(수십 초)';
   try{const r=await fetch('/api/categories',{method:'POST'}); const d=await r.json();
     if(!r.ok){$('#catstat').textContent='실패: '+(d.error||''); return;}
-    const sel=$('#category'); sel.innerHTML='<option value="">— 선택 안 함 —</option>'+
-      d.categories.map(c=>`<option value="${esc(c.name)}">${'　'.repeat(c.depth)}${c.depth?'└ ':''}${esc(c.name)}</option>`).join('');
-    $('#catstat').textContent=`카테고리 ${d.categories.length}개 불러옴`;
+    fillCategories(d.categories); $('#catstat').textContent=`카테고리 ${d.categories.length}개 불러와 저장됨`;
   }catch(e){$('#catstat').textContent='오류: '+e;}finally{$('#catload').disabled=false;}
 };
 $('#save').onclick=async()=>{if(!PLAN)return;
@@ -578,7 +582,7 @@ $('#variants').onclick=async e=>{const c=e.target.closest('.vcell'); if(!c)retur
   c.querySelector('.vname').innerHTML=c.querySelector('.vname').textContent.replace(' ✓','')+(on?' <span class=vck>✓</span>':'');
   try{await fetch('/api/format',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,value,on})});}catch(e){}
 };
-loadPhotos(); setupUpload(); renderRules(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants();
+loadPhotos(); setupUpload(); renderRules(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories();
 </script></body></html>"""
 
 
@@ -703,6 +707,8 @@ def _make_handler(state: dict):
                 self._send(200, json.dumps(_emphasis_preview()).encode())
             elif u.path == "/api/prompt":
                 self._send(200, json.dumps(_prompt_preview()).encode())
+            elif u.path == "/api/categories":
+                self._send(200, json.dumps({"categories": _load_categories()}).encode())
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -988,8 +994,19 @@ def _set_anthropic_key(key: str) -> None:
     load_env.cache_clear()
 
 
+CATEGORIES_PATH = REPO_ROOT / "config" / "categories.json"
+
+
+def _load_categories() -> list:
+    """저장해둔 카테고리(한 번 불러오면 파일에 캐시). 없으면 빈 목록."""
+    try:
+        return json.loads(CATEGORIES_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return []
+
+
 def _fetch_categories() -> list:
-    """네이버 블로그에서 카테고리(이름+뎁스)를 라이브로 불러온다(브라우저 1회 기동)."""
+    """네이버 블로그에서 카테고리(이름+뎁스)를 라이브로 불러와 파일에 저장(브라우저 1회 기동)."""
     from autoblog.publish.editor import BlogPublisher
 
     pub = BlogPublisher(headless=False)
@@ -997,9 +1014,11 @@ def _fetch_categories() -> list:
     try:
         if not pub.wait_for_login():
             raise RuntimeError("네이버 로그인이 필요합니다")
-        return pub.get_categories_detailed()
+        cats = pub.get_categories_detailed()
     finally:
         pub.close()
+    CATEGORIES_PATH.write_text(json.dumps(cats, ensure_ascii=False), encoding="utf-8")
+    return cats
 
 
 def _set_model_preset(key: str) -> None:

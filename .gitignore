@@ -47,3 +47,6 @@ config/format.yaml
 
 # 유저 업로드 사진
 data/uploads/
+
+# 유저 블로그 카테고리 캐시
+config/categories.json
