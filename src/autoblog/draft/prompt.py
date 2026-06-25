@@ -108,9 +108,12 @@ def build_user_prompt(card: FactCard, experience_memo: str) -> str:
         from autoblog.collect.photos import photo_summary
 
         labels = sorted({p.label for p in card.photos})
+        n = len(card.photos)
         parts.append(
             "# 사진 구성 (분류 결과)\n"
-            f"보유 사진: {photo_summary(card.photos)}\n"
+            f"보유 사진: {photo_summary(card.photos)} (총 {n}장)\n"
+            f"이 {n}장을 한 장도 빠짐없이 모두 본문에 배치하세요. 사진 수만큼 마커를 넣어야 합니다"
+            f"(마커가 모자라면 남은 사진이 글 끝에 몰려 들어갑니다).\n"
             "본문 흐름에 맞는 위치에 [사진:라벨] 을 한 줄로 넣어 그 내용에 어울리는 사진을 배치하세요"
             f"(라벨은 보유 사진의 분류명: {', '.join(labels)}).\n"
             "예: 음식 묘사 문단 뒤엔 [사진:음식], 가게 첫인상 문단 뒤엔 [사진:외관]. "
