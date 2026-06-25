@@ -45,7 +45,10 @@ src/autoblog/
     guideline.py       #   가이드라인 + 체크리스트 자동 대조
     postprocess.py     #   결정적 포맷 규칙 강제(! → .ᐟ 등)
     generate.py        #   텍스트 LLM 호출 → 초안
+  publish/             # 4단계 · 네이버 게시
+    emphasis.py        #   서식/강조(파워 단축키 import, 순환 풀/고정 매핑)
 config/prompts/default.md  # 기본 글쓰기 프롬프트 (사용자 편집)
+config/emphasis.yaml       # 강조 배정 설정 (순환 풀·고정 매핑, 사용자 편집)
 tests/
 ```
 

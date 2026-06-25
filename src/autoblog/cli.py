@@ -92,6 +92,10 @@ def draft(
         None, "--prompt-file", help="베이스 프롬프트 파일 경로(기본 config/prompts/default.md)"
     ),
     model: str = typer.Option(None, "--model", help="텍스트 모델 override(기본 프리셋)"),
+    emphasis: bool = typer.Option(False, "--emphasis", help="강조(서식) 배정 켜기"),
+    shortcuts: str = typer.Option(
+        None, "--shortcuts", help="파워 단축키 JSON 경로(미지정 시 내장 기본 스타일)"
+    ),
 ):
     """경험 메모 + 사실 카드 → 경험 중심 블로그 초안 생성."""
     from autoblog.collect.fact_card import CardType, FactCard
@@ -116,14 +120,30 @@ def draft(
 
         classify_photos_into(card, photo)
 
+    power_shortcuts = None
+    if shortcuts:
+        import json
+
+        from autoblog.publish.emphasis import load_power_shortcuts
+
+        power_shortcuts = load_power_shortcuts(json.loads(open(shortcuts, encoding="utf-8").read()))
+
     req = DraftRequest(
         fact_card=card,
         experience_memo=memo,
         base_prompt=load_base_prompt(prompt_file) if prompt_file else None,
         style=StyleProfile(tone=tone) if tone else None,
+        emphasis=emphasis,
+        power_shortcuts=power_shortcuts,
     )
     result = generate_draft(req, model=model)
     typer.echo(result.text)
+    if result.emphases:
+        typer.echo("\n--- 강조 배정 ---", err=True)
+        for s in result.emphases:
+            st = s.style
+            desc = st.text_color or st.background_color or "기본"
+            typer.echo(f"[{s.preset_id}] {desc}  «{s.text}»", err=True)
     if result.checklist:
         typer.echo("\n--- 가이드라인 체크 ---", err=True)
         for c in result.checklist:

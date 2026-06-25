@@ -12,6 +12,15 @@ from autoblog.draft.prompts import load_base_prompt
 from autoblog.draft.rules import CommonRules
 from autoblog.draft.style import StyleProfile
 from autoblog.llm import chat
+from autoblog.publish.emphasis import (
+    EMPHASIS_INSTRUCTION,
+    EmphasisConfig,
+    EmphasisStyle,
+    StyledSpan,
+    assign_emphasis,
+    load_emphasis_config,
+    parse_emphasis_markup,
+)
 
 
 class DraftRequest(BaseModel):
@@ -23,11 +32,16 @@ class DraftRequest(BaseModel):
     guidelines: Guidelines | None = None
     photo_count: int | None = None
     postprocess: bool = True  # 결정적 포맷 규칙 후처리 강제
+    # 강조(서식) — 켜면 LLM이 <<role:text>> 마킹 → 순환/고정 매핑 배정
+    emphasis: bool = False
+    emphasis_config: EmphasisConfig | None = None  # None이면 config/emphasis.yaml
+    power_shortcuts: dict[int, EmphasisStyle] | None = None  # None이면 내장 기본 스타일
 
 
 class DraftResult(BaseModel):
     text: str
     checklist: list[CheckItem] = Field(default_factory=list)
+    emphases: list[StyledSpan] = Field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -35,14 +49,30 @@ class DraftResult(BaseModel):
 
 
 def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
-    """초안 생성 후, 가이드라인이 있으면 체크리스트로 자동 대조."""
+    """초안 생성 후, 강조 마킹 배정·포맷 후처리·가이드라인 대조를 수행."""
+    from autoblog.publish.emphasis import DEFAULT_STYLES
+
     base = req.base_prompt or load_base_prompt()
     system = build_system_prompt(base, req.style, req.guidelines, req.rules)
+    if req.emphasis:
+        system = f"{system}\n\n{EMPHASIS_INSTRUCTION}"
     user = build_user_prompt(req.fact_card, req.experience_memo)
     text = chat(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
         model=model,
     ).strip()
+
+    # 강조 마킹 추출(포맷 후처리 전에 — 줄바꿈이 <<>>를 깨지 않도록)
+    emphases: list[StyledSpan] = []
+    if req.emphasis:
+        text, requests = parse_emphasis_markup(text)
+        presets = req.power_shortcuts or DEFAULT_STYLES
+        config = req.emphasis_config or load_emphasis_config()
+        emphases = assign_emphasis(requests, presets, config)
+        if req.postprocess:  # 강조 텍스트도 본문과 같은 문자 규칙으로 정규화(매칭 유지)
+            for span in emphases:
+                span.text = enforce_format(span.text, wrap=False)
+
     if req.postprocess:
         text = enforce_format(text)
 
@@ -52,4 +82,4 @@ def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
         if photo_count is None and req.fact_card.photos:
             photo_count = len(req.fact_card.photos)
         checklist = check_guidelines(text, req.guidelines, photo_count)
-    return DraftResult(text=text, checklist=checklist)
+    return DraftResult(text=text, checklist=checklist, emphases=emphases)

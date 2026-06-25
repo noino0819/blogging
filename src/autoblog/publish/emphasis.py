@@ -12,7 +12,12 @@
 
 from __future__ import annotations
 
+import re
+
+import yaml
 from pydantic import BaseModel, Field
+
+from autoblog.config import CONFIG_DIR
 
 
 class EmphasisStyle(BaseModel):
@@ -148,12 +153,51 @@ class CyclingPool:
 
 
 class EmphasisConfig(BaseModel):
-    """강조 배정 규칙."""
+    """강조 배정 규칙 (사용자 입력 가능: config/emphasis.yaml)."""
 
     cycling_pool: list[int] = Field(default_factory=list)  # 예: [1, 3, 5]
     fixed_map: dict[str, int] = Field(default_factory=dict)  # 예: {"price": 7, "name": 4}
     max_per_paragraph: int | None = None  # (옵션) 문단당 강조 개수 상한
     min_sentence_gap: int | None = None  # (옵션) 강조 간 최소 문장 간격
+
+
+_EMPHASIS_CONFIG_PATH = CONFIG_DIR / "emphasis.yaml"
+
+
+def load_emphasis_config(path=None) -> EmphasisConfig:
+    """강조 설정 로드(사용자 편집 파일). 없으면 빈 기본값."""
+    path = path or _EMPHASIS_CONFIG_PATH
+    try:
+        data = yaml.safe_load(open(path, encoding="utf-8")) or {}
+    except FileNotFoundError:
+        return EmphasisConfig()
+    return EmphasisConfig(**data)
+
+
+# 초안 강조 마킹: <<role:강조할 텍스트>>  (예: <<price:13,000원>>, <<name:가게명>>, <<cycle:문장>>)
+EMPHASIS_INSTRUCTION = (
+    "[강조 표시]\n"
+    "특별히 강조할 부분만 다음처럼 감싸세요. 일반 문장은 감싸지 마세요.\n"
+    "- 핵심 문장·감상: <<cycle:문장>>\n"
+    "- 가격: <<price:13,000원>>\n"
+    "- 가게명/상품명: <<name:가게이름>>\n"
+    "강조는 문단당 1~2개로 절제하고, 감싼 텍스트는 본문에 그대로 보이게 자연스러운 문장이어야 합니다."
+)
+
+_MARKUP_RE = re.compile(r"<<(\w+):(.*?)>>", re.DOTALL)
+
+
+def parse_emphasis_markup(text: str) -> tuple[str, list[EmphasisRequest]]:
+    """<<role:text>> 마킹 제거 → (깨끗한 본문, 강조 요청 목록)."""
+    requests: list[EmphasisRequest] = []
+
+    def repl(m: re.Match) -> str:
+        inner = m.group(2)
+        requests.append(EmphasisRequest(text=inner, role=m.group(1)))
+        return inner
+
+    clean = _MARKUP_RE.sub(repl, text)
+    return clean, requests
 
 
 class EmphasisRequest(BaseModel):

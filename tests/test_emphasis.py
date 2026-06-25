@@ -7,7 +7,9 @@ from autoblog.publish.emphasis import (
     EmphasisConfig,
     EmphasisRequest,
     assign_emphasis,
+    load_emphasis_config,
     load_power_shortcuts,
+    parse_emphasis_markup,
     parse_style,
 )
 
@@ -78,3 +80,23 @@ def test_assign_emphasis_cycle_and_fixed():
     # 가격 스타일은 7번 프리셋(주황 볼드)
     price_span = spans[1]
     assert price_span.style == DEFAULT_STYLES[7]
+
+
+def test_parse_emphasis_markup():
+    raw = "오늘 <<name:수지골>>에서 <<price:13,000원>> 추어탕을 먹었는데 <<cycle:정말 좋았어요>>."
+    clean, reqs = parse_emphasis_markup(raw)
+    # 마킹은 제거되고 안쪽 텍스트는 본문에 그대로 남음
+    assert clean == "오늘 수지골에서 13,000원 추어탕을 먹었는데 정말 좋았어요."
+    assert [(r.role, r.text) for r in reqs] == [
+        ("name", "수지골"),
+        ("price", "13,000원"),
+        ("cycle", "정말 좋았어요"),
+    ]
+    # 마킹 없으면 원문 유지 + 빈 목록
+    assert parse_emphasis_markup("강조 없음") == ("강조 없음", [])
+
+
+def test_load_emphasis_config_from_file():
+    cfg = load_emphasis_config()  # config/emphasis.yaml
+    assert cfg.cycling_pool  # 비어있지 않음
+    assert "price" in cfg.fixed_map and "name" in cfg.fixed_map
