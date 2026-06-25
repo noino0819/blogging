@@ -387,6 +387,8 @@ class BlogPublisher:
         from autoblog.publish.stickers import (
             STICKER_DATA_DIR,
             Sticker,
+            crop_sprite,
+            download_sprite,
             download_sticker_image,
         )
 
@@ -413,7 +415,10 @@ class BlogPublisher:
                   const span=btns[0]?.querySelector('.se-sidebar-sticker');
                   const bg=span?getComputedStyle(span).backgroundImage:'';
                   const m=bg.match(/pstatic\\.net\\/([^/]+)\\//);
-                  return {pack: m?m[1]:null,
+                  // cols = 서로 다른 background-position-x 개수(스프라이트 격자 열 수)
+                  const xs=new Set(btns.map(b=>{const s=b.querySelector('.se-sidebar-sticker');
+                    return s?getComputedStyle(s).backgroundPositionX:'';}));
+                  return {pack: m?m[1]:null, cols: xs.size||3,
                           items: btns.map(b=>({idx:+b.getAttribute('data-index'),
                                                animated:b.getAttribute('data-animated')==='true'}))};
                 }"""
@@ -426,24 +431,35 @@ class BlogPublisher:
                 f"{SMART_EDITOR['sticker_active_list']} {SMART_EDITOR['sticker_element']}"
             )
             btn_by_idx = {it["idx"]: b for b, it in zip(btns, meta["items"])}
+            cols = meta.get("cols") or 3
+            count = len(meta["items"])
+            sprite: bytes | None | bool = False  # False=미시도, None=없음, bytes=받음
             for item in meta["items"]:
                 idx = item["idx"]
                 img_path = pack_dir / f"{idx}.png"
-                # 1순위: CDN 개별 고해상도. 실패 시 에디터 버튼 스크린샷 폴백.
-                if not download_sticker_image(pack, idx, img_path):
-                    b = btn_by_idx.get(idx)
-                    if b is None:
-                        continue
-                    try:
-                        b.evaluate("e => e.scrollIntoView({block: 'center'})")
-                        page.wait_for_timeout(60)
-                        box = b.bounding_box()
-                        if not box or box["width"] < 1:
-                            continue
+                # 1순위: CDN 개별 고해상도(ogq/clip/일부 cafe). 실패 시 스프라이트 크롭, 그래도 안 되면 스크린샷.
+                if download_sticker_image(pack, idx, img_path):
+                    pass
+                else:
+                    if sprite is False:  # 이 팩에서 처음 폴백 — 스프라이트 1회 받기
+                        sprite = download_sprite(pack)
+                    if sprite:
                         pack_dir.mkdir(parents=True, exist_ok=True)
-                        page.screenshot(path=str(img_path), animations="disabled", clip=box)
-                    except Exception:
-                        continue
+                        img_path.write_bytes(crop_sprite(sprite, cols, count, idx))
+                    else:  # 최후: 에디터 버튼 스크린샷(저화질)
+                        b = btn_by_idx.get(idx)
+                        if b is None:
+                            continue
+                        try:
+                            b.evaluate("e => e.scrollIntoView({block: 'center'})")
+                            page.wait_for_timeout(60)
+                            box = b.bounding_box()
+                            if not box or box["width"] < 1:
+                                continue
+                            pack_dir.mkdir(parents=True, exist_ok=True)
+                            page.screenshot(path=str(img_path), animations="disabled", clip=box)
+                        except Exception:
+                            continue
                 rel = (
                     str(img_path.relative_to(REPO_ROOT))
                     if img_path.is_relative_to(REPO_ROOT)

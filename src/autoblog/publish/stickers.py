@@ -168,6 +168,46 @@ def download_sticker_image(pack: str, index: int, dest: Path, size: int = 480) -
     return True
 
 
+# 네이버 공식 팩(cafe_/motion3d_ 등)은 개별 파일이 없고 스프라이트(original_preview.png,
+# 324x800)만 제공 → 80px 스크린샷보다 스프라이트 셀(~108px) 크롭이 선명. CDN개별 실패 시 폴백.
+def sprite_png_url(pack: str) -> str:
+    return f"https://storep-phinf.pstatic.net/{pack}/original_preview.png?type=p100_100"
+
+
+def download_sprite(pack: str) -> bytes | None:
+    import requests
+
+    try:
+        r = requests.get(sprite_png_url(pack), headers=_CDN_HEADERS, timeout=15)
+    except requests.RequestException:
+        return None
+    if r.status_code == 200 and r.headers.get("content-type", "").startswith("image"):
+        return r.content
+    return None
+
+
+def crop_sprite(sprite_png: bytes, cols: int, count: int, index: int, scale: int = 2) -> bytes:
+    """스프라이트에서 index 셀을 잘라 PNG bytes(행우선 격자). scale배 확대(LANCZOS)로 선명도↑."""
+    import math
+    from io import BytesIO
+
+    from PIL import Image
+
+    im = Image.open(BytesIO(sprite_png)).convert("RGBA")
+    w, h = im.size
+    cols = max(1, cols)
+    rows = max(1, math.ceil(count / cols))
+    cw, ch = w / cols, h / rows
+    col, row = index % cols, index // cols
+    box = (round(col * cw), round(row * ch), round((col + 1) * cw), round((row + 1) * ch))
+    cell = im.crop(box)
+    if scale and scale > 1:
+        cell = cell.resize((cell.width * scale, cell.height * scale), Image.LANCZOS)
+    buf = BytesIO()
+    cell.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 # --- 초안 지시문 (LLM이 [스티커:상황] 마커 emit) ---
 def build_sticker_instruction(labels: list[str]) -> str | None:
     """보유 스티커 상황 라벨 목록 → 초안 지시문(EMPHASIS_INSTRUCTION 패턴).

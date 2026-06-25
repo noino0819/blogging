@@ -9,6 +9,33 @@ from autoblog.publish.stickers import (
 )
 
 
+def test_crop_sprite_grid():
+    from io import BytesIO
+
+    from PIL import Image
+
+    from autoblog.publish.stickers import crop_sprite
+
+    # 324x800 스프라이트(3열 8행, 셀 108x100) 가정 — 셀 위치별로 다른 색 칠해 크롭 검증
+    sprite = Image.new("RGBA", (324, 800), (255, 255, 255, 255))
+    for r in range(8):
+        for c in range(3):
+            idx = r * 3 + c
+            for x in range(c * 108, (c + 1) * 108):
+                for y in range(r * 100, (r + 1) * 100):
+                    sprite.putpixel((x, y), (idx, idx, idx, 255))
+    buf = BytesIO()
+    sprite.save(buf, format="PNG")
+    raw = buf.getvalue()
+    # index 4 → (col1,row1), scale=1이면 108x100, 단색 idx=4
+    out = crop_sprite(raw, cols=3, count=24, index=4, scale=1)
+    cell = Image.open(BytesIO(out))
+    assert cell.size == (108, 100)
+    assert cell.getpixel((50, 50))[0] == 4
+    # scale=2면 2배
+    assert Image.open(BytesIO(crop_sprite(raw, 3, 24, 0, scale=2))).size == (216, 200)
+
+
 def test_sticker_instruction_lists_labels():
     instr = build_sticker_instruction(["맛있음", "기쁨", "", "기쁨"])
     assert instr is not None

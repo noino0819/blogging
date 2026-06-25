@@ -35,3 +35,6 @@ Thumbs.db
 node_modules/
 dist/
 out/
+
+# 유저별 스티커 카탈로그(개인 데이터, data/stickers 이미지 참조)
+config/stickers.yaml
