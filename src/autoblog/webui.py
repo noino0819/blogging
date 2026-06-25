@@ -185,9 +185,23 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 </style></head><body><div id=toasts></div>
 <div id=pmodal class=modal style="display:none"><div class=modalbox>
   <div class=modalhd><span>📋 다른 챗봇에 붙여넣을 프롬프트</span><button class=mx id=pmclose>✕</button></div>
-  <div class=muted>내 베이스 프롬프트 + 켜둔 서식/규칙 지시문 + 입력 자료를 합친 전체 프롬프트예요. 복사해서 ChatGPT·Claude 등에 그대로 붙여넣으면 됩니다.</div>
-  <textarea id=ptext readonly></textarea>
-  <div class=modalft><button class=btn id=pcopy style="flex:1">복사하기</button><button class="btn ghost" id=pmclose2 style="flex:0 0 120px">닫기</button></div>
+  <div id=ploading style="display:none"><div class=genload>
+    <div class=genchar id=pchar>🧩</div>
+    <div class=genmsg id=pmsg>자료를 모으는 중…</div>
+    <div class=genbar><div class=genfill id=pfill></div></div>
+    <div class=genpct id=ppct>0%</div>
+    <div class=gensub>내 프롬프트와 입력 자료를 합치고 있어요</div></div></div>
+  <div id=pcontent>
+    <div class=muted>내 베이스 프롬프트 + 켜둔 서식/규칙 지시문 + 입력 자료를 합친 전체 프롬프트예요. 복사해서 ChatGPT·Claude 등에 붙여넣고, <b>받은 글은 [📥 받아온 글 붙여넣기]</b>로 다시 가져오세요.</div>
+    <textarea id=ptext readonly></textarea>
+    <div class=modalft><button class=btn id=pcopy style="flex:1">복사하기</button><button class="btn ghost" id=pmclose2 style="flex:0 0 120px">닫기</button></div>
+  </div>
+</div></div>
+<div id=imodal class=modal style="display:none"><div class=modalbox>
+  <div class=modalhd><span>📥 받아온 글 붙여넣기</span><button class=mx id=imclose>✕</button></div>
+  <div class=muted>다른 챗봇에서 받은 글을 붙여넣으세요. 강조 &lt;&lt;…&gt;&gt; · [구분선] · [인용구] · [스티커:상황] 마커가 있으면 그대로 적용돼 미리보기로 보여줍니다. 선택한 사진도 함께 배치돼요.</div>
+  <textarea id=itext placeholder="여기에 받아온 글을 붙여넣기"></textarea>
+  <div class=modalft><button class=btn id=iapply style="flex:1">이 글로 미리보기</button><button class="btn ghost" id=imclose2 style="flex:0 0 120px">닫기</button></div>
 </div></div>
 <aside class=side>
   <div class=brand>🖋️ 블로그 자동작성</div>
@@ -229,6 +243,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           </div>
           <div style="margin-top:18px"><button class=btn id=gen>초안 생성</button></div>
           <div style="margin-top:9px"><button class="btn ghost" id=export>📋 내 프롬프트 합쳐서 복사 <span class=muted>(다른 챗봇에 붙여넣기)</span></button></div>
+          <div style="margin-top:7px"><button class="btn ghost" id=import>📥 받아온 글 붙여넣기 <span class=muted>(다른 챗봇 결과를 미리보기로)</span></button></div>
           <div id=status></div>
         </div>
         <div class=card style="margin-top:16px">
@@ -418,25 +433,57 @@ $('#gen').onclick=async()=>{
     if(d.debug)showLog(d.debug);
   }catch(e){genDone(false); st('오류: '+e); toast('초안 생성 오류: '+e,'err');}finally{$('#gen').disabled=false;}
 };
-// 프롬프트 내보내기: 내 프롬프트+지시문+입력자료 합쳐서 모달에 보여주고 복사
+// 프롬프트 내보내기: 모달 안에서 진행바 보여주고, 합쳐진 프롬프트 표시·복사
+let EXPTIMER=null;
+const EXPCHARS=['🧩','✍️','🔗','📋','💭'], EXPMSGS=[[0,'자료를 모으는 중…'],[45,'내 프롬프트와 합치는 중…'],[80,'마무리 중…']];
+function expLoading(on){
+  $('#ploading').style.display=on?'block':'none'; $('#pcontent').style.display=on?'none':'block';
+  if(EXPTIMER){clearInterval(EXPTIMER);EXPTIMER=null;}
+  if(on){$('#pmodal').style.display='flex'; let pct=0,ci=0;
+    $('#pfill').style.width='0%'; $('#ppct').textContent='0%'; $('#pmsg').textContent=EXPMSGS[0][1];
+    EXPTIMER=setInterval(()=>{pct+=Math.max(1,(96-pct)*0.08); if(pct>96)pct=96;
+      const fl=$('#pfill'); if(!fl){clearInterval(EXPTIMER);return;}
+      fl.style.width=pct+'%'; $('#ppct').textContent=Math.floor(pct)+'%';
+      const m=EXPMSGS.filter(x=>pct>=x[0]).pop(); if(m)$('#pmsg').textContent=m[1];
+      ci++; $('#pchar').textContent=EXPCHARS[ci%EXPCHARS.length];},650);
+  }else{const fl=$('#pfill'); if(fl)fl.style.width='100%'; $('#ppct').textContent='100%';}
+}
 $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
-  const btn=$('#export'), old=btn.innerHTML; btn.disabled=true; btn.textContent='프롬프트 만드는 중…';
+  $('#export').disabled=true; expLoading(true);
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,rules:RULES};
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
-    if(!r.ok){toast('프롬프트 생성 실패: '+(d.error||''),'err');return;}
-    $('#ptext').value=d.prompt; $('#pmodal').style.display='flex';
-  }catch(e){toast('프롬프트 오류: '+e,'err');}finally{btn.disabled=false;btn.innerHTML=old;}
+    if(!r.ok){closePM(); toast('프롬프트 생성 실패: '+(d.error||''),'err');return;}
+    $('#ptext').value=d.prompt; expLoading(false);
+  }catch(e){closePM(); toast('프롬프트 오류: '+e,'err');}finally{$('#export').disabled=false;}
 };
 $('#pcopy').onclick=async()=>{const t=$('#ptext');
   try{await navigator.clipboard.writeText(t.value);}catch(e){t.select();document.execCommand('copy');}
   toast('복사했어요! 다른 챗봇에 붙여넣으세요.','ok');};
-function closePM(){$('#pmodal').style.display='none';}
+function closePM(){$('#pmodal').style.display='none'; if(EXPTIMER){clearInterval(EXPTIMER);EXPTIMER=null;}}
 $('#pmclose').onclick=closePM; $('#pmclose2').onclick=closePM;
 $('#pmodal').onclick=e=>{if(e.target===$('#pmodal'))closePM();};
+// 받아온 글 붙여넣기: 외부 챗봇 결과 → 마커 파싱 → 미리보기(생성과 동일 경로)
+function closeIM(){$('#imodal').style.display='none';}
+$('#import').onclick=()=>{$('#imodal').style.display='flex'; $('#itext').focus();};
+$('#imclose').onclick=closeIM; $('#imclose2').onclick=closeIM;
+$('#imodal').onclick=e=>{if(e.target===$('#imodal'))closeIM();};
+$('#iapply').onclick=async()=>{
+  const text=$('#itext').value.trim();
+  if(!text){toast('붙여넣은 글이 비어 있어요.','info');return;}
+  $('#iapply').disabled=true;
+  try{
+    const body={text,photos:SELP,emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers};
+    const r=await fetch('/api/import-draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){toast('가져오기 실패: '+(d.error||''),'err');return;}
+    closeIM(); PLAN=d; renderPreview(d); st('받아온 글을 미리보기에 반영했어요. 검토 후 임시저장하세요.'); toast('받아온 글을 가져왔어요! 검토 후 임시저장하세요.','ok'); $('#save').disabled=false;
+    if(d.debug)showLog(d.debug);
+  }catch(e){toast('가져오기 오류: '+e,'err');}finally{$('#iapply').disabled=false;}
+};
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function renderText(b){let h=esc(b.text);
   (b.emphases||[]).forEach(e=>{const stl=(e.text_color?`color:${e.text_color};`:'')+(e.background_color?`background:${e.background_color};`:'');
@@ -795,6 +842,8 @@ def _make_handler(state: dict):
                     self._generate(self._json_body())
                 elif path == "/api/export-prompt":
                     self._export_prompt(self._json_body())
+                elif path == "/api/import-draft":
+                    self._import_draft(self._json_body())
                 elif path == "/api/publish":
                     self._publish(self._json_body())
                 elif path == "/api/favorite":
@@ -923,6 +972,31 @@ def _make_handler(state: dict):
                 divider_variant=dv[0],
                 quote_variant=qv[0],
             )
+            self._send_plan(result)
+
+        def _import_draft(self, body):
+            """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱 → 게시 플랜(생성과 동일 흐름)."""
+            from autoblog.pipeline import plan_from_text
+
+            text = (body.get("text") or "").strip()
+            if not text:
+                self._send(400, json.dumps({"error": "붙여넣은 글이 비어 있어요"}).encode())
+                return
+            photos = [p for p in (body.get("photos") or []) if p]
+            dv, qv = _enabled_variants()
+            result = plan_from_text(
+                text,
+                photos=photos or None,
+                emphasis=bool(body.get("emphasis")),
+                structure=bool(body.get("structure")),
+                stickers=bool(body.get("stickers")),
+                divider_variant=dv[0],
+                quote_variant=qv[0],
+            )
+            self._send_plan(result)
+
+        def _send_plan(self, result):
+            """PipelineResult → {title, blocks, debug} JSON. generate/import 공통."""
             state["last"] = result
             blocks = []
             for b in result.plan.blocks:

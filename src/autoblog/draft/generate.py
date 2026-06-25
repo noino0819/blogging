@@ -78,15 +78,25 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
     return system, user
 
 
-def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
-    """초안 생성 후, 강조 마킹 배정·포맷 후처리·가이드라인 대조를 수행."""
+def generate_draft(
+    req: DraftRequest, model: str | None = None, *, raw_override: str | None = None
+) -> DraftResult:
+    """초안 생성 후, 강조 마킹 배정·포맷 후처리·가이드라인 대조를 수행.
+
+    raw_override를 주면 LLM을 호출하지 않고 그 텍스트를 초안으로 써서 마커 파싱·후처리만
+    수행한다(외부 챗봇에서 받아온 글을 그대로 가져올 때 사용).
+    """
     from autoblog.publish.emphasis import DEFAULT_STYLES, load_default_power_shortcuts
 
-    system, user = build_prompt(req)
-    raw = chat(
-        [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        model=model,
-    ).strip()
+    if raw_override is not None:
+        system, user = "", ""
+        raw = raw_override.strip()
+    else:
+        system, user = build_prompt(req)
+        raw = chat(
+            [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            model=model,
+        ).strip()
     text = raw
     debug = {"system": system, "user": user, "raw": raw, "model": model or ""}
 

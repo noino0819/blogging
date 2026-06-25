@@ -104,6 +104,55 @@ def build_export_prompt(
     )
 
 
+def plan_from_text(
+    text: str,
+    *,
+    photos: list[str] | None = None,
+    emphasis: bool = False,
+    structure: bool = False,
+    stickers: bool = False,
+    sticker_catalog: StickerCatalog | None = None,
+    consistent_pack: bool = False,
+    divider_variant: int = 1,
+    quote_variant: int = 1,
+) -> PipelineResult:
+    """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱·후처리 → 게시 플랜.
+
+    수집·LLM 호출 없이 run_pipeline의 후반부(초안→플랜)만 재현한다. 선택한 사진은
+    플랜에 이미지 블록으로 배치된다.
+    """
+    catalog = None
+    labels: list[str] = []
+    if stickers:
+        if sticker_catalog is None:
+            from autoblog.publish.stickers import load_sticker_catalog
+
+            sticker_catalog = load_sticker_catalog()
+        catalog = sticker_catalog
+        labels = catalog.labels()
+    card = FactCard(type=CardType.place)
+    if photos:
+        from autoblog.collect.photos import classify_photos_into
+
+        classify_photos_into(card, photos)
+    req = DraftRequest(
+        fact_card=card,
+        experience_memo="",
+        emphasis=emphasis,
+        structure=structure,
+        sticker_labels=labels,
+    )
+    draft = generate_draft(req, raw_override=text)
+    picker = (
+        StickerPicker(catalog, consistent=consistent_pack) if (catalog and labels) else None
+    )
+    plan = build_publish_plan(
+        draft, photos=card.photos, picker=picker,
+        divider_variant=divider_variant, quote_variant_default=quote_variant,
+    )
+    return PipelineResult(card=card, draft=draft, plan=plan)
+
+
 def run_pipeline(
     memo: str,
     *,
