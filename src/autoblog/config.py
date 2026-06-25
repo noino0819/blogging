@@ -20,6 +20,21 @@ CONFIG_DIR = REPO_ROOT / "config"
 load_dotenv(REPO_ROOT / ".env")
 
 
+def provider_for_model(model: str) -> str:
+    """모델명으로 텍스트 생성 제공자 판별. 그 외(로컬)는 'ollama'.
+
+    라우팅의 단일 출처 — llm.provider_for도 이걸 쓴다.
+    """
+    m = (model or "").lower()
+    if m.startswith("claude"):
+        return "anthropic"
+    if m.startswith("gemini"):
+        return "gemini"
+    if m.startswith(("gpt", "o1", "o3", "o4")):
+        return "openai"
+    return "ollama"
+
+
 class ModelPreset(BaseModel):
     label: str
     vision: str
@@ -30,15 +45,49 @@ class ModelPreset(BaseModel):
     provider: str = "ollama"
 
 
+class Selection(BaseModel):
+    """사용자가 실제로 고른 모델 — 텍스트/비전 독립 선택. None이면 프리셋 폴백."""
+
+    text: str | None = None
+    vision: str | None = None
+
+
+class ResolvedModels(BaseModel):
+    """현재 실제로 쓰이는 모델 — 선택(selection) 우선, 없으면 기본 프리셋 폴백."""
+
+    text: str
+    vision: str
+    provider: str  # 텍스트 제공자(model명에서 도출)
+    concurrent_load: bool = False
+    note: str = ""
+    label: str = ""
+
+
 class ModelsConfig(BaseModel):
     presets: dict[str, ModelPreset]
     default: str
+    # 텍스트/비전을 프리셋과 무관하게 독립 선택(설정 시 프리셋보다 우선)
+    selection: Selection = Selection()
 
     def get(self, tier: str | None = None) -> ModelPreset:
         key = tier or self.default
         if key not in self.presets:
             raise KeyError(f"알 수 없는 프리셋: {key!r} (가능: {list(self.presets)})")
         return self.presets[key]
+
+    def effective(self) -> ResolvedModels:
+        """실제 적용되는 텍스트/비전 모델. selection이 있으면 그게 우선."""
+        base = self.presets.get(self.default)
+        text = self.selection.text or (base.text if base else "")
+        vision = self.selection.vision or (base.vision if base else "")
+        return ResolvedModels(
+            text=text,
+            vision=vision,
+            provider=provider_for_model(text),
+            concurrent_load=base.concurrent_load if base else False,
+            note=base.note if base else "",
+            label=base.label if base else "",
+        )
 
 
 @lru_cache

@@ -16,11 +16,17 @@ app = typer.Typer(add_completion=False, help="로컬 LLM 블로그 자동 작성
 def models(tier: str = typer.Option(None, help="프리셋 키 (예: 8gb). 미지정 시 기본값")):
     """선택된 GPU 티어 프리셋의 vision/text 모델을 출력."""
     cfg = load_models_config()
-    preset = cfg.get(tier)
-    typer.echo(f"[{preset.label}]")
-    typer.echo(f"  vision : {preset.vision}")
-    typer.echo(f"  text   : {preset.text}")
-    typer.echo(f"  동시로드: {preset.concurrent_load}")
+    if tier:
+        preset = cfg.get(tier)
+        typer.echo(f"[{preset.label}]")
+        typer.echo(f"  vision : {preset.vision}")
+        typer.echo(f"  text   : {preset.text}")
+        typer.echo(f"  동시로드: {preset.concurrent_load}")
+        return
+    eff = cfg.effective()
+    typer.echo("[현재 적용]")
+    typer.echo(f"  text   : {eff.text} ({eff.provider})")
+    typer.echo(f"  vision : {eff.vision}")
 
 
 @app.command()
@@ -305,7 +311,7 @@ def doctor():
     typer.echo(f"검색 API 라이브 : {'OK' if ok else msg}")
 
     cfg = load_models_config()
-    vision_model = cfg.get().vision
+    vision_model = cfg.effective().vision
     try:
         tags = requests.get(f"{env.ollama_host}/api/tags", timeout=3).json()
         installed = {m["name"] for m in tags.get("models", [])}

@@ -675,77 +675,109 @@ const PROV={
   gemini:{name:'Gemini API',color:'#1a73e8',ph:'AIza...',issuer:'aistudio.google.com › API keys'},
 };
 let MODEL_KEYS={};
-function renderModelInfo(p){if(!p)return;
-  const pv=PROV[p.provider]; const isApi=!!pv;
-  let h=`<div class=setrow><div><div class=t>텍스트 (초안 작성)</div><div class=d>${p.text} ${isApi?`<span style="color:${pv.color}">· ${pv.name}</span>`:'<span class=muted>· 로컬</span>'}</div></div></div>
-    <div class=setrow><div><div class=t>비전 (사진/상품 분석)</div><div class=d>${p.vision} <span class=muted>· 로컬</span></div></div></div>
-    ${p.note?`<div class=muted style="margin:8px 0 14px">💡 ${p.note}</div>`:''}`;
-  if(isApi){
-    h+=`<div class=muted style="margin-bottom:6px">✅ 이 프리셋은 <b>${pv.name}</b>를 씁니다. 아래에서 API 키를 등록하면 바로 적용돼요(비전은 로컬 유지).</div>`;
-  }else{
-    h+=`<div class=sub-h>설치 방법 — 터미널에 입력</div>
-      <pre class=mcmd>ollama pull ${p.text}\nollama pull ${p.vision}</pre>
-      <div class=muted style="margin-top:8px">Ollama가 없으면 <b>ollama.com</b>에서 먼저 설치 → 위 명령으로 모델 다운로드. 한 번만 받으면 계속 씁니다.</div>`;
-  }
-  $('#minfo').innerHTML=h;
-  renderApiKeyBox(isApi?p.provider:null);
-}
-function renderApiKeyBox(provider){
-  const box=$('#apikeybox');
-  if(!provider){box.innerHTML='';return;}
+function provOf(model){const s=(model||'').toLowerCase();
+  if(s.startsWith('claude'))return 'anthropic';
+  if(s.startsWith('gemini'))return 'gemini';
+  if(s.startsWith('gpt')||/^o[134]/.test(s))return 'openai';
+  return 'ollama';}
+// 모델 적용(텍스트/비전 독립) — 적용 후 새로고침해 '적용 중' 갱신
+async function applyModel(payload, okmsg, btn){
+  if(btn)btn.disabled=true;
+  try{const r=await fetch('/api/models',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    if(r.ok){toast(okmsg,'ok'); await loadModels();} else toast('적용 실패','err');
+  }catch(e){toast('적용 오류: '+e,'err');}finally{if(btn)btn.disabled=false;}}
+// API 키 입력 박스(텍스트가 외부 API인데 키 없을 때)
+function apiKeyBox(provider){
   const pv=PROV[provider]; const has=!!MODEL_KEYS[provider];
-  box.innerHTML=`<div class=sub-h style="margin-top:20px">${pv.name} 키 <span class=muted style="font-weight:400">— (선택) 로컬 모델이 마커를 잘 못 넣으면 정확함</span></div>
-    <div class=muted style="margin-bottom:8px">키를 등록해두면 위 <b>프리셋</b>에서 "${pv.name}"를 고를 때 초안을 ${pv.name}로 생성합니다(토큰당 과금).</div>
+  return `<div class=sub-h style="margin-top:14px">${pv.name} 키</div>
+    <div class=muted style="margin-bottom:8px">${has?`저장됨 ✓ — 이 모델로 바로 생성됩니다(토큰당 과금).`:`이 모델을 쓰려면 키가 필요해요. <b>${pv.issuer}</b>에서 발급 → .env에 저장됩니다(토큰당 과금).`}</div>
     <div style="display:flex;gap:8px">
       <input type=password id=apikey placeholder="${has?'키 저장됨 ✓ (다시 입력해 교체)':pv.ph}" style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
-      <button class=btn id=apikeysave style="width:auto;padding:9px 16px">저장</button>
-    </div>
-    <div class=muted id=apikeystat style="margin-top:6px">${has?`저장됨 ✓ · 프리셋에서 <b>${pv.name}</b>를 고르면 적용됩니다.`:`키는 <b>${pv.issuer}</b>에서 발급. .env에 저장됩니다.`}</div>`;
-  $('#apikeysave').onclick=async()=>{const v=$('#apikey').value.trim(); if(!v){toast('키를 입력하세요.','info');return;}
-    $('#apikeysave').disabled=true; $('#apikeystat').textContent='저장 중…';
-    try{const r=await fetch('/api/llm-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({provider:provider,key:v})});
-      if(r.ok){MODEL_KEYS[provider]=true; toast(`${pv.name} 키 저장됨 ✓`,'ok');}
-      else toast('API 키 저장 실패','err');
-      renderApiKeyBox(provider);
-    }catch(e){toast('API 키 오류: '+e,'err');}finally{const b=$('#apikeysave'); if(b)b.disabled=false;}};
+      <button class=btn id=apikeysave data-prov="${provider}" style="width:auto;padding:9px 16px">저장</button>
+    </div>`;
 }
 async function loadModels(){try{const m=await (await fetch('/api/models')).json();
   MODEL_KEYS=m.keys||{};
-  const isLocal=p=>p.provider==='ollama';
-  const groups={local:m.presets.filter(isLocal), api:m.presets.filter(p=>!isLocal(p))};
-  const cur=m.presets.find(p=>p.key===m.current);
-  let APPLIED=m.current, KIND=(cur&&!isLocal(cur))?'api':'local';
-  $('#models').innerHTML=`<h3>모델 <span class=muted style="font-weight:400">— 내 컴퓨터(GPU)에 맞게</span></h3>
-    <div class=seg style="margin-bottom:12px">
-      <button data-k=local id=kloc>내장 (로컬 GPU)</button>
-      <button data-k=api id=kapi>외부 API</button></div>
-    <div class=setrow><div class=t>프리셋</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <select id=mpreset style="width:auto;min-width:260px;border:1px solid #d6dade;border-radius:8px;padding:8px"></select>
-        <button class=btn id=mapply style="width:auto;padding:8px 16px">적용</button></div></div>
-    <div id=minfo></div>
-    <div id=apikeybox></div>`;
-  function fill(){
-    $('#kloc').classList.toggle('on',KIND==='local'); $('#kapi').classList.toggle('on',KIND==='api');
-    const list=groups[KIND];
-    const has=$('#mapply');
-    if(!list.length){$('#mpreset').innerHTML='<option>(없음)</option>'; $('#minfo').innerHTML='<div class=muted>해당 항목이 없습니다.</div>'; $('#apikeybox').innerHTML=''; if(has)has.disabled=true; return;}
-    if(has)has.disabled=false;
-    const sel=list.find(p=>p.key===APPLIED)||list[0];
-    $('#mpreset').innerHTML=list.map(p=>`<option value="${p.key}"${p.key===sel.key?' selected':''}>${p.label}${p.key===APPLIED?' ✓ 적용 중':''}</option>`).join('');
-    renderModelInfo(sel);
+  const installed=m.installed||[];
+  const instSet=new Set(installed.map(x=>x.name));
+  const tApi=m.text_provider!=='ollama';
+  const sizeTag=n=>{const i=installed.find(x=>x.name===n); return i&&i.size_gb?` <span class=muted>· ${i.size_gb}GB</span>`:'';};
+  // ── 텍스트 옵션: 내장(설치본) + 외부 API ──
+  const localTextNames=installed.map(x=>x.name);
+  if(!tApi && m.text && !instSet.has(m.text)) localTextNames.unshift(m.text);  // 적용 중인데 미설치면 노출
+  const localOpts=localTextNames.map(n=>`<option value="${n}"${n===m.text?' selected':''}>${n}${instSet.has(n)?'':' (미설치)'}</option>`).join('');
+  const apiOpts=(m.api_text||[]).map(a=>`<option value="${a.model}"${a.model===m.text?' selected':''}>${a.model} · ${PROV[a.provider]?PROV[a.provider].name:a.provider}${MODEL_KEYS[a.provider]?'':' (키 필요)'}</option>`).join('');
+  // ── 비전 옵션: 설치된 로컬 모델(비전 추정 우선 표시) ──
+  const visNames=[...installed].sort((a,b)=>(b.vision?1:0)-(a.vision?1:0)).map(x=>x.name);
+  if(m.vision && !instSet.has(m.vision)) visNames.unshift(m.vision);
+  const visOpts=visNames.map(n=>{const i=installed.find(x=>x.name===n);
+    return `<option value="${n}"${n===m.vision?' selected':''}>${i&&i.vision?'🖼 ':''}${n}${instSet.has(n)?'':' (미설치)'}</option>`;}).join('');
+
+  const noLocal=installed.length===0;
+  $('#models').innerHTML=`
+    <h3>텍스트 모델 <span class=muted style="font-weight:400">— 초안 글 작성</span></h3>
+    <div class=setrow><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id=txtsel style="min-width:280px;border:1px solid #d6dade;border-radius:8px;padding:8px">
+        ${localOpts?`<optgroup label="내장 (로컬 GPU)">${localOpts}</optgroup>`:''}
+        ${apiOpts?`<optgroup label="외부 API">${apiOpts}</optgroup>`:''}
+      </select>
+      <button class=btn id=txtapply style="width:auto;padding:8px 16px">적용</button></div></div>
+    <div class=muted style="margin-top:8px">적용 중: <b>${m.text||'-'}</b> ${tApi?`<span style="color:${(PROV[m.text_provider]||{}).color||'#666'}">· ${(PROV[m.text_provider]||{}).name||m.text_provider}</span>`:'<span class=muted>· 로컬</span>'}</div>
+    <div id=txtnote></div>
+    <div id=apikeybox></div>
+
+    <h3 style="margin-top:22px">비전 모델 <span class=muted style="font-weight:400">— 사진·상품 이미지 분석 (로컬 전용)</span></h3>
+    ${noLocal
+      ? `<div class=muted>로컬 모델이 안 보여요 — Ollama가 꺼져 있거나 설치된 모델이 없어요. <b>ollama.com</b>에서 설치 후 아래 명령으로 받으세요.<pre class=mcmd>ollama pull qwen2.5vl:7b</pre></div>`
+      : `<div class=setrow><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id=vissel style="min-width:280px;border:1px solid #d6dade;border-radius:8px;padding:8px">${visOpts}</select>
+          <button class=btn id=visapply style="width:auto;padding:8px 16px">적용</button></div></div>
+         <div class=muted style="margin-top:8px">적용 중: <b>${m.vision||'-'}</b> <span class=muted>· 로컬</span> · 🖼 표시가 비전 가능 모델이에요.</div>
+         <div id=visnote></div>`}
+
+    <details style="margin-top:22px"><summary style="cursor:pointer;font-weight:700;font-size:13px">🎁 추천 조합 (GPU별 한 번에 적용)</summary>
+      <div class=muted style="margin:8px 0">내 그래픽카드 사양에 맞는 조합을 고르면 텍스트·비전을 한 번에 설정해요.</div>
+      <div id=presets></div></details>`;
+
+  // 텍스트: 설치/키 안내 + 적용
+  function txtNote(){
+    const v=$('#txtsel').value, prov=provOf(v);
+    $('#txtnote').innerHTML = prov==='ollama' && !instSet.has(v)
+      ? `<div class=sub-h style="margin-top:12px">설치 필요 — 터미널에 입력</div><pre class=mcmd>ollama pull ${v}</pre>`
+      : '';
+    $('#apikeybox').innerHTML = (prov!=='ollama') ? apiKeyBox(prov) : '';
+    const sv=$('#apikeysave'); if(sv)sv.onclick=()=>saveKey(prov);
   }
-  $('#kloc').onclick=()=>{KIND='local'; fill();};
-  $('#kapi').onclick=()=>{KIND='api'; fill();};
-  $('#mpreset').onchange=()=>renderModelInfo(m.presets.find(p=>p.key===$('#mpreset').value));
-  $('#mapply').onclick=async()=>{const k=$('#mpreset').value;
-    if(k===APPLIED){toast('이미 적용 중인 프리셋이에요.','info'); return;}
-    $('#mapply').disabled=true;
-    try{const r=await fetch('/api/models',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({preset:k})});
-      if(r.ok){APPLIED=k; fill(); toast('프리셋 적용됨 ✓','ok');} else toast('적용 실패','err');
-    }catch(e){toast('적용 오류: '+e,'err');}finally{const b=$('#mapply'); if(b)b.disabled=false;}};
-  fill();
+  $('#txtsel').onchange=txtNote; txtNote();
+  $('#txtapply').onclick=function(){const v=$('#txtsel').value;
+    if(v===m.text){toast('이미 적용 중인 모델이에요.','info');return;}
+    applyModel({text:v}, '텍스트 모델 적용됨 ✓', this);};
+
+  // 비전: 설치/비전 여부 안내 + 적용
+  if(!noLocal){
+    function visNote(){const v=$('#vissel').value, i=installed.find(x=>x.name===v);
+      let h='';
+      if(!instSet.has(v))h+=`<div class=sub-h style="margin-top:12px">설치 필요 — 터미널에 입력</div><pre class=mcmd>ollama pull ${v}</pre>`;
+      else if(i&&!i.vision)h+=`<div class=muted style="margin-top:8px">⚠️ 이 모델은 비전(이미지) 모델이 아닐 수 있어요. 사진 분석이 안 되면 🖼 표시 모델을 고르세요.</div>`;
+      $('#visnote').innerHTML=h;}
+    $('#vissel').onchange=visNote; visNote();
+    $('#visapply').onclick=function(){const v=$('#vissel').value;
+      if(v===m.vision){toast('이미 적용 중인 모델이에요.','info');return;}
+      applyModel({vision:v}, '비전 모델 적용됨 ✓', this);};
+  }
+
+  // 추천 조합(프리셋)
+  $('#presets').innerHTML=(m.presets||[]).map(p=>{const pv=PROV[p.provider];
+    return `<div class=setrow><div><div class=t>${p.label}</div><div class=d>텍스트 ${p.text}${pv?` <span style="color:${pv.color}">· ${pv.name}</span>`:''} · 비전 ${p.vision}</div></div>
+      <button class=btn data-preset="${p.key}" style="width:auto;padding:7px 14px">적용</button></div>`;}).join('');
+  $$('#presets [data-preset]').forEach(b=>b.onclick=()=>applyModel({preset:b.dataset.preset}, '프리셋 적용됨 ✓', b));
 }catch(e){$('#models').innerHTML='<div class=muted>로드 실패</div>';}}
+async function saveKey(provider){const v=$('#apikey').value.trim(); if(!v){toast('키를 입력하세요.','info');return;}
+  const b=$('#apikeysave'); if(b)b.disabled=true;
+  try{const r=await fetch('/api/llm-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({provider,key:v})});
+    if(r.ok){MODEL_KEYS[provider]=true; toast(`${(PROV[provider]||{}).name||provider} 키 저장됨 ✓`,'ok'); await loadModels();}
+    else toast('API 키 저장 실패','err');
+  }catch(e){toast('API 키 오류: '+e,'err');}finally{const x=$('#apikeysave'); if(x)x.disabled=false;}}
 
 async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).json();
   const tag=u=>u?`<span style="font-size:10px;background:#eafaf0;color:#02b350;border-radius:4px;padding:1px 5px;margin-left:5px">${u==='순환'?'순환':u}</span>`:'';
@@ -969,7 +1001,11 @@ def _make_handler(state: dict):
                     _save_prefs(self._json_body())
                     self._send(200, b'{"ok":true}')
                 elif path == "/api/models":
-                    _set_model_preset(self._json_body().get("preset", ""))
+                    body = self._json_body()
+                    if body.get("preset"):
+                        _set_model_preset(body["preset"])
+                    else:
+                        _set_model_selection(body.get("text"), body.get("vision"))
                     self._send(200, b'{"ok":true}')
                 elif path == "/api/llm-key":
                     body = self._json_body()
@@ -1373,21 +1409,72 @@ def _save_prompt(text: str) -> None:
     DEFAULT_PROMPT_PATH.write_text(text, encoding="utf-8")
 
 
+def _ollama_installed() -> list[dict]:
+    """로컬 Ollama에 실제 설치된 모델 목록(없거나 꺼져 있으면 빈 목록).
+
+    각 항목: {name, size_gb, vision}(vision은 모델명으로 추정).
+    """
+    import requests
+
+    from autoblog.config import load_env
+
+    host = load_env().ollama_host
+    try:
+        data = requests.get(f"{host}/api/tags", timeout=3).json()
+    except (requests.RequestException, ValueError):
+        return []
+    out = []
+    for m in data.get("models", []):
+        name = m.get("name", "")
+        if not name:
+            continue
+        size = m.get("size") or 0
+        out.append({
+            "name": name,
+            "size_gb": round(size / 1e9, 1) if size else None,
+            "vision": _looks_vision(name),
+        })
+    out.sort(key=lambda x: x["name"])
+    return out
+
+
+# 모델명에 비전 능력이 드러나는 흔한 토큰(설치 모델 분류용 추정 — 100% 정확하진 않음)
+_VISION_HINTS = ("vl", "vision", "llava", "moondream", "minicpm-v", "bakllava")
+
+
+def _looks_vision(name: str) -> bool:
+    n = name.lower()
+    return any(h in n for h in _VISION_HINTS)
+
+
 def _models_info() -> dict:
-    """현재 모델 + 선택 가능한 프리셋 목록(모델 변경용)."""
-    from autoblog.config import load_env, load_models_config
+    """현재 적용 모델 + 텍스트/비전 독립 선택용 후보(로컬 설치본 + 외부 API)."""
+    from autoblog.config import load_env, load_models_config, provider_for_model
 
     cfg = load_models_config()
-    cur = cfg.get()
+    eff = cfg.effective()
     presets = [
         {"key": k, "label": p.label, "text": p.text, "vision": p.vision,
-         "note": p.note, "provider": p.provider}
+         "note": p.note, "provider": p.provider, "concurrent_load": p.concurrent_load}
         for k, p in cfg.presets.items()
     ]
+    # 외부 API 텍스트 모델 후보 — 프리셋에서 추출(provider별 중복 제거, 모델명 기준)
+    api_text: dict[str, dict] = {}
+    for p in cfg.presets.values():
+        if p.provider != "ollama":
+            api_text.setdefault(p.text, {
+                "model": p.text, "provider": p.provider, "label": p.label,
+            })
     env = load_env()
     return {
-        "current": cfg.default, "text": cur.text, "vision": cur.vision,
-        "provider": cur.provider, "presets": presets,
+        "text": eff.text,
+        "vision": eff.vision,
+        "text_provider": eff.provider,
+        "vision_provider": provider_for_model(eff.vision),  # 비전은 사실상 항상 ollama
+        "installed": _ollama_installed(),
+        "api_text": list(api_text.values()),
+        "presets": presets,
+        "default_preset": cfg.default,
         "keys": {
             "anthropic": bool(env.anthropic_api_key),
             "openai": bool(env.openai_api_key),
@@ -1443,19 +1530,45 @@ def _fetch_categories() -> list:
     return cats
 
 
-def _set_model_preset(key: str) -> None:
+def _write_models_yaml(data: dict) -> None:
+    import yaml
+
+    from autoblog.config import CONFIG_DIR, load_models_config
+
+    path = CONFIG_DIR / "models.yaml"
+    path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    load_models_config.cache_clear()  # lru_cache 무효화
+
+
+def _read_models_yaml() -> dict:
     import yaml
 
     from autoblog.config import CONFIG_DIR
 
-    path = CONFIG_DIR / "models.yaml"
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if key in data.get("presets", {}):
-        data["default"] = key
-        path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
-        from autoblog.config import load_models_config
+    return yaml.safe_load((CONFIG_DIR / "models.yaml").read_text(encoding="utf-8"))
 
-        load_models_config.cache_clear()  # lru_cache 무효화
+
+def _set_model_preset(key: str) -> None:
+    """프리셋 한 방 적용 — 텍스트·비전 둘 다 그 프리셋 값으로 selection에 기록."""
+    data = _read_models_yaml()
+    preset = data.get("presets", {}).get(key)
+    if not preset:
+        return
+    data["default"] = key
+    data["selection"] = {"text": preset["text"], "vision": preset["vision"]}
+    _write_models_yaml(data)
+
+
+def _set_model_selection(text: str | None, vision: str | None) -> None:
+    """텍스트/비전을 독립적으로 변경(준 값만 갱신, 나머지는 유지)."""
+    data = _read_models_yaml()
+    sel = dict(data.get("selection") or {})
+    if text:
+        sel["text"] = text
+    if vision:
+        sel["vision"] = vision
+    data["selection"] = sel
+    _write_models_yaml(data)
 
 
 def _sticker_image(ref: str) -> Path | None:

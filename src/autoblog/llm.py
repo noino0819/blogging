@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import requests
 
-from autoblog.config import load_env, load_models_config
+from autoblog.config import load_env, load_models_config, provider_for_model
 
 
 class LLMUnavailable(RuntimeError):
@@ -15,19 +15,12 @@ class LLMUnavailable(RuntimeError):
 
 
 def default_text_model() -> str:
-    return load_models_config().get().text
+    return load_models_config().effective().text
 
 
 def provider_for(model: str) -> str:
     """모델명으로 API 제공자 판별(라우팅용). 그 외는 로컬 Ollama."""
-    m = model.lower()
-    if m.startswith("claude"):
-        return "anthropic"
-    if m.startswith("gemini"):
-        return "gemini"
-    if m.startswith("gpt") or m.startswith(("o1", "o3", "o4")):
-        return "openai"
-    return "ollama"
+    return provider_for_model(model)
 
 
 def _chat_anthropic(messages: list[dict], model: str, fmt: str | None = None) -> str:

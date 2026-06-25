@@ -25,8 +25,8 @@ class VisionUnavailable(RuntimeError):
 
 
 def default_vision_model() -> str:
-    """설정 프리셋의 vision 모델명."""
-    return load_models_config().get().vision
+    """현재 적용된 vision 모델명(독립 선택 우선)."""
+    return load_models_config().effective().vision
 
 
 def _encode_image(data: bytes) -> str:
