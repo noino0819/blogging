@@ -28,6 +28,9 @@ class Source(str, Enum):
 class MenuItem(BaseModel):
     name: str
     price: str | None = None
+    description: str | None = None  # 메뉴 설명글 (메뉴 탭에만 실림)
+    recommend: bool = False  # 대표/추천 메뉴 여부
+    image: str | None = None  # 대표 이미지 URL
 
 
 class ReviewKeyword(BaseModel):

@@ -24,14 +24,43 @@ from autoblog.collect.fact_card import (
 
 _HANGUL_RE = re.compile(r"[가-힣]")
 
-# m.place.naver.com/restaurant/<id>/... 형태에서 placeId 추출
-_ID_RE = re.compile(r"/(?:restaurant|place|hairshop|hospital|cafe|accommodation)/(\d+)")
+# m.place.naver.com/restaurant/<id>/... · map.naver.com/p/entry/place/<id> 등
+_ID_PATH_RE = re.compile(
+    r"/(?:restaurant|place|hairshop|hospital|cafe|accommodation|entry/place)/(\d+)"
+)
+# 단축링크 리다이렉트 종착의 쿼리 파라미터(pinId=…&id=…)
+_ID_QUERY_RE = re.compile(r"[?&](?:pinId|id|placeId)=(\d+)")
 
 
 def resolve_place_id(url: str) -> str | None:
-    """플레이스 URL에서 placeId 추출 (단축링크는 fetch 단계에서 리다이렉트 해석)."""
-    m = _ID_RE.search(url)
+    """플레이스 URL에서 placeId 추출 (경로형/쿼리형 모두)."""
+    m = _ID_PATH_RE.search(url) or _ID_QUERY_RE.search(url)
     return m.group(1) if m else None
+
+
+def resolve_place_id_via_redirect(url: str) -> str | None:
+    """naver.me 단축링크 등을 requests 리다이렉트로 따라가 placeId 해석(브라우저 불필요)."""
+    import requests
+
+    try:
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"},
+            timeout=10,
+            allow_redirects=True,
+        )
+    except requests.RequestException:
+        return None
+    return resolve_place_id(resp.url)
+
+
+def menu_tab_url(place_id: str) -> str:
+    """메뉴 탭 — 홈 탭의 상위집합(기본정보+영업시간+소개글+편의시설+메뉴 설명글)."""
+    return f"https://m.place.naver.com/restaurant/{place_id}/menu/list"
+
+
+def review_tab_url(place_id: str) -> str:
+    return f"https://m.place.naver.com/restaurant/{place_id}/review/visitor"
 
 
 def extract_apollo_state(html: str) -> dict:
@@ -179,11 +208,21 @@ def parse_place_detail(state: dict, place_id: str) -> PlaceFacts | None:
     score = base.get("visitorReviewsScore")
     rating = float(score) if score else None  # 0/None → 별점 미운영
 
-    menus = [
-        MenuItem(name=v["name"], price=_won(v.get("price")))
-        for k, v in state.items()
-        if k.startswith(f"Menu:{place_id}") and v.get("name")
-    ]
+    menus = []
+    for k, v in state.items():
+        if not k.startswith(f"Menu:{place_id}") or not v.get("name"):
+            continue
+        images = v.get("images") or []
+        desc = (v.get("description") or "").strip() or None
+        menus.append(
+            MenuItem(
+                name=v["name"],
+                price=_won(v.get("price")),
+                description=desc,
+                recommend=bool(v.get("recommend")),
+                image=images[0] if images and isinstance(images[0], str) else None,
+            )
+        )
 
     phone = base.get("phone") or base.get("virtualPhone")
     # 영업시간은 base.openingHours가 종종 null이라 ROOT_QUERY.newBusinessHours에서 조립

@@ -101,20 +101,25 @@ def collect_place_from_url(
         extract_apollo_state,
         fetch_place_html,
         is_rate_limited,
+        menu_tab_url,
         parse_place_detail,
         parse_visitor_reviews,
         resolve_place_id,
+        resolve_place_id_via_redirect,
+        review_tab_url,
     )
 
-    final_url, html_text = fetch_place_html(url)
-    place_id = resolve_place_id(final_url) or resolve_place_id(url)
     card = FactCard(type=CardType.place, sources=[Source.scrape])
 
+    # placeId 먼저 해석(단축링크는 requests 리다이렉트로 — 브라우저 불필요)
+    place_id = resolve_place_id(url) or resolve_place_id_via_redirect(url)
     if place_id is None:
         card.is_fallback = True
-        card.warnings.append(f"placeId를 URL에서 찾지 못함: {final_url}")
+        card.warnings.append(f"placeId를 URL에서 찾지 못함: {url}")
         return card
 
+    # 메뉴 탭이 홈 탭의 상위집합 → 기본정보+영업시간+소개글+메뉴 설명글을 한 번에
+    final_url, html_text = fetch_place_html(menu_tab_url(place_id))
     state = extract_apollo_state(html_text)
     facts = parse_place_detail(state, place_id) if state else None
     if facts is None or not facts.name:
@@ -127,9 +132,8 @@ def collect_place_from_url(
 
     if with_reviews:
         time.sleep(2)  # 폴라이트 딜레이 (연속 요청 차단 방지)
-        review_url = f"https://m.place.naver.com/restaurant/{place_id}/review/visitor"
         try:
-            _, review_html = fetch_place_html(review_url)
+            _, review_html = fetch_place_html(review_tab_url(place_id))
             if is_rate_limited(review_html):
                 card.warnings.append("리뷰 탭 IP 차단 — 기본 정보만 수집")
             else:

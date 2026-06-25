@@ -13,7 +13,21 @@ PLACE_ID = "2077697260"
 
 def test_resolve_place_id():
     assert resolve_place_id("https://m.place.naver.com/restaurant/2077697260/home") == PLACE_ID
-    assert resolve_place_id("https://naver.me/xONmtkQc") is None  # 단축링크는 리다이렉트 후 해석
+    assert resolve_place_id("https://map.naver.com/p/entry/place/2068790155?c=15") == "2068790155"
+    # 단축링크 리다이렉트 종착의 쿼리형 placeId
+    assert resolve_place_id("https://m.map.naver.com/appLink.naver?pinId=1528752021&id=1528752021") == "1528752021"
+    assert resolve_place_id("https://naver.me/xONmtkQc") is None  # 단축링크 자체엔 id 없음
+
+
+def test_menu_descriptions_parsing():
+    html = (FIXTURE.parent / "place_menu_desc.html").read_text(encoding="utf-8")
+    facts = parse_place_detail(extract_apollo_state(html), "1528752021")
+    assert facts is not None
+    with_desc = [m for m in facts.menus if m.description]
+    assert len(with_desc) >= 10  # 메뉴 탭에는 설명글이 실림
+    assert any("버터" in m.name for m in facts.menus)
+    assert all(m.image for m in facts.menus)  # 메뉴별 대표 이미지
+    assert any(m.recommend for m in facts.menus)
 
 
 def test_extract_and_parse_fixture():
