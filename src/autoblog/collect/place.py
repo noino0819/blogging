@@ -1,11 +1,10 @@
-"""맛집 — 네이버 플레이스 하이브리드 수집 (기획서 §3.1).
+"""맛집 — 네이버 플레이스 수집 (기획서 §3.1).
 
-흐름: 검색 API로 가게 식별(이름/주소/좌표/전화) → 플레이스 URL을
-Playwright로 스크래핑(영업시간/메뉴/가격/평점) → FactCard 병합.
-스크래핑 실패 시 검색 API 정보만으로 최소 사실 카드(fallback).
-
-이 파일에서 '검색 API' 부분은 실제 동작 구현, '스크래핑' 부분은 셀렉터
-확정 전까지 자리표시자(NotImplemented)로 둔다.
+두 경로:
+- collect_place_from_url(url): 사용자가 붙여넣은 플레이스 URL → 상세 추출(권장).
+  메뉴/가격/평점/좌표 등은 place_detail.py가 __APOLLO_STATE__ 파싱으로 얻는다.
+- collect_place(query): 검색 API로 가게 식별만(주소/좌표/전화). 자동 placeId
+  검색은 캡차/IP 차단에 막혀, 상세는 URL 경로를 권장.
 """
 
 from __future__ import annotations
@@ -95,6 +94,43 @@ def scrape_place(place_url: str) -> dict:
     TODO: 실제 플레이스 페이지 구조 확인 후 구현.
     """
     raise NotImplementedError("플레이스 스크래핑은 셀렉터 확정 후 구현 예정")
+
+
+def collect_place_from_url(url: str) -> FactCard:
+    """사용자가 붙여넣은 플레이스 URL → 상세 사실 카드 (기획서 §3.1, 권장 경로).
+
+    Apollo state 파싱으로 메뉴/가격/평점/좌표/주소를 추출. 추출 실패·IP 차단 시
+    경고와 함께 가능한 정보만으로 fallback.
+    """
+    from autoblog.collect.place_detail import (
+        extract_apollo_state,
+        fetch_place_html,
+        is_rate_limited,
+        parse_place_detail,
+        resolve_place_id,
+    )
+
+    final_url, html_text = fetch_place_html(url)
+    place_id = resolve_place_id(final_url) or resolve_place_id(url)
+    card = FactCard(type=CardType.place, sources=[Source.scrape])
+
+    if place_id is None:
+        card.is_fallback = True
+        card.warnings.append(f"placeId를 URL에서 찾지 못함: {final_url}")
+        return card
+
+    state = extract_apollo_state(html_text)
+    facts = parse_place_detail(state, place_id) if state else None
+    if facts is None or not facts.name:
+        card.is_fallback = True
+        if is_rate_limited(html_text):
+            card.warnings.append("네이버 IP 차단(과도한 접근) — 잠시 후 재시도")
+        else:
+            card.warnings.append("상세 데이터 추출 실패 (페이지 구조 변경 가능)")
+        return card
+
+    card.place = facts
+    return card
 
 
 def collect_place(query: str) -> FactCard:

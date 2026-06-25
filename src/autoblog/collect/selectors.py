@@ -6,18 +6,11 @@
 
 from __future__ import annotations
 
-# 네이버 플레이스 (m.place.naver.com) — iframe·동적 로딩 주의
-PLACE = {
-    # 영업시간·메뉴·가격·평점은 검색 API로 안 나와 스크래핑 필요
-    "name": "",
-    "category": "",
-    "address": "",
-    "business_hours": "",
-    "rating": "",
-    "menu_item": "",  # 반복 요소
-    "menu_name": "",
-    "menu_price": "",
-}
+# 네이버 플레이스 (m.place.naver.com)
+# 주의: 상세 데이터(메뉴/가격/평점/좌표)는 CSS 셀렉터로 긁지 않고
+# 페이지에 SSR된 window.__APOLLO_STATE__ JSON을 파싱한다(place_detail.py).
+# 클래스명 변경에 덜 깨지므로 이쪽이 기본. CSS 셀렉터는 필요 시에만 추가.
+PLACE: dict[str, str] = {}
 
 # 상품 페이지 (쿠팡·스마트스토어 등) — 텍스트형/이미지형 판별에 사용
 PRODUCT = {
