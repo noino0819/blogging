@@ -208,6 +208,44 @@ class BlogPublisher:
         skip = {"전체공개", "이웃공개", "서로이웃공개", "비공개", "공개", "현재", "예약"}
         return [n for n in names if n not in skip]
 
+    def get_categories_detailed(self) -> list[dict]:
+        """카테고리를 이름+뎁스로 읽는다(들여쓰기 padLeft 기준). 중첩 카테고리도 계층 반영.
+
+        반환: [{"name": str, "depth": int}]. depth는 들여쓰기 단계(0=최상위).
+        """
+        if "postwrite" not in (self._page.url or ""):
+            self.open_write_page()
+        self._open_publish_layer()
+        self._page.click(SMART_EDITOR["category_button"])
+        self._page.wait_for_timeout(1000)
+        rows = self._page.evaluate("""() => {
+            const scope = document.querySelector('[class*=option_category]') || document;
+            const out = [];
+            scope.querySelectorAll('label[class*=radio_label]').forEach(el => {
+                if (!el.offsetParent) return;
+                const t = (el.innerText || '').trim().split('\\n').pop().trim();
+                const pl = parseFloat(getComputedStyle(el).paddingLeft) || 0;
+                if (t) out.push({name: t, pad: pl});
+            });
+            return out;
+        }""")
+        skip = {"전체공개", "이웃공개", "서로이웃공개", "비공개", "공개", "현재", "예약"}
+        rows = [r for r in rows if r["name"] not in skip]
+        if not rows:
+            return []
+        # 들여쓰기(padLeft)를 뎁스로 환산: 최소 pad=깊이0, 그 위는 최소 양수 차이를 한 단계로
+        pads = sorted({r["pad"] for r in rows})
+        base = pads[0]
+        steps = [b - a for a, b in zip(pads, pads[1:]) if b - a > 0]
+        step = min(steps) if steps else 1
+        seen, result = set(), []
+        for r in rows:
+            if r["name"] in seen:
+                continue
+            seen.add(r["name"])
+            result.append({"name": r["name"], "depth": round((r["pad"] - base) / step)})
+        return result
+
     def select_category(self, name: str):
         """카테고리를 이름(텍스트)으로 선택. 레이어/드롭다운이 열려있다고 가정."""
         # 드롭다운이 닫혀 있으면 연다

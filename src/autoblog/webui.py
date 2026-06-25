@@ -197,7 +197,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
         <div class=card style="margin-top:16px">
           <h3>네이버에 보내기</h3>
           <label class=f>발행 카테고리 (선택)</label>
-          <input type=text id=category placeholder="카테고리 이름">
+          <div style="display:flex;gap:8px">
+            <select id=category style="flex:1;border:1px solid #d6dade;border-radius:10px;padding:9px;font-size:13px;background:#fbfcfd">
+              <option value="">— 불러오기를 눌러주세요 —</option>
+            </select>
+            <button class="btn ghost" id=catload style="width:auto;padding:9px 13px;flex:0 0 auto">불러오기</button>
+          </div>
+          <div class=muted id=catstat style="margin-top:5px"></div>
           <div style="margin-top:12px"><button class="btn ghost" id=save disabled>임시저장</button></div>
         </div>
       </div>
@@ -348,6 +354,15 @@ function renderPreview(d){
   }
   const p=$('#preview'); p.classList.remove('empty'); p.innerHTML=h;
 }
+$('#catload').onclick=async()=>{
+  $('#catload').disabled=true; $('#catstat').textContent='블로그에서 불러오는 중… 브라우저가 열려요(수십 초)';
+  try{const r=await fetch('/api/categories',{method:'POST'}); const d=await r.json();
+    if(!r.ok){$('#catstat').textContent='실패: '+(d.error||''); return;}
+    const sel=$('#category'); sel.innerHTML='<option value="">— 선택 안 함 —</option>'+
+      d.categories.map(c=>`<option value="${esc(c.name)}">${'　'.repeat(c.depth)}${c.depth?'└ ':''}${esc(c.name)}</option>`).join('');
+    $('#catstat').textContent=`카테고리 ${d.categories.length}개 불러옴`;
+  }catch(e){$('#catstat').textContent='오류: '+e;}finally{$('#catload').disabled=false;}
+};
 $('#save').onclick=async()=>{if(!PLAN)return;
   $('#save').disabled=true; st('네이버 에디터에 주입 중… 브라우저가 열립니다',true);
   try{const r=await fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category:$('#category').value})});
@@ -611,6 +626,10 @@ def _make_handler(state: dict):
                     body = self._json_body()
                     n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
                     self._send(200, json.dumps({"ok": True, "favorites": n}).encode())
+                elif path == "/api/categories":
+                    cats = _fetch_categories()
+                    state["categories"] = cats
+                    self._send(200, json.dumps({"categories": cats}).encode())
                 elif path == "/api/sticker-tags":
                     body = self._json_body()
                     _set_sticker_tags(body.get("ref", ""), body.get("tags", []))
@@ -844,6 +863,20 @@ def _models_info() -> dict:
         for k, p in cfg.presets.items()
     ]
     return {"current": cfg.default, "text": cur.text, "vision": cur.vision, "presets": presets}
+
+
+def _fetch_categories() -> list:
+    """네이버 블로그에서 카테고리(이름+뎁스)를 라이브로 불러온다(브라우저 1회 기동)."""
+    from autoblog.publish.editor import BlogPublisher
+
+    pub = BlogPublisher(headless=False)
+    pub.start()
+    try:
+        if not pub.wait_for_login():
+            raise RuntimeError("네이버 로그인이 필요합니다")
+        return pub.get_categories_detailed()
+    finally:
+        pub.close()
 
 
 def _set_model_preset(key: str) -> None:
