@@ -18,10 +18,24 @@ from autoblog.config import REPO_ROOT
 
 PHOTO_DIR = REPO_ROOT / "test"  # 유저 사진 폴더(테스트용)
 _IMG_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+FONTS_DIR = REPO_ROOT / "config" / "fonts"  # 에디터 웹폰트(로컬 서빙, 미리보기용)
+# 미리보기에서 실제 글씨체로 보이게 — 에디터와 같은 se-* 패밀리명 사용
+_FONT_FAMILIES = [
+    "nanumgothic", "nanummyeongjo", "nanumbarungothic", "nanumsquare",
+    "nanummaruburi", "nanumdasisijaghae", "nanumbareunhipi", "nanumuriddalsongeulssi",
+]
+
+
+def _font_face_css() -> str:
+    return "\n".join(
+        f"@font-face{{font-family:'se-{f}';src:url('/font?name=se-{f}') format('woff2');font-display:swap}}"
+        for f in _FONT_FAMILIES
+    )
 
 _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>블로그 자동작성</title><style>
+ /*FONTFACES*/
  :root{--green:#03c75a;--green-d:#02b350;--ink:#1f2329;--sub:#8b95a1;--line:#e8eaed;--bg:#f2f4f6}
  *{box-sizing:border-box}
  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Pretendard',sans-serif;
@@ -349,7 +363,7 @@ async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).j
   const tag=u=>u?`<span style="font-size:10px;background:#eafaf0;color:#02b350;border-radius:4px;padding:1px 5px;margin-left:5px">${u==='순환'?'순환':u}</span>`:'';
   const card=s=>{
     const hasStyle=s.text_color||s.background_color||s.font;
-    const stl=hasStyle?((s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'')):'color:#9aa5b1';
+    const stl=hasStyle?((s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'')+(s.font?`font-family:'se-${s.font}';`:'')):'color:#9aa5b1';
     const meta=[s.font_name,s.size?s.size+'pt':''].filter(Boolean).join(' · ');
     return `<div class=epcell><div class=epnum>#${s.id}${tag(s.use)}</div>
       <span class="sw-chip" style="${stl}">${hasStyle?'강조 텍스트':'(서식 없음)'}</span>
@@ -425,7 +439,15 @@ def _make_handler(state: dict):
             u = urlparse(self.path)
             q = parse_qs(u.query)
             if u.path == "/":
-                self._send(200, _PAGE.encode("utf-8"), "text/html; charset=utf-8")
+                html = _PAGE.replace("/*FONTFACES*/", _font_face_css())
+                self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
+            elif u.path == "/font":
+                name = Path(q.get("name", [""])[0]).name  # 경로 차단
+                fp = FONTS_DIR / f"{name}.woff2"
+                if fp.exists() and fp.parent == FONTS_DIR:
+                    self._send(200, fp.read_bytes(), "font/woff2")
+                else:
+                    self._send(404, b"x", "text/plain")
             elif u.path == "/api/photos":
                 self._send(200, json.dumps(_list_photos()).encode())
             elif u.path == "/photo":
