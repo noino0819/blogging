@@ -39,8 +39,8 @@ presets:
   apple_18gb:
     label: "Apple Silicon 16~24GB (M-Pro 등)"
     vision: qwen2.5vl:7b
-    text: qwen2.5:7b
-    note: "개발 기본. 통합메모리라 순차 로드 권장"
+    text: qwen2.5:14b
+    note: "개발 기본. 14b가 7b보다 일관성 크게 우수(7b는 붕괴/환각). 순차 로드"
     concurrent_load: false
 
   apple_32gb:
@@ -50,6 +50,6 @@ presets:
     note: "동시 로드 여유"
     concurrent_load: true
 
-# VRAM/메모리 자동 감지 실패 시 사용할 안전 기본값
-# (vision=qwen2.5vl:7b 로 8gb·apple_18gb 모두 동일)
-default: 8gb
+# 자동 감지 전 기본값. 개발 머신이 Apple Silicon이라 apple_18gb 사용
+# (vision=qwen2.5vl:7b, text=qwen2.5:14b). 배포 시 GPU 감지로 교체.
+default: apple_18gb

@@ -98,3 +98,22 @@ def test_enforce_format():
     assert "✨" in out  # 허용 이모지는 유지
     # 물결표를 포함한 허용 이모지는 보호(치환되지 않음)
     assert enforce_format("맛 (๑´~ˋ๑) 좋아").count("(๑´~ˋ๑)") == 1
+
+
+def test_forbidden_phrase_softened():
+    from autoblog.draft.postprocess import enforce_format
+
+    assert "강력 추천" not in enforce_format("여기 강력 추천 드려요")
+    assert "추천" in enforce_format("여기 강력 추천 드려요")
+
+
+def test_wrap_long_lines():
+    from autoblog.draft.postprocess import wrap_long_lines
+
+    line = "비가 와서 우산 들고 걸어갔는데, 다행히 막걸리가 무료라 엄마랑 좋아하며 식사를 했어요"
+    wrapped = wrap_long_lines(line, max_len=30)
+    out_lines = wrapped.split("\n")
+    assert len(out_lines) > 1  # 여러 줄로 분할
+    assert all(len(ln) <= 30 for ln in out_lines)  # 모든 줄 30자 이하
+    # 빈 줄(문단 간격)은 보존
+    assert wrap_long_lines("짧은 줄\n\n다음 문단") == "짧은 줄\n\n다음 문단"
