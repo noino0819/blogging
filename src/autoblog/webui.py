@@ -758,8 +758,24 @@ async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).j
       ${meta?`<div class=epmeta>${meta}</div>`:'<div class=epmeta>&nbsp;</div>'}</div>`;};
   let h=`<div class=muted style="margin-bottom:10px">출처: <b>${e.source}</b> · 순환 풀 [${e.cycling.join(', ')}] · 고정 ${Object.entries(e.fixed).map(([k,v])=>k+'→#'+v).join(', ')||'없음'}</div>`;
   h+='<div class=epgrid>'+e.all.map(card).join('')+'</div>';
+  // 역할별 용도 설명 — 색마다 언제 쓸지 적으면 LLM 프롬프트로 전달됨
+  const byId={}; (e.all||[]).forEach(s=>byId[s.id]=s);
+  const sw=s=>{if(!s||!s.defined)return '';
+    const st=(s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'');
+    return `<span style="${st}border:1px solid #e3e8ee;border-radius:5px;padding:1px 6px;font-size:11px;margin-left:4px">#${s.id} 강조</span>`;};
+  const rows=(e.roles||[]).map(r=>`<div class=ercell style="padding:9px 0;border-top:1px solid #eef1f5">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><b style="font-size:13px">${esc(r.label)}</b>
+        <code style="font-size:11px;color:#7a8694">&lt;&lt;${esc(r.role)}&gt;&gt;</code>${r.ids.map(id=>sw(byId[id])).join('')}</div>
+      <input class=erdesc data-role="${esc(r.role)}" value="${esc(r.desc)}" placeholder="이 색을 언제 쓸지 한 줄로 — LLM에 전달됩니다"
+        style="width:100%;margin-top:6px;padding:7px 9px;border:1px solid #e3e8ee;border-radius:7px;font-size:13px;box-sizing:border-box"></div>`).join('');
+  h+=`<div class=sub-h style="margin-top:16px">역할별 용도 설명 <span class=muted style="font-weight:400">— 각 강조색을 언제 쓸지 적으면 글 생성 프롬프트에 그대로 들어갑니다</span></div>${rows}`;
   $('#emph').innerHTML=h;
 }catch(e){$('#emph').innerHTML='<div class=muted>로드 실패</div>';}}
+// 역할별 용도 설명 저장(입력칸에서 포커스 빠지면) — emphasis.yaml의 role_desc에 기록
+$('#emph').addEventListener('change',async e=>{const inp=e.target.closest('.erdesc'); if(!inp)return;
+  try{const r=await fetch('/api/emphasis',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({role:inp.dataset.role,desc:inp.value})});
+    if(r.ok)toast('용도 설명 저장됨 ✓ 다음 생성부터 반영','ok',1800);
+  }catch(e){}});
 async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json();
   $('#promptedit').value=p.base_raw||'';
   $('#promptlayers').innerHTML='<div class=promptbox>'+p.layers.map(([t,b])=>`<details><summary>${esc(t)}</summary><pre>${esc(b)}</pre></details>`).join('')+'</div>';
@@ -976,6 +992,10 @@ def _make_handler(state: dict):
                         yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8"
                     )
                     self._send(200, json.dumps({"ok": True, "enabled": cfg[key]}).encode())
+                elif path == "/api/emphasis":
+                    body = self._json_body()
+                    _save_emphasis_role_desc(body.get("role", ""), body.get("desc", ""))
+                    self._send(200, b'{"ok":true}')
                 elif path == "/api/label":
                     lab = state["label"]
                     if lab.get("running"):
@@ -1241,6 +1261,7 @@ def _emphasis_preview() -> dict:
     프로젝트 프리셋(config/power_shortcuts.json)이 있으면 그 색으로, 없으면 내장 기본으로 해석.
     """
     from autoblog.publish.emphasis import (
+        DEFAULT_ROLE_DESC,
         DEFAULT_STYLES,
         load_default_power_shortcuts,
         load_emphasis_config,
@@ -1268,9 +1289,31 @@ def _emphasis_preview() -> dict:
     for k, v in (cfg.fixed_map or {}).items():
         used[v] = k
     all_styles = [{**resolve(i), "use": used.get(i)} for i in sorted(presets)]
+
+    # role(강조색)별 용도 설명 행 — UI에서 편집, LLM 프롬프트로 전달.
+    # cycle/neg는 풀 전체, fixed_map 키는 색 하나. 설명은 role_desc 우선, 없으면 기본값.
+    rdesc = {**DEFAULT_ROLE_DESC, **(cfg.role_desc or {})}
+    role_label = {"cycle": "순환(긍정·일반)", "neg": "부정·주의", "price": "가격", "name": "가게/상품명"}
+    roles, seen = [], set()
+
+    def add_role(role, ids):
+        if role in seen:
+            return
+        seen.add(role)
+        roles.append({"role": role, "label": role_label.get(role, role),
+                      "desc": rdesc.get(role, ""), "ids": ids})
+
+    add_role("cycle", list(cfg.cycling_pool or []))
+    add_role("neg", list(cfg.negative_pool or []))
+    for k, v in (cfg.fixed_map or {}).items():
+        add_role(k, [v])
+    for k in (cfg.role_desc or {}):  # 설명만 단 커스텀 role(아직 색 미배정)
+        add_role(k, [])
+
     return {
         "source": source,
         "all": all_styles,
+        "roles": roles,
         "cycling": list(cfg.cycling_pool or []),
         "negative": list(cfg.negative_pool or []),
         "fixed": cfg.fixed_map or {},
@@ -1279,17 +1322,46 @@ def _emphasis_preview() -> dict:
     }
 
 
+def _save_emphasis_role_desc(role: str, desc: str) -> None:
+    """강조 role 용도 설명을 config/emphasis.yaml의 role_desc에 저장(기존 주석·내용 보존)."""
+    import re
+
+    import yaml
+
+    from autoblog.publish.emphasis import _EMPHASIS_CONFIG_PATH, load_emphasis_config
+
+    role, desc = (role or "").strip(), (desc or "").strip()
+    if not role:
+        return
+    rd = dict(load_emphasis_config().role_desc or {})
+    if desc:
+        rd[role] = desc
+    else:
+        rd.pop(role, None)
+
+    path = _EMPHASIS_CONFIG_PATH
+    raw = path.read_text(encoding="utf-8") if path.exists() else ""
+    # 기존 role_desc 블록(헤더 주석 + 매핑)을 통째로 제거 후 끝에 다시 쓴다.
+    raw = re.sub(r"\n*# 역할별 용도 설명[^\n]*\n", "\n", raw)
+    raw = re.sub(r"(?ms)^role_desc:\n(?:[ \t]+.*\n?)*", "", raw)
+    block = ""
+    if rd:
+        body = yaml.safe_dump({"role_desc": rd}, allow_unicode=True, sort_keys=False)
+        block = "\n# 역할별 용도 설명 (서식 탭에서 편집) — 각 강조 role을 언제 쓸지 LLM에 안내\n" + body
+    path.write_text(raw.rstrip("\n") + "\n" + block, encoding="utf-8")
+
+
 def _prompt_preview() -> dict:
     """초안 생성에 쓰이는 프롬프트(편집용 raw default.md + 우리가 얹는 마커 지시문 레이어)."""
     from autoblog.draft.prompts import DEFAULT_PROMPT_PATH
-    from autoblog.publish.emphasis import EMPHASIS_INSTRUCTION
+    from autoblog.publish.emphasis import build_emphasis_instruction, load_emphasis_config
     from autoblog.publish.plan import build_structure_instruction
 
     dkeys, qkeys = _enabled_variant_keys()  # 미리보기도 현재 고른 종류만 반영
     return {
         "base_raw": DEFAULT_PROMPT_PATH.read_text(encoding="utf-8"),
         "layers": [
-            ["강조 표시 (강조색 켤 때)", EMPHASIS_INSTRUCTION],
+            ["강조 표시 (강조색 켤 때)", build_emphasis_instruction(load_emphasis_config())],
             ["구조 마커 (구분선·인용구 켤 때)", build_structure_instruction(dkeys, qkeys)],
         ],
     }

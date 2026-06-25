@@ -211,6 +211,8 @@ class EmphasisConfig(BaseModel):
     cycling_pool: list[int] = Field(default_factory=list)  # 일반·긍정 강조 순환 풀 예: [1, 3, 5]
     negative_pool: list[int] = Field(default_factory=list)  # 부정·주의 전용 순환 풀 예: [9, 16, 24]
     fixed_map: dict[str, int] = Field(default_factory=dict)  # 예: {"price": 7, "name": 4}
+    # role(강조색)별 용도 설명 — UI(서식 탭)에서 편집. EMPHASIS_INSTRUCTION에서 기본값을 덮어쓴다.
+    role_desc: dict[str, str] = Field(default_factory=dict)  # 예: {"price": "가격·할인율", ...}
     max_per_paragraph: int | None = None  # (옵션) 문단당 강조 개수 상한
     min_sentence_gap: int | None = None  # (옵션) 강조 간 최소 문장 간격
 
@@ -234,19 +236,53 @@ def load_emphasis_config(path=None) -> EmphasisConfig:
 
 
 # 초안 강조 마킹: <<role:강조할 텍스트>>  (예: <<price:13,000원>>, <<name:가게명>>, <<cycle:문장>>)
+# 기본 role 4종과 그 용도 설명/예시. role_desc(emphasis.yaml·서식 탭)로 설명을 덮어쓸 수 있다.
+DEFAULT_ROLE_DESC: dict[str, str] = {
+    "cycle": "좋았던 점·핵심 감상·추천 포인트(긍정/일반)",
+    "neg": "아쉬웠던 점·단점·주의사항(부정)",
+    "price": "가격",
+    "name": "가게명/상품명",
+}
+_ROLE_EXAMPLE: dict[str, str] = {
+    "cycle": "정말 부드러운 식감이었어요",
+    "neg": "웨이팅이 좀 길었어요",
+    "price": "13,000원",
+    "name": "가게이름",
+}
+
+
 # 주의: "절제하세요" 같은 약한 표현이면 14b급 모델은 마커를 0개 단다(STRUCTURE_INSTRUCTION과 같은 교훈).
 # → "권장이 아니라 사용 + role 예시 + 개수 지정"으로 강하게 안내해야 실제로 emit된다.
-EMPHASIS_INSTRUCTION = (
-    "[강조 표시] — 아래 마커로 핵심 어구를 실제로 감싸세요(권장이 아니라 사용).\n"
-    "한 문단에 1~2군데, 글 전체에서 최소 5군데 이상은 감싸야 합니다.\n"
-    "상황에 맞는 role을 골라 쓰세요:\n"
-    "- 좋았던 점·핵심 감상·추천 포인트(긍정/일반): <<cycle:정말 부드러운 식감이었어요>>\n"
-    "- 아쉬웠던 점·단점·주의사항(부정): <<neg:웨이팅이 좀 길었어요>>\n"
-    "- 가격: <<price:13,000원>>\n"
-    "- 가게명/상품명: <<name:가게이름>>\n"
-    "긍정·일반 강조는 <<cycle>>, 부정·주의는 반드시 <<neg>>로 구분하세요(색이 달라집니다).\n"
-    "감싼 텍스트는 본문에 그대로 보이는 자연스러운 어구여야 합니다(마커 기호는 서식으로 바뀌어 화면엔 안 보임)."
-)
+def build_emphasis_instruction(config: "EmphasisConfig | None" = None) -> str:
+    """강조 지시문 — 기본 role 4종 + 사용자가 추가한 fixed_map/role_desc role을 나열.
+
+    각 role의 용도 설명은 config.role_desc(서식 탭에서 편집)가 있으면 그걸,
+    없으면 DEFAULT_ROLE_DESC를 쓴다. config가 없으면 기본 4종만 안내(과거 동작 유지).
+    """
+    config = config or EmphasisConfig()
+    desc = {**DEFAULT_ROLE_DESC, **(config.role_desc or {})}
+    roles = list(DEFAULT_ROLE_DESC)  # cycle, neg, price, name (항상 안내)
+    for k in (config.fixed_map or {}):  # 사용자가 추가한 고정 의미 role
+        if k not in roles:
+            roles.append(k)
+    for k in (config.role_desc or {}):  # 설명만 따로 단 커스텀 role
+        if k not in roles:
+            roles.append(k)
+    menu = "\n".join(
+        f"- {desc.get(r, r)}: <<{r}:{_ROLE_EXAMPLE.get(r, '강조할 어구')}>>" for r in roles
+    )
+    return (
+        "[강조 표시] — 아래 마커로 핵심 어구를 실제로 감싸세요(권장이 아니라 사용).\n"
+        "한 문단에 1~2군데, 글 전체에서 최소 5군데 이상은 감싸야 합니다.\n"
+        "상황에 맞는 role을 골라 쓰세요:\n"
+        f"{menu}\n"
+        "긍정·일반 강조는 <<cycle>>, 부정·주의는 반드시 <<neg>>로 구분하세요(색이 달라집니다).\n"
+        "감싼 텍스트는 본문에 그대로 보이는 자연스러운 어구여야 합니다(마커 기호는 서식으로 바뀌어 화면엔 안 보임)."
+    )
+
+
+# 기본(설정 없음) 지시문 — 단순 임포트용. 실제 생성은 build_emphasis_instruction(load_emphasis_config()) 사용.
+EMPHASIS_INSTRUCTION = build_emphasis_instruction()
 
 # 꺾쇠는 2개(<<role:text>>)가 원형이지만, 외부 챗봇이 1개(<role:text>)로 줄여
 # 출력하는 경우가 잦다. 1~2개를 모두 받아 본문 누수를 막는다(`\w+:` 조건이 오탐 방지).

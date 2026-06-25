@@ -13,8 +13,8 @@ from autoblog.draft.rules import CommonRules
 from autoblog.draft.style import StyleProfile
 from autoblog.llm import chat
 from autoblog.publish.emphasis import (
-    EMPHASIS_INSTRUCTION,
     EmphasisConfig,
+    build_emphasis_instruction,
     EmphasisStyle,
     StyledSpan,
     apply_density,
@@ -69,7 +69,7 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
     base = req.base_prompt or load_base_prompt()
     system = build_system_prompt(base, req.style, req.guidelines, req.rules)
     if req.emphasis:
-        system = f"{system}\n\n{EMPHASIS_INSTRUCTION}"
+        system = f"{system}\n\n{build_emphasis_instruction(load_emphasis_config())}"
     if req.structure:
         from autoblog.publish.plan import build_structure_instruction  # 지연 임포트(순환 회피)
 
