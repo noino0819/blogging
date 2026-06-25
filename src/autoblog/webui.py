@@ -158,9 +158,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <h2 class=title>스티커</h2>
     <p class=desc>★를 눌러 즐겨찾기에 넣으세요. <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.</p>
     <div class=stat id=ststat></div>
-    <div class=seg style="max-width:280px;margin-bottom:8px" id=stfilter>
-      <button data-f=fav class=on>⭐ 즐겨찾기</button>
-      <button data-f=all>전체 둘러보기</button>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+      <div class=seg style="width:280px" id=stfilter>
+        <button data-f=fav class=on>⭐ 즐겨찾기</button>
+        <button data-f=all>전체 둘러보기</button>
+      </div>
+      <button class="btn ghost" id=lblbtn style="width:auto;padding:9px 14px">🔍 즐겨찾기 태그 분석</button>
+      <span class=muted id=lblstat></span>
     </div>
     <div id=stbody><div class=muted>불러오는 중…</div></div>
   </section>
@@ -290,6 +294,21 @@ function renderStickers(){
 $('#stfilter').onclick=e=>{const b=e.target.closest('button'); if(!b)return;
   $$('#stfilter button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
   ST_FILTER=b.dataset.f; renderStickers();};
+// 태그 분석(즐겨찾기만, 백그라운드 진행)
+$('#lblbtn').onclick=async()=>{
+  $('#lblbtn').disabled=true; $('#lblstat').textContent='시작 중…';
+  try{
+    const d=await (await fetch('/api/label',{method:'POST'})).json();
+    if(!d.total){$('#lblstat').textContent='분석할 새 즐겨찾기가 없어요(이미 태그 있음).'; $('#lblbtn').disabled=false; return;}
+    pollLabel();
+  }catch(e){$('#lblstat').textContent='오류: '+e; $('#lblbtn').disabled=false;}
+};
+async function pollLabel(){
+  const s=await (await fetch('/api/label/status')).json();
+  $('#lblstat').textContent=`분석 중… ${s.done}/${s.total} (스티커당 수 초)`;
+  if(s.running){setTimeout(pollLabel,1500);}
+  else{$('#lblstat').textContent=`완료 ✓ 태그 ${s.done}개 분석`; $('#lblbtn').disabled=false; await loadStickers(true);}
+}
 $('#stbody').onclick=async e=>{const b=e.target.closest('.favbtn'); if(!b)return;
   const ref=b.dataset.ref, on=!b.classList.contains('on');
   b.classList.toggle('on',on);
@@ -386,6 +405,8 @@ def _make_handler(state: dict):
                 self._send(200, img.read_bytes(), "image/png") if (img and img.exists()) else self._send(404, b"x", "text/plain")
             elif u.path == "/api/catalog":
                 self._send(200, json.dumps(_catalog_summary()).encode())
+            elif u.path == "/api/label/status":
+                self._send(200, json.dumps(state["label"]).encode())
             elif u.path == "/api/models":
                 from autoblog.config import load_models_config
 
@@ -405,6 +426,20 @@ def _make_handler(state: dict):
                     body = self._json_body()
                     n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
                     self._send(200, json.dumps({"ok": True, "favorites": n}).encode())
+                elif path == "/api/label":
+                    lab = state["label"]
+                    if lab.get("running"):
+                        self._send(200, json.dumps({"running": True, "total": lab["total"]}).encode())
+                        return
+                    from autoblog.publish.stickers import load_sticker_catalog
+
+                    total = _label_targets(load_sticker_catalog())
+                    if total == 0:
+                        self._send(200, json.dumps({"total": 0}).encode())
+                        return
+                    lab.update({"running": True, "done": 0, "total": total})
+                    threading.Thread(target=_run_label, args=(state,), daemon=True).start()
+                    self._send(200, json.dumps({"total": total}).encode())
                 else:
                     self._send(404, b"not found", "text/plain")
             except Exception as exc:  # noqa: BLE001
@@ -498,6 +533,39 @@ def _catalog_summary() -> dict:
     }
 
 
+def _label_targets(cat) -> int:
+    from autoblog.publish.stickers import _needs_label
+
+    favs = set(cat.favorites)
+    return sum(1 for s in cat.stickers if s.ref in favs and _needs_label(s, True))
+
+
+def _run_label(state: dict) -> None:
+    """즐겨찾기 중 태그 없는 것만 비전 라벨링(백그라운드 스레드). 진행은 state['label']에 기록."""
+    from autoblog.publish.stickers import (
+        STICKER_CONFIG_PATH,
+        label_catalog,
+        load_sticker_catalog,
+        save_sticker_catalog,
+    )
+
+    lab = state["label"]
+    try:
+        cat = load_sticker_catalog()
+        favs = set(cat.favorites)
+
+        def prog(done, total, s):
+            lab["done"], lab["total"] = done, total
+
+        result = label_catalog(
+            cat, only_refs=favs, only_new=True, on_progress=prog,
+            save_path=STICKER_CONFIG_PATH, save_every=3,
+        )
+        save_sticker_catalog(result)
+    finally:
+        lab["running"] = False
+
+
 def _toggle_favorite(ref: str, on: bool) -> int:
     """즐겨찾기 추가/해제 후 config/stickers.yaml 저장. 새 즐겨찾기 수 반환."""
     from autoblog.publish.stickers import load_sticker_catalog, save_sticker_catalog
@@ -513,7 +581,11 @@ def _toggle_favorite(ref: str, on: bool) -> int:
 
 def serve_ui(host: str = "127.0.0.1", port: int = 8770) -> ThreadingHTTPServer:
     """글쓰기 UI 서버 생성. publish는 블로킹이라 스레드 서버 사용."""
-    state: dict = {"last": None, "thumbs": {}}
+    state: dict = {
+        "last": None,
+        "thumbs": {},
+        "label": {"running": False, "done": 0, "total": 0},
+    }
     server = ThreadingHTTPServer((host, port), _make_handler(state))
     server.daemon_threads = True
     threading.current_thread()
