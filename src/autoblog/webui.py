@@ -363,7 +363,7 @@ async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).j
   const tag=u=>u?`<span style="font-size:10px;background:#eafaf0;color:#02b350;border-radius:4px;padding:1px 5px;margin-left:5px">${u==='순환'?'순환':u}</span>`:'';
   const card=s=>{
     const hasStyle=s.text_color||s.background_color||s.font;
-    const stl=hasStyle?((s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'')+(s.font?`font-family:'se-${s.font}';`:'')):'color:#9aa5b1';
+    const stl=hasStyle?((s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'')+(s.font?`font-family:'se-${s.font}';`:'')+(s.size?`font-size:${s.size}px;`:'')):'color:#9aa5b1';
     const meta=[s.font_name,s.size?s.size+'pt':''].filter(Boolean).join(' · ');
     return `<div class=epcell><div class=epnum>#${s.id}${tag(s.use)}</div>
       <span class="sw-chip" style="${stl}">${hasStyle?'강조 텍스트':'(서식 없음)'}</span>
