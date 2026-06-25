@@ -378,7 +378,7 @@ $$('#kindseg button').forEach(b=>b.onclick=()=>setKind(b.dataset.k,true));
 $('#srcval').oninput=()=>{if(!KINDMANUAL)setKind(autoKind($('#srcval').value),false);};
 // 서식 칩
 $('#fmt').onclick=e=>{const c=e.target.closest('.chip'); if(!c)return;
-  c.classList.toggle('on'); FMT[c.dataset.k]=c.classList.contains('on');};
+  c.classList.toggle('on'); FMT[c.dataset.k]=c.classList.contains('on'); savePrefs();};
 
 function st(m,loading){const s=$('#status'); s.innerHTML=(loading?'<span class=spin></span>':'')+m;
   s.parentElement.classList.toggle('loading',!!loading);}
@@ -632,11 +632,24 @@ $('#stbody').onclick=async e=>{const b=e.target.closest('.favbtn'); if(!b)return
   catch(e){}
 };
 
+// 글쓰기 설정(규칙·서식칩·톤) 서버 저장/복원 — 새로고침해도 유지
+function applyFmtChips(){$$('#fmt .chip').forEach(c=>c.classList.toggle('on',!!FMT[c.dataset.k]));}
+async function savePrefs(){try{await fetch('/api/prefs',{method:'POST',headers:{'content-type':'application/json'},
+  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value})});}catch(e){}}
+async function loadPrefs(){
+  try{const p=await (await fetch('/api/prefs')).json();
+    if(p.rules)Object.assign(RULES,p.rules);
+    if(p.fmt)Object.assign(FMT,p.fmt);
+    if(typeof p.tone==='string')$('#tone').value=p.tone;
+  }catch(e){}
+  renderRules(); applyFmtChips();
+}
+
 // 설정
 function renderRules(){const c=$('#rules'); c.innerHTML='';
   RULE_META.forEach(([k,t,d])=>{const row=document.createElement('div'); row.className='setrow';
     row.innerHTML=`<div><div class=t>${t}</div><div class=d>${d}</div></div><div class="sw ${RULES[k]?'on':''}"></div>`;
-    row.querySelector('.sw').onclick=function(){RULES[k]=!RULES[k]; this.classList.toggle('on',RULES[k]);};
+    row.querySelector('.sw').onclick=function(){RULES[k]=!RULES[k]; this.classList.toggle('on',RULES[k]); savePrefs();};
     c.appendChild(row);});
 }
 let HAS_API_KEY=false;
@@ -724,7 +737,8 @@ $('#variants').onclick=async e=>{const c=e.target.closest('.vcell'); if(!c)retur
   c.querySelector('.vname').innerHTML=c.querySelector('.vname').textContent.replace(' ✓','')+(on?' <span class=vck>✓</span>':'');
   try{await fetch('/api/format',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,value,on})});}catch(e){}
 };
-setKind('place',false); loadPhotos(); setupUpload(); renderRules(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories();
+$('#tone').onchange=savePrefs;
+setKind('place',false); loadPhotos(); setupUpload(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories();
 </script></body></html>"""
 
 
@@ -851,6 +865,8 @@ def _make_handler(state: dict):
                 self._send(200, json.dumps(_prompt_preview()).encode())
             elif u.path == "/api/categories":
                 self._send(200, json.dumps({"categories": _load_categories()}).encode())
+            elif u.path == "/api/prefs":
+                self._send(200, json.dumps(_load_prefs()).encode())
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -883,6 +899,9 @@ def _make_handler(state: dict):
                     self._send(200, b'{"ok":true}')
                 elif path == "/api/prompt":
                     _save_prompt(self._json_body().get("base", ""))
+                    self._send(200, b'{"ok":true}')
+                elif path == "/api/prefs":
+                    _save_prefs(self._json_body())
                     self._send(200, b'{"ok":true}')
                 elif path == "/api/models":
                     _set_model_preset(self._json_body().get("preset", ""))
@@ -1059,6 +1078,43 @@ def _make_handler(state: dict):
 
 FORMAT_CONFIG_PATH = REPO_ROOT / "config" / "format.yaml"
 PREVIEW_DIR = REPO_ROOT / "config" / "editor_previews"
+PREFS_PATH = REPO_ROOT / "config" / "ui_prefs.json"
+
+# 글쓰기 화면 기본 설정(서버가 기준). 새 키가 추가돼도 저장본 위에 머지된다.
+_PREFS_DEFAULT = {
+    "rules": {
+        "mobile_friendly": True, "authenticity": True,
+        "structure_guide": True, "seo": False, "emoji": False,
+    },
+    "fmt": {"emphasis": True, "structure": True, "stickers": True},
+    "tone": "",
+}
+
+
+def _load_prefs() -> dict:
+    """저장된 글쓰기 설정(없거나 깨지면 기본값). 기본값 위에 저장본을 머지해 반환."""
+    try:
+        saved = json.loads(PREFS_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        saved = {}
+    out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in _PREFS_DEFAULT.items()}
+    for k, v in saved.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k].update(v)
+        else:
+            out[k] = v
+    return out
+
+
+def _save_prefs(body: dict) -> None:
+    """들어온 일부 키만 머지 저장(rules/fmt는 dict 머지, tone은 교체)."""
+    cur = _load_prefs()
+    for k in ("rules", "fmt"):
+        if isinstance(body.get(k), dict):
+            cur[k].update(body[k])
+    if "tone" in body:
+        cur["tone"] = body.get("tone") or ""
+    PREFS_PATH.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _load_format() -> dict:

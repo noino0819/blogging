@@ -61,10 +61,16 @@ class StickerCatalog(BaseModel):
                     seen.append(t)
         return seen
 
-    def find(self, label: str) -> list[Sticker]:
-        """태그에 label을 가진 스티커들(stale 제외). 즐겨쓰기를 앞으로."""
+    def find(self, label: str, favorites_only: bool = True) -> list[Sticker]:
+        """태그에 label을 가진 스티커들(stale 제외). 즐겨쓰기를 앞으로.
+
+        favorites_only=True(기본): 즐겨쓰기한 것만 후보 — UI 약속("즐겨찾기한 것만 쓰임")과 일치.
+        favorites_only=False: 전체에서 찾되 즐겨쓰기를 앞으로 정렬(즐겨쓰기 소진 시 fallback).
+        """
         favs = set(self.favorites)
         hits = [s for s in self.stickers if not s.stale and label in s.tags]
+        if favorites_only:
+            hits = [s for s in hits if s.ref in favs]
         hits.sort(key=lambda s: s.ref not in favs)  # 즐겨쓰기 우선(False<True)
         return hits
 
@@ -101,6 +107,7 @@ class StickerPicker:
 
     consistent=True면 글 전체에서 한 팩으로 고정(통일감). prefer_pack이 있으면 그 팩 우선.
     label이 빈 문자열이면 즐겨쓰기에서 고른다.
+    favorites_only=True(기본): 즐겨찾기한 스티커만 사용. False면 전체 사용(즐겨찾기 우선).
     """
 
     def __init__(
@@ -108,10 +115,12 @@ class StickerPicker:
         catalog: StickerCatalog,
         prefer_pack: str | None = None,
         consistent: bool = False,
+        favorites_only: bool = True,
     ):
         self.catalog = catalog
         self.prefer_pack = prefer_pack
         self.consistent = consistent
+        self.favorites_only = favorites_only
         self._locked_pack: str | None = prefer_pack
         self._used: list[str] = []  # 이미 쓴 ref(연속 중복 회피)
 
