@@ -79,13 +79,23 @@ class ProductSpec(BaseModel):
 
 
 class ProductFacts(BaseModel):
-    """상품 — 상품 페이지 사실 정보."""
+    """상품 사실 정보.
+
+    스마트스토어 상품 페이지는 WTM 봇 차단으로 직접 스크래핑 불가 →
+    기본정보는 네이버 쇼핑 검색 API, 상세 스펙은 사용자 제공 이미지의 Vision 추출.
+    """
 
     name: str
-    price: str | None = None
+    price: str | None = None  # 최저가(lprice)
     brand: str | None = None
-    specs: list[ProductSpec] = Field(default_factory=list)
+    maker: str | None = None
+    category: str | None = None  # category1>2>3>4 결합
+    mall_name: str | None = None
+    image: str | None = None  # 대표 이미지 URL
     product_url: str | None = None
+    # 이미지형 상세설명 → Vision LLM 추출 결과
+    specs: list[ProductSpec] = Field(default_factory=list)
+    detail_images: list[str] = Field(default_factory=list)  # 사용자 제공 상세 이미지 경로
 
 
 class FactCard(BaseModel):

@@ -31,7 +31,10 @@ src/autoblog/
     fact_card.py       #   사실 카드 표준 스키마
     selectors.py       #   스크래핑 셀렉터 집결지 (구조 변경 시 여기만 수정)
     link.py            #   URL 타입 감지 → 전략 분기
-    place.py           #   맛집: 검색 API + 플레이스 스크래핑
+    place.py           #   맛집: 검색 API + 플레이스 상세(apollo)
+    place_detail.py    #   플레이스 URL → 메뉴/영업시간/리뷰/정보 추출
+    product.py         #   상품: 쇼핑 검색 API + 이미지 Vision 상세
+  vision.py            # Vision LLM 연동 지점 (Ollama, 구현 예정)
 tests/
 ```
 
@@ -48,7 +51,8 @@ cp .env.example .env         # 네이버 검색 API 키 입력 (발급: docs/nav
 ```bash
 uv run autoblog doctor              # 환경 점검
 uv run autoblog models --tier 8gb   # 선택 프리셋의 vision/text 모델 확인
-uv run autoblog place "교대 김밥천국"  # 맛집 사실 카드 수집
+uv run autoblog place-url "<플레이스 URL>"  # 맛집 상세(메뉴/영업시간/리뷰)
+uv run autoblog product "강아지 노즈워크 장난감"  # 상품 기본정보(쇼핑 API)
 uv run pytest                       # 테스트
 ```
 
