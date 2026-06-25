@@ -82,10 +82,15 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .doc .ph{background:#eef6ff;border:1px dashed #9ec5ff;border-radius:10px;padding:14px;color:#2f6fd6;font-size:13px;margin:10px 0}
  em.hl{font-style:normal;border-radius:3px;padding:1px 3px}
  /* sticker / settings */
- .stgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
- .stcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
+ .stgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:8px}
+ .stcard{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
  .stcard img{width:100%;aspect-ratio:1;object-fit:contain;background:#fafbfc;border-radius:9px}
  .stcard .tg{font-size:11px;color:var(--sub);margin-top:6px;line-height:1.4;min-height:28px}
+ .favbtn{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:1px solid var(--line);
+   background:#fff;color:#cbd2d9;font-size:15px;cursor:pointer;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px #0001}
+ .favbtn.on{color:#ffb400;border-color:#ffe2a6;background:#fffaf0}
+ .packh{font-size:13px;color:#4b5563;font-weight:700;margin:18px 0 10px}
+ .packh small{color:var(--sub);font-weight:500}
  .stat{display:flex;gap:18px;margin-bottom:18px}
  .stat .b{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 18px}
  .stat .b .n{font-size:22px;font-weight:800;color:var(--green-d)}
@@ -151,10 +156,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <!-- 스티커 -->
   <section class="view stickers">
     <h2 class=title>스티커</h2>
-    <p class=desc>글에 들어갈 즐겨찾기 스티커예요. 추가/태그 수정은 <b>스티커 검수</b>에서 합니다.</p>
+    <p class=desc>★를 눌러 즐겨찾기에 넣으세요. <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.</p>
     <div class=stat id=ststat></div>
-    <h3 style="font-size:14px;margin:0 0 12px">⭐ 즐겨찾기</h3>
-    <div class=stgrid id=favgrid><div class=muted>불러오는 중…</div></div>
+    <div class=seg style="max-width:280px;margin-bottom:8px" id=stfilter>
+      <button data-f=fav class=on>⭐ 즐겨찾기</button>
+      <button data-f=all>전체 둘러보기</button>
+    </div>
+    <div id=stbody><div class=muted>불러오는 중…</div></div>
   </section>
   <!-- 설정 -->
   <section class="view settings">
@@ -249,20 +257,48 @@ $('#save').onclick=async()=>{if(!PLAN)return;
 };
 
 // 스티커 탭
-let stLoaded=false;
-async function loadStickers(){if(stLoaded)return; stLoaded=true;
-  try{const c=await (await fetch('/api/catalog')).json();
-    $('#ststat').innerHTML=`<div class=b><div class=n>${c.total}</div><div class=l>전체</div></div>
-      <div class=b><div class=n>${c.favorites.length}</div><div class=l>⭐ 즐겨찾기</div></div>
-      <div class=b><div class=n>${c.label_count}</div><div class=l>상황 라벨</div></div>`;
-    const g=$('#favgrid');
-    if(!c.favorites.length){g.innerHTML='<div class=muted>아직 즐겨찾기가 없어요. 터미널에서 <b>autoblog stickers review</b> 로 ★ 지정하세요.</div>';return;}
-    g.innerHTML='';
-    c.favorites.forEach(s=>{const d=document.createElement('div'); d.className='stcard';
-      d.innerHTML=`<img src="/img?ref=${encodeURIComponent(s.ref)}"><div class=tg>${(s.tags||[]).slice(0,3).join(', ')||'—'}</div>`;
-      g.appendChild(d);});
-  }catch(e){$('#favgrid').innerHTML='<div class=muted>스티커 로드 실패</div>';}
+let CAT=null, ST_FILTER='fav';
+async function loadStickers(force){
+  if(CAT && !force){renderStickers();return;}
+  try{CAT=await (await fetch('/api/catalog')).json(); renderStickers();}
+  catch(e){$('#stbody').innerHTML='<div class=muted>스티커 로드 실패</div>';}
 }
+function updateStat(){if(!CAT)return;
+  $('#ststat').innerHTML=`<div class=b><div class=n>${CAT.total}</div><div class=l>전체</div></div>
+    <div class=b><div class=n>${CAT.favorites.length}</div><div class=l>⭐ 즐겨찾기</div></div>
+    <div class=b><div class=n>${CAT.label_count}</div><div class=l>상황 라벨</div></div>`;}
+function renderStickers(){
+  updateStat();
+  const favset=new Set(CAT.favorites);
+  let list=CAT.stickers;
+  if(ST_FILTER==='fav') list=list.filter(s=>favset.has(s.ref));
+  const body=$('#stbody');
+  if(!list.length){body.innerHTML=`<div class=muted>${ST_FILTER==='fav'?'아직 즐겨찾기가 없어요. [전체 둘러보기]에서 ★를 눌러 추가하세요.':'스티커가 없어요. 터미널에서 autoblog stickers pull'}</div>`;return;}
+  const packs={};
+  list.forEach(s=>{(packs[s.pack]=packs[s.pack]||[]).push(s);});
+  let h='';
+  for(const pack of Object.keys(packs)){
+    h+=`<div class=packh>${pack} <small>(${packs[pack].length})</small></div><div class=stgrid>`;
+    for(const s of packs[pack]){const on=favset.has(s.ref);
+      h+=`<div class=stcard><button class="favbtn${on?' on':''}" data-ref="${s.ref}" title="즐겨찾기">★</button>
+        <img loading=lazy src="/img?ref=${encodeURIComponent(s.ref)}">
+        <div class=tg>${(s.tags||[]).slice(0,3).join(', ')||'—'}</div></div>`;}
+    h+='</div>';
+  }
+  body.innerHTML=h;
+}
+$('#stfilter').onclick=e=>{const b=e.target.closest('button'); if(!b)return;
+  $$('#stfilter button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  ST_FILTER=b.dataset.f; renderStickers();};
+$('#stbody').onclick=async e=>{const b=e.target.closest('.favbtn'); if(!b)return;
+  const ref=b.dataset.ref, on=!b.classList.contains('on');
+  b.classList.toggle('on',on);
+  CAT.favorites=CAT.favorites.filter(r=>r!==ref); if(on)CAT.favorites.push(ref);
+  updateStat();
+  if(ST_FILTER==='fav' && !on) b.closest('.stcard').remove();  // 즐겨찾기 보기에선 해제 시 사라짐
+  try{await fetch('/api/favorite',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ref,on})});}
+  catch(e){}
+};
 
 // 설정
 function renderRules(){const c=$('#rules'); c.innerHTML='';
@@ -365,6 +401,10 @@ def _make_handler(state: dict):
                     self._generate(self._json_body())
                 elif path == "/api/publish":
                     self._publish(self._json_body())
+                elif path == "/api/favorite":
+                    body = self._json_body()
+                    n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
+                    self._send(200, json.dumps({"ok": True, "favorites": n}).encode())
                 else:
                     self._send(404, b"not found", "text/plain")
             except Exception as exc:  # noqa: BLE001
@@ -444,14 +484,31 @@ def _catalog_summary() -> dict:
     from autoblog.publish.stickers import load_sticker_catalog
 
     cat = load_sticker_catalog()
-    by = cat.by_ref()
-    favs = []
-    for ref in cat.favorites:
-        s = by.get(ref)
-        if s:
-            favs.append({"ref": ref, "tags": s.tags})
-    active = [s for s in cat.stickers if not s.stale]
-    return {"total": len(active), "favorites": favs, "label_count": len(cat.labels())}
+    favset = set(cat.favorites)
+    stickers = [
+        {"ref": s.ref, "pack": s.pack, "index": s.index, "tags": s.tags, "fav": s.ref in favset}
+        for s in cat.stickers
+        if not s.stale
+    ]
+    return {
+        "total": len(stickers),
+        "favorites": list(cat.favorites),
+        "label_count": len(cat.labels()),
+        "stickers": stickers,
+    }
+
+
+def _toggle_favorite(ref: str, on: bool) -> int:
+    """즐겨찾기 추가/해제 후 config/stickers.yaml 저장. 새 즐겨찾기 수 반환."""
+    from autoblog.publish.stickers import load_sticker_catalog, save_sticker_catalog
+
+    cat = load_sticker_catalog()
+    favs = [f for f in cat.favorites if f != ref]
+    if on and ref in cat.by_ref():
+        favs.append(ref)
+    cat.favorites = favs
+    save_sticker_catalog(cat)
+    return len(favs)
 
 
 def serve_ui(host: str = "127.0.0.1", port: int = 8770) -> ThreadingHTTPServer:
