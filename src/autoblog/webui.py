@@ -181,13 +181,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <div class=grid>
       <div class=col>
         <div class=card>
-          <label class=f>수집 (선택)</label>
-          <div class=seg id=seg>
-            <button data-src=none class=on>없음</button>
-            <button data-src=place>맛집 URL</button>
-            <button data-src=product>상품 검색</button>
-          </div>
-          <input type=text id=srcval placeholder="플레이스 URL 또는 상품 검색어" style="display:none;margin-top:8px">
+          <label class=f>수집 <span class=muted>(선택) — 넣으면 정보 자동 수집</span></label>
+          <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력">
+          <div class=muted id=srchint style="margin-top:4px">URL이면 맛집, 글자면 상품으로 자동 인식해요.</div>
           <label class=f>경험 메모 <span class=muted>(글의 중심)</span></label>
           <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>사진 <span class=muted id=psel></span></label>
@@ -271,8 +267,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   </section>
 </main>
 <script>
+// fetch 래퍼: 네트워크 단절(서버 꺼짐/재시작)을 'TypeError: Failed to fetch' 대신 친절한 메시지로
+const _fetch=window.fetch.bind(window);
+window.fetch=async(...a)=>{try{return await _fetch(...a);}
+  catch(e){throw new Error('서버에 연결할 수 없어요. 앱(서버)이 꺼졌거나 재시작 중일 수 있어요 — 잠시 후 새로고침하거나 다시 시도하세요.');}};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-let SRC='none', PHOTOS=[], SELP=[], PLAN=null;
+let PHOTOS=[], SELP=[], PLAN=null;
+function srcKind(v){v=(v||'').trim(); if(!v)return ''; return (/^https?:\/\//.test(v)||/naver\.me|place/.test(v))?'맛집':'상품';}
 const FMT={emphasis:true,structure:true,stickers:true};
 const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:false,emoji:false};
 const RULE_META=[
@@ -289,10 +290,9 @@ $$('.nav').forEach(n=>n.onclick=()=>{
   $$('.view').forEach(v=>v.classList.remove('on')); $('.view.'+n.dataset.view).classList.add('on');
   if(n.dataset.view==='stickers') loadStickers();
 });
-// 수집 세그먼트
-$('#seg').onclick=e=>{const b=e.target.closest('button'); if(!b)return;
-  $$('#seg button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); SRC=b.dataset.src;
-  $('#srcval').style.display=SRC==='none'?'none':'block';};
+// 수집 자동 인식(URL→맛집, 글자→상품)
+$('#srcval').oninput=()=>{const k=srcKind($('#srcval').value);
+  $('#srchint').textContent=k?`→ ${k}으로 수집합니다`:'URL이면 맛집, 글자면 상품으로 자동 인식해요.';};
 // 서식 칩
 $('#fmt').onclick=e=>{const c=e.target.closest('.chip'); if(!c)return;
   c.classList.toggle('on'); FMT[c.dataset.k]=c.classList.contains('on');};
@@ -360,7 +360,7 @@ $('#gen').onclick=async()=>{
   if(!$('#memo').value.trim()){st('경험 메모를 입력하세요.');return;}
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
-    const body={memo:$('#memo').value,src:SRC,srcval:$('#srcval').value,photos:SELP,tone:$('#tone').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,photos:SELP,tone:$('#tone').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,rules:RULES};
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
@@ -651,6 +651,17 @@ def _make_handler(state: dict):
             return json.loads(self.rfile.read(length) or b"{}")
 
         def do_GET(self):
+            try:
+                self._route_get()
+            except BrokenPipeError:
+                pass  # 클라이언트가 먼저 끊음 — 무시
+            except Exception as exc:  # noqa: BLE001
+                import traceback
+
+                print(f"[webui] GET {self.path} 실패: {exc}", flush=True)
+                traceback.print_exc()
+
+        def _route_get(self):
             u = urlparse(self.path)
             q = parse_qs(u.query)
             if u.path == "/":
@@ -760,16 +771,27 @@ def _make_handler(state: dict):
                     self._send(200, json.dumps({"total": total}).encode())
                 else:
                     self._send(404, b"not found", "text/plain")
+            except BrokenPipeError:
+                pass  # 클라이언트가 먼저 끊음(새로고침/이탈) — 무시
             except Exception as exc:  # noqa: BLE001
-                self._send(500, json.dumps({"error": str(exc)}).encode())
+                import traceback
+
+                print(f"[webui] POST {path} 실패: {exc}", flush=True)
+                traceback.print_exc()
+                try:
+                    self._send(500, json.dumps({"error": str(exc)}).encode())
+                except Exception:  # noqa: BLE001
+                    pass
 
         def _generate(self, body):
             from autoblog.draft.rules import CommonRules
             from autoblog.draft.style import StyleProfile
             from autoblog.pipeline import run_pipeline
 
-            src = body.get("src")
             srcval = (body.get("srcval") or "").strip()
+            # 자동 인식: URL이면 맛집(place), 글자면 상품(product)
+            is_url = srcval.startswith("http") or "naver.me" in srcval or "place" in srcval
+            src = "place" if (srcval and is_url) else ("product" if srcval else None)
             photos = [p for p in (body.get("photos") or []) if p]
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
