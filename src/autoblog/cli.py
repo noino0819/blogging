@@ -34,9 +34,13 @@ def place(query: str = typer.Argument(..., help="가게명 + 지역 (예: '교�
 
 @app.command()
 def doctor():
-    """환경 점검 — API 키/Ollama 설정 여부."""
+    """환경 점검 — API 키/Ollama 설정 여부 + 검색 API 라이브 호출."""
+    from autoblog.collect.place import ping_search_api
+
     env = load_env()
-    typer.echo(f"네이버 검색 API : {'OK' if env.has_naver_api else '미설정 (.env)'}")
+    typer.echo(f"네이버 검색 API : {'설정됨' if env.has_naver_api else '미설정 (.env)'}")
+    ok, msg = ping_search_api()
+    typer.echo(f"검색 API 라이브 : {'OK' if ok else msg}")
     typer.echo(f"Ollama host    : {env.ollama_host}")
 
 

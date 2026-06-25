@@ -26,6 +26,33 @@ def _strip(text: str) -> str:
     return html.unescape(_TAG_RE.sub("", text)).strip()
 
 
+def ping_search_api() -> tuple[bool, str]:
+    """검색 API 키가 실제로 동작하는지 라이브로 점검.
+
+    반환: (성공여부, 메시지). doctor 명령에서 연동 검증에 사용.
+    """
+    env = load_env()
+    if not env.has_naver_api:
+        return False, "키 미설정 (.env)"
+    try:
+        resp = requests.get(
+            _SEARCH_URL,
+            params={"query": "스타벅스", "display": 1},
+            headers={
+                "X-Naver-Client-Id": env.naver_client_id or "",
+                "X-Naver-Client-Secret": env.naver_client_secret or "",
+            },
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        return False, f"네트워크 오류: {exc}"
+    if resp.status_code == 200:
+        return True, "OK"
+    if resp.status_code == 401:
+        return False, "401 인증 실패 — Client ID/Secret 확인"
+    return False, f"HTTP {resp.status_code}: {resp.text[:120]}"
+
+
 def search_place(query: str) -> PlaceFacts | None:
     """네이버 지역검색 API로 가게 식별.
 

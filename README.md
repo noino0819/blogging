@@ -40,7 +40,7 @@ tests/
 ```bash
 uv sync                      # 의존성 설치 (.venv 생성)
 uv run playwright install    # 스크래핑/게시용 브라우저 (chromium)
-cp .env.example .env         # 네이버 검색 API 키 입력
+cp .env.example .env         # 네이버 검색 API 키 입력 (발급: docs/naver-search-api.md)
 ```
 
 ### 사용
