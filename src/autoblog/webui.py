@@ -117,12 +117,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}
  .sw.on::after{left:21px}
  .muted{color:var(--sub);font-size:12.5px}
- .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:6px}
- .vcell{border:2px solid var(--line);border-radius:10px;padding:6px;cursor:pointer;background:#fff;position:relative}
+ .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;margin-bottom:8px}
+ .vcell{border:2px solid var(--line);border-radius:11px;padding:14px 16px;cursor:pointer;background:#fff;position:relative;display:flex;align-items:center;justify-content:center;min-height:64px}
+ .vcell.q{min-height:120px}
  .vcell.on{border-color:var(--green);background:#f3fcf6}
- .vcell img{width:100%;height:54px;object-fit:contain;object-position:left center}
- .vcell.q img{height:80px}
- .vcell .vn{position:absolute;top:5px;right:8px;font-size:10px;color:var(--sub)}
+ .vcell img{width:100%;height:auto;max-height:40px;object-fit:contain}
+ .vcell.q img{max-height:150px}
+ .vcell .vn{position:absolute;top:7px;right:10px;font-size:10px;color:var(--sub)}
  .vcell.on .vn{color:var(--green-d);font-weight:700}
  .epgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
  .epcell{border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fff}
