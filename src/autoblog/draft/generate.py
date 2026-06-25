@@ -48,5 +48,8 @@ def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
 
     checklist: list[CheckItem] = []
     if req.guidelines and not req.guidelines.is_empty():
-        checklist = check_guidelines(text, req.guidelines, req.photo_count)
+        photo_count = req.photo_count
+        if photo_count is None and req.fact_card.photos:
+            photo_count = len(req.fact_card.photos)
+        checklist = check_guidelines(text, req.guidelines, photo_count)
     return DraftResult(text=text, checklist=checklist)

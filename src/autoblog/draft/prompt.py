@@ -97,13 +97,20 @@ def build_user_prompt(card: FactCard, experience_memo: str) -> str:
     재료 구분용 머리말은 모델이 본문에 인용하지 않도록 명시한다(라벨 누수 방지).
     """
     facts = render_fact_card(card)
-    return (
+    parts = [
         "다음은 글을 쓰기 위한 재료입니다. 이 재료의 머리말·항목 이름(예: '나의 경험', "
         "'참고 정보', '방문자 키워드' 등)을 본문에 절대 언급하거나 인용하지 마세요. "
-        "재료에 없는 사실은 지어내지 마세요.\n\n"
-        "# 나의 경험 (이 내용을 글의 중심으로 삼으세요)\n"
-        f"{experience_memo.strip()}\n\n"
-        "# 참고 정보 (필요한 것만 자연스럽게 녹이세요)\n"
-        f"{facts}\n\n"
-        "위 경험을 중심으로 네이버 블로그 후기 글을 제목과 본문으로 작성하세요."
-    )
+        "재료에 없는 사실은 지어내지 마세요.",
+        "# 나의 경험 (이 내용을 글의 중심으로 삼으세요)\n" + experience_memo.strip(),
+        "# 참고 정보 (필요한 것만 자연스럽게 녹이세요)\n" + facts,
+    ]
+    if card.photos:
+        from autoblog.collect.photos import photo_summary
+
+        parts.append(
+            "# 사진 구성 (분류 결과)\n"
+            f"{photo_summary(card.photos)}\n"
+            "본문 흐름에 맞는 위치에 [사진] 표시를 넣어 사진 자리를 잡으세요."
+        )
+    parts.append("위 경험을 중심으로 네이버 블로그 후기 글을 제목과 본문으로 작성하세요.")
+    return "\n\n".join(parts)

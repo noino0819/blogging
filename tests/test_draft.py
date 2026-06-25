@@ -120,3 +120,6 @@ def test_wrap_long_lines():
     assert not any(ln.strip() in ("수", "것", "원에", "때") for ln in out_lines)
     # 빈 줄(문단 간격)은 보존
     assert wrap_long_lines("짧은 줄\n\n다음 문단") == "짧은 줄\n\n다음 문단"
+    # 숫자 안 쉼표(13,000)는 줄바꿈하지 않음
+    long_num = "이 메뉴는 무려 13,000원으로 가성비가 정말 훌륭한 편이라고 생각해요"
+    assert "13,000" in wrap_long_lines(long_num, max_len=30)

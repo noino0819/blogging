@@ -60,8 +60,8 @@ def _wrap_line(line: str, max_len: int) -> list[str]:
     """긴 한 줄을 쉼표·연결어미·공백 기준으로 짧은 절로 분할."""
     if len(line) <= max_len:
         return [line]
-    # 쉼표 뒤, 연결어미 뒤에서 1차 분할
-    marked = re.sub(r"([,，])\s*", r"\1\n", line)
+    # 쉼표 뒤, 연결어미 뒤에서 1차 분할 (숫자 안 쉼표 '13,000'은 제외)
+    marked = re.sub(r"(?<!\d)([,，])\s*", r"\1\n", line)
     marked = _CONNECTIVE_RE.sub(lambda m: m.group(1) + "\n", marked)
     pieces: list[str] = []
     for clause in marked.split("\n"):

@@ -68,10 +68,25 @@ def place_url(
 
 
 @app.command()
+def classify(images: list[str] = typer.Argument(..., help="분류할 사진 경로(여러 장)")):
+    """입력 사진 자동 분류 (음식/메뉴판/외관/내부/영수증/상품/기타)."""
+    from autoblog.collect.fact_card import CardType, FactCard
+    from autoblog.collect.photos import classify_photos_into, photo_summary
+
+    card = classify_photos_into(FactCard(type=CardType.place), images)
+    for p in card.photos:
+        typer.echo(f"{p.label}\t{p.path}")
+    typer.echo(f"\n요약: {photo_summary(card.photos)}", err=True)
+    for w in card.warnings:
+        typer.echo(f"경고: {w}", err=True)
+
+
+@app.command()
 def draft(
     memo: str = typer.Argument(..., help="경험 메모(글의 중심/주연)"),
     place_url: str = typer.Option(None, "--place-url", help="맛집: 플레이스 URL로 사실 카드"),
     product: str = typer.Option(None, "--product", help="상품: 검색어로 사실 카드"),
+    photo: list[str] = typer.Option(None, "--photo", "-p", help="입력 사진(분류 후 배치 안내)"),
     tone: str = typer.Option(None, "--tone", help="문체 톤 지시 (예: '친근한 반말로')"),
     prompt_file: str = typer.Option(
         None, "--prompt-file", help="베이스 프롬프트 파일 경로(기본 config/prompts/default.md)"
@@ -95,6 +110,11 @@ def draft(
     else:
         card = FactCard(type=CardType.place)
         typer.echo("(사실 카드 없이 경험 메모만으로 작성)", err=True)
+
+    if photo:
+        from autoblog.collect.photos import classify_photos_into
+
+        classify_photos_into(card, photo)
 
     req = DraftRequest(
         fact_card=card,

@@ -100,6 +100,13 @@ class ProductFacts(BaseModel):
     detail_images: list[str] = Field(default_factory=list)  # 사용자 제공 상세 이미지 경로
 
 
+class PhotoItem(BaseModel):
+    """입력 사진 1장 + Vision 자동 분류 라벨."""
+
+    path: str
+    label: str = "기타"  # 음식/메뉴판/외관/내부/영수증/상품/기타
+
+
 class FactCard(BaseModel):
     """수집 결과 표준 컨테이너."""
 
@@ -108,6 +115,6 @@ class FactCard(BaseModel):
     is_fallback: bool = False
     place: PlaceFacts | None = None
     product: ProductFacts | None = None
-    # 분류된 사진 경로 (분류 결과는 Vision 단계에서 채움)
-    photos: list[str] = Field(default_factory=list)
+    # 입력 사진 + Vision 자동 분류 (1단계 정보 수집)
+    photos: list[PhotoItem] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
