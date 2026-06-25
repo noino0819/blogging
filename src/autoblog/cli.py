@@ -176,6 +176,86 @@ def draft(
 
 
 @app.command()
+def post(
+    memo: str = typer.Argument(..., help="경험 메모(글의 중심/주연)"),
+    place_url: str = typer.Option(None, "--place-url", help="맛집: 플레이스 URL로 사실 카드"),
+    product: str = typer.Option(None, "--product", help="상품: 검색어로 사실 카드"),
+    photo: list[str] = typer.Option(None, "--photo", "-p", help="입력 사진(분류 후 본문 배치)"),
+    tone: str = typer.Option(None, "--tone", help="문체 톤 지시"),
+    style_file: str = typer.Option(None, "--style-file", help="문체 프로파일 파일"),
+    emphasis: bool = typer.Option(True, "--emphasis/--no-emphasis", help="강조 색상 마킹"),
+    structure: bool = typer.Option(True, "--structure/--no-structure", help="구분선/인용구 마커"),
+    stickers: bool = typer.Option(True, "--stickers/--no-stickers", help="스티커 마커(즐겨찾기 라벨)"),
+    consistent_pack: bool = typer.Option(False, "--consistent-pack", help="스티커를 한 팩으로 통일"),
+    category: str = typer.Option(None, "--category", help="발행 카테고리(유저별)"),
+    model: str = typer.Option(None, "--model", help="텍스트 모델 override"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="브라우저 없이 초안/플랜만 출력"),
+    submit: bool = typer.Option(False, "--submit", help="발행까지(기본은 임시저장만)"),
+    blog_id: str = typer.Option(None, "--blog-id", help="블로그 ID(기본 .env)"),
+    headless: bool = typer.Option(False, help="브라우저 숨김"),
+):
+    """수집→초안(강조/구분선/인용구/스티커 마커 자동)→게시까지 한 번에 (엔드투엔드).
+
+    기본은 임시저장만(안전). --submit이면 발행. --dry-run이면 브라우저 없이 초안·플랜만 확인.
+    스티커는 즐겨찾기한 것만 쓰니 미리 stickers pull→review(★)→label 해두세요.
+    """
+    from autoblog.draft.style import StyleProfile
+    from autoblog.pipeline import run_pipeline
+
+    style = (
+        StyleProfile(
+            tone=tone, profile=open(style_file, encoding="utf-8").read() if style_file else None
+        )
+        if (tone or style_file)
+        else None
+    )
+    typer.echo("[1/3] 수집 + 초안 생성 중...", err=True)
+    result = run_pipeline(
+        memo,
+        place_url=place_url,
+        product=product,
+        photos=photo or None,
+        style=style,
+        emphasis=emphasis,
+        structure=structure,
+        stickers=stickers,
+        consistent_pack=consistent_pack,
+        model=model,
+    )
+    typer.echo(result.draft.text)
+    # 플랜 요약(어떤 블록으로 게시되는지)
+    typer.echo("\n[2/3] 게시 플랜:", err=True)
+    for b in result.plan.blocks:
+        if b.kind == "sticker":
+            desc = f"{b.sticker_pack}:{b.sticker_index}"
+        elif b.kind == "image":
+            desc = f"{b.image_label} {b.image_path}"
+        elif b.kind == "text":
+            desc = f"{len(b.text)}자" + (f", 강조 {len(b.emphases)}" if b.emphases else "")
+        else:
+            desc = f"variant {b.variant}"
+        typer.echo(f"  - {b.kind}: {desc}", err=True)
+
+    if dry_run:
+        typer.echo("\n(dry-run: 게시 생략)", err=True)
+        return
+
+    typer.echo(f"\n[3/3] 에디터 주입 중... ({'발행' if submit else '임시저장'})", err=True)
+    from autoblog.publish.editor import BlogPublisher
+
+    pub = BlogPublisher(blog_id=blog_id, headless=headless)
+    pub.start()
+    try:
+        if not pub.wait_for_login():
+            typer.echo("로그인 필요 — 시간 내 로그인하지 못했습니다.")
+            raise typer.Exit(1)
+        pub.publish(result.plan, category=category, save=True, submit=submit)
+    finally:
+        pub.close()
+    typer.echo("완료.", err=True)
+
+
+@app.command()
 def doctor():
     """환경 점검 — API 키/Ollama 설정 여부 + 검색 API 라이브 호출."""
     from autoblog.collect.place import ping_search_api
