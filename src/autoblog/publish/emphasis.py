@@ -188,26 +188,85 @@ _MARKUP_RE = re.compile(r"<<(\w+):(.*?)>>", re.DOTALL)
 
 
 def parse_emphasis_markup(text: str) -> tuple[str, list[EmphasisRequest]]:
-    """<<role:text>> 마킹 제거 → (깨끗한 본문, 강조 요청 목록)."""
+    """<<role:text>> 마킹 제거 → (깨끗한 본문, 강조 요청 목록).
+
+    각 요청의 start는 깨끗한 본문에서의 시작 위치(밀도 규칙용).
+    """
     requests: list[EmphasisRequest] = []
-
-    def repl(m: re.Match) -> str:
+    out: list[str] = []
+    idx = 0
+    clean_len = 0
+    for m in _MARKUP_RE.finditer(text):
+        prefix = text[idx : m.start()]
+        out.append(prefix)
+        clean_len += len(prefix)
         inner = m.group(2)
-        requests.append(EmphasisRequest(text=inner, role=m.group(1)))
-        return inner
+        requests.append(EmphasisRequest(text=inner, role=m.group(1), start=clean_len))
+        out.append(inner)
+        clean_len += len(inner)
+        idx = m.end()
+    out.append(text[idx:])
+    return "".join(out), requests
 
-    clean = _MARKUP_RE.sub(repl, text)
-    return clean, requests
+
+def apply_density(
+    clean_text: str, requests: list[EmphasisRequest], config: EmphasisConfig
+) -> list[EmphasisRequest]:
+    """밀도 규칙 적용 — 문단당 최대 개수 / 강조 간 최소 문장 간격으로 과한 강조 솎기.
+
+    위치(start)가 없는 요청은 그대로 유지한다. 본문 앞쪽(먼저 나온) 강조를 우선 유지.
+    """
+    max_p = config.max_per_paragraph
+    min_gap = config.min_sentence_gap
+    if not max_p and not min_gap:
+        return requests
+
+    # 문단 경계(빈 줄 기준), 문장 끝 위치(.ᐟ . ! ? 줄바꿈)
+    para_bounds: list[tuple[int, int]] = []
+    s = 0
+    for m in re.finditer(r"\n\s*\n", clean_text):
+        para_bounds.append((s, m.start()))
+        s = m.end()
+    para_bounds.append((s, len(clean_text)))
+    sent_ends = [m.end() for m in re.finditer(r"\.ᐟ|[.!?\n]", clean_text)]
+
+    def para_index(pos: int) -> int:
+        for i, (a, b) in enumerate(para_bounds):
+            if a <= pos <= b:
+                return i
+        return len(para_bounds) - 1
+
+    def sentence_index(pos: int) -> int:
+        return sum(1 for e in sent_ends if e <= pos)
+
+    per_para: dict[int, int] = {}
+    last_sent: dict[int, int] = {}
+    kept: list[EmphasisRequest] = []
+    for r in sorted(requests, key=lambda x: x.start if x.start >= 0 else 0):
+        if r.start < 0:
+            kept.append(r)
+            continue
+        pi, si = para_index(r.start), sentence_index(r.start)
+        if max_p and per_para.get(pi, 0) >= max_p:
+            continue
+        if min_gap and pi in last_sent and si - last_sent[pi] < min_gap:
+            continue
+        kept.append(r)
+        per_para[pi] = per_para.get(pi, 0) + 1
+        last_sent[pi] = si
+    return kept
 
 
 class EmphasisRequest(BaseModel):
     """초안에서 추출된 강조 대상 한 건.
 
     role: 'cycle'(핵심 문장·감상 → 순환 풀) 또는 고정 매핑 키('price','name' 등).
+    start: 깨끗한 본문에서의 시작 위치(밀도 규칙용). 미상이면 -1.
     """
 
     text: str
     role: str = "cycle"
+    start: int = -1
 
 
 class StyledSpan(BaseModel):

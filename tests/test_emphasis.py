@@ -100,3 +100,37 @@ def test_load_emphasis_config_from_file():
     cfg = load_emphasis_config()  # config/emphasis.yaml
     assert cfg.cycling_pool  # 비어있지 않음
     assert "price" in cfg.fixed_map and "name" in cfg.fixed_map
+
+
+def test_parse_markup_records_position():
+    clean, reqs = parse_emphasis_markup("앞 <<cycle:강조>> 뒤")
+    assert clean == "앞 강조 뒤"
+    assert reqs[0].start == clean.index("강조")  # 깨끗한 본문 기준 위치
+
+
+def test_apply_density_max_per_paragraph():
+    from autoblog.publish.emphasis import EmphasisRequest, apply_density
+
+    # 한 문단에 강조 3개, max 2 → 앞의 2개만 유지
+    clean = "첫째 강조A. 둘째 강조B. 셋째 강조C."
+    reqs = [
+        EmphasisRequest(text="강조A", role="cycle", start=clean.index("강조A")),
+        EmphasisRequest(text="강조B", role="cycle", start=clean.index("강조B")),
+        EmphasisRequest(text="강조C", role="cycle", start=clean.index("강조C")),
+    ]
+    cfg = EmphasisConfig(max_per_paragraph=2)
+    kept = apply_density(clean, reqs, cfg)
+    assert [r.text for r in kept] == ["강조A", "강조B"]
+
+
+def test_apply_density_separate_paragraphs_ok():
+    from autoblog.publish.emphasis import EmphasisRequest, apply_density
+
+    clean = "문단1 강조A.\n\n문단2 강조B."
+    reqs = [
+        EmphasisRequest(text="강조A", role="cycle", start=clean.index("강조A")),
+        EmphasisRequest(text="강조B", role="cycle", start=clean.index("강조B")),
+    ]
+    # 문단당 1개 제한이어도 서로 다른 문단이라 둘 다 유지
+    kept = apply_density(clean, reqs, EmphasisConfig(max_per_paragraph=1))
+    assert len(kept) == 2

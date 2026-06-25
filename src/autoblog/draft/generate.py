@@ -17,6 +17,7 @@ from autoblog.publish.emphasis import (
     EmphasisConfig,
     EmphasisStyle,
     StyledSpan,
+    apply_density,
     assign_emphasis,
     load_emphasis_config,
     parse_emphasis_markup,
@@ -68,6 +69,7 @@ def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
         text, requests = parse_emphasis_markup(text)
         presets = req.power_shortcuts or DEFAULT_STYLES
         config = req.emphasis_config or load_emphasis_config()
+        requests = apply_density(text, requests, config)  # 밀도 규칙으로 과한 강조 솎기
         emphases = assign_emphasis(requests, presets, config)
         if req.postprocess:  # 강조 텍스트도 본문과 같은 문자 규칙으로 정규화(매칭 유지)
             for span in emphases:
