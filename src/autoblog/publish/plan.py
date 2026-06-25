@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, Field
 
 from autoblog.collect.fact_card import PhotoItem
@@ -13,14 +15,19 @@ from autoblog.draft.generate import DraftResult
 from autoblog.publish.emphasis import StyledSpan
 
 PHOTO_MARKER = "[사진]"
+QUOTE_CLOSE = "[/인용구]"
+# [구분선] / [구분선:2], [인용구] / [인용구:3] — 종류(variant) 선택 가능
+_DIVIDER_RE = re.compile(r"^\[구분선(?::(\d+))?\]$")
+_QUOTE_OPEN_RE = re.compile(r"^\[인용구(?::(\d+))?\]$")
 
 
 class PublishBlock(BaseModel):
-    kind: str  # "text" | "image"
+    kind: str  # "text" | "image" | "divider" | "quote"
     text: str = ""
     emphases: list[StyledSpan] = Field(default_factory=list)
     image_path: str | None = None
     image_label: str = ""
+    variant: int = 1  # 구분선/인용구 종류(1=기본)
 
 
 class PublishPlan(BaseModel):
@@ -31,7 +38,14 @@ class PublishPlan(BaseModel):
 def build_publish_plan(
     draft: DraftResult, photos: list[PhotoItem] | None = None
 ) -> PublishPlan:
-    """초안 → 게시 플랜. 첫 비어있지 않은 줄을 제목, 나머지를 본문으로 본다."""
+    """초안 → 게시 플랜 (줄 단위 마커 파싱).
+
+    첫 비어있지 않은 줄=제목. 본문에서 마커를 블록으로 분리:
+    - [사진]      → 이미지(photos 순서대로)
+    - [구분선]    → 구분선
+    - [인용구]…[/인용구] → 인용 블록
+    그 외 줄은 텍스트 문단으로 누적. 강조 span은 해당 텍스트 블록에 배분.
+    """
     photos = list(photos or [])
     lines = draft.text.split("\n")
 
@@ -42,23 +56,56 @@ def build_publish_plan(
             title = line.strip()
             body_start = i + 1
             break
-    body = "\n".join(lines[body_start:]).strip()
+    body_lines = lines[body_start:]
 
-    segments = body.split(PHOTO_MARKER)
     blocks: list[PublishBlock] = []
+    text_buf: list[str] = []
+    quote_buf: list[str] = []
+    in_quote = False
+    quote_variant = 1
     photo_idx = 0
-    for i, seg in enumerate(segments):
-        seg = seg.strip("\n")
-        if seg.strip():
-            spans = [e for e in draft.emphases if e.text and e.text in seg]
-            blocks.append(PublishBlock(kind="text", text=seg, emphases=spans))
-        # 세그먼트 사이마다 사진 한 장 삽입
-        if i < len(segments) - 1 and photo_idx < len(photos):
-            ph = photos[photo_idx]
-            blocks.append(
-                PublishBlock(kind="image", image_path=ph.path, image_label=ph.label)
-            )
-            photo_idx += 1
+
+    def flush_text():
+        text = "\n".join(text_buf).strip()
+        text_buf.clear()
+        if text:
+            spans = [e for e in draft.emphases if e.text and e.text in text]
+            blocks.append(PublishBlock(kind="text", text=text, emphases=spans))
+
+    for line in body_lines:
+        s = line.strip()
+        if in_quote:
+            if s == QUOTE_CLOSE:
+                in_quote = False
+                qtext = "\n".join(quote_buf).strip()
+                quote_buf.clear()
+                if qtext:
+                    blocks.append(PublishBlock(kind="quote", text=qtext, variant=quote_variant))
+            else:
+                quote_buf.append(line)
+            continue
+        div_m = _DIVIDER_RE.match(s)
+        quote_m = _QUOTE_OPEN_RE.match(s)
+        if div_m:
+            flush_text()
+            blocks.append(PublishBlock(kind="divider", variant=int(div_m.group(1) or 1)))
+        elif quote_m:
+            flush_text()
+            in_quote = True
+            quote_variant = int(quote_m.group(1) or 1)
+        elif s == PHOTO_MARKER:
+            flush_text()
+            if photo_idx < len(photos):
+                ph = photos[photo_idx]
+                blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.label))
+                photo_idx += 1
+        else:
+            text_buf.append(line)
+    flush_text()
+    if in_quote and quote_buf:  # 닫힘 누락 방어
+        blocks.append(
+            PublishBlock(kind="quote", text="\n".join(quote_buf).strip(), variant=quote_variant)
+        )
 
     # [사진] 마커보다 사진이 많으면 본문 끝에 남은 사진 첨부
     for ph in photos[photo_idx:]:

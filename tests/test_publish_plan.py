@@ -37,6 +37,27 @@ def test_build_plan_extra_photos_appended():
     assert [b.image_path for b in image_blocks] == ["a.jpg", "b.jpg"]
 
 
+def test_build_plan_divider_and_quote():
+    draft = DraftResult(text=(
+        "제목\n\n첫 문단이에요.\n[구분선]\n[인용구:3]\n인상 깊은 한마디\n[/인용구]\n마지막 문단."
+    ))
+    plan = build_publish_plan(draft)
+    kinds = [(b.kind, b.variant) for b in plan.blocks]
+    assert ("divider", 1) in kinds
+    quote = next(b for b in plan.blocks if b.kind == "quote")
+    assert quote.variant == 3
+    assert quote.text == "인상 깊은 한마디"
+    # 텍스트 블록은 구분선/인용구 기준으로 분리
+    texts = [b.text for b in plan.blocks if b.kind == "text"]
+    assert "첫 문단이에요." in texts and "마지막 문단." in texts
+
+
+def test_build_plan_divider_variant():
+    plan = build_publish_plan(DraftResult(text="제목\n\n글\n[구분선:5]\n끝"))
+    div = next(b for b in plan.blocks if b.kind == "divider")
+    assert div.variant == 5
+
+
 def test_selectors_ready():
     # 라이브 분석으로 핵심 셀렉터(제목/본문/저장/발행) 확정됨
     assert selectors_ready() is True

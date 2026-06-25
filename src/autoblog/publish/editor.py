@@ -151,6 +151,10 @@ class BlogPublisher:
                 emphases.extend(block.emphases)
             elif block.kind == "image" and block.image_path:
                 self._insert_image(block.image_path)
+            elif block.kind == "divider":
+                self._insert_divider(block.variant)
+            elif block.kind == "quote":
+                self._insert_quote(block.text, block.variant)
         # 본문 입력을 모두 마친 뒤 강조 서식 적용(커서 간섭 방지)
         for span in emphases:
             try:
@@ -282,6 +286,51 @@ class BlogPublisher:
         page.wait_for_timeout(200)
         page.click(SMART_EDITOR["color_apply_button"])
         page.wait_for_timeout(350)
+
+    def _insert_divider(self, variant: int = 1):
+        """구분선 삽입. variant>1이면 종류 선택 드롭다운에서 N번째 선택."""
+        if variant and variant > 1:
+            self._pick_insert_variant("horizontal-line", variant)
+        else:
+            self._page.click(SMART_EDITOR["divider_button"])
+        self._page.wait_for_timeout(500)
+
+    def _insert_quote(self, text: str, variant: int = 1):
+        """인용구 삽입 후 본문 텍스트 입력. variant>1이면 종류 선택."""
+        if variant and variant > 1:
+            self._pick_insert_variant("quotation", variant)
+        else:
+            self._page.click(SMART_EDITOR["quote_button"])
+        self._page.wait_for_timeout(500)
+        self._page.keyboard.type(text, delay=4)
+        self._page.wait_for_timeout(200)
+        # 인용 블록 탈출: '본문 추가'로 블록 뒤에 새 문단을 만들고 거기로 포커스
+        try:
+            self._page.click(SMART_EDITOR["canvas_bottom_button"])
+            self._page.wait_for_timeout(300)
+        except Exception:
+            self._page.keyboard.press("ArrowDown")
+
+    def _pick_insert_variant(self, name: str, n: int):
+        """삽입 종류 드롭다운 열고 N번째 옵션 클릭(구분선/인용구 종류 선택)."""
+        page = self._page
+        item = (
+            "li.se-toolbar-item-insert-horizontal-line"
+            if name == "horizontal-line"
+            else "li.se-toolbar-item-insert-quotation"
+        )
+        page.evaluate(
+            "(sel)=>{const b=document.querySelector(sel+' button.se-document-toolbar-select-option-button');if(b)b.click();}",
+            item,
+        )
+        page.wait_for_timeout(500)
+        page.evaluate(
+            """(args)=>{const {name,n}=args;
+              const opts=[...document.querySelectorAll('button[data-name='+JSON.stringify(name)+'][data-role=\\"option\\"]')].filter(e=>e.offsetParent);
+              if(opts[n-1]) opts[n-1].click();}""",
+            {"name": name, "n": n},
+        )
+        page.wait_for_timeout(500)
 
     def _insert_image(self, path: str):
         """이미지 툴바 버튼 → 파일 다이얼로그로 업로드."""

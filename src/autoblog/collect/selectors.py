@@ -31,6 +31,9 @@ SMART_EDITOR = {
     "content_component": ".se-component.se-text",
     "image_upload_button": ".se-toolbar-item-image button",  # 사진 추가 버튼
     "image_file_input": "input[type=file]",  # 파일 input
+    "divider_button": "button.se-insert-horizontal-line-default-toolbar-button",  # 구분선
+    "quote_button": "button.se-insert-quotation-default-toolbar-button",  # 인용구
+    "canvas_bottom_button": "button.se-canvas-bottom-button",  # 본문 끝에 새 문단(블록 탈출용)
     "save_button": 'button[data-click-area="tpb.save"]',  # 임시저장
     "publish_button": 'button[data-click-area="tpb.publish"]',  # 발행(설정 레이어 열기)
     "publish_confirm": 'button[data-click-area="tpb*i.publish"]',  # 레이어 내 최종 발행
