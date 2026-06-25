@@ -33,5 +33,22 @@ def test_extract_and_parse_fixture():
     assert names["오늘의초밥(11p)"] == "15,900원"
 
 
+def test_business_hours_parsing():
+    html = (FIXTURE.parent / "place_detail_hours.html").read_text(encoding="utf-8")
+    state = extract_apollo_state(html)
+    facts = parse_place_detail(state, "32056494")
+    assert facts is not None
+    # 연속 동일 시간 요일 묶기 + 휴무 표기
+    assert facts.business_hours == "목~화 10:30~21:00 (L.O. 20:30) / 수 정기휴무 (매주 수요일)"
+
+
+def test_business_hours_none_when_absent():
+    # hours 픽스처가 아닌 기본 픽스처에는 ROOT_QUERY 영업시간이 없음
+    state = extract_apollo_state(FIXTURE.read_text(encoding="utf-8"))
+    facts = parse_place_detail(state, PLACE_ID)
+    assert facts is not None
+    assert facts.business_hours is None
+
+
 def test_extract_empty_when_absent():
     assert extract_apollo_state("<html><body>no state</body></html>") == {}

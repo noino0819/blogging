@@ -59,6 +59,73 @@ def extract_apollo_state(html: str) -> dict:
     return {}
 
 
+def _find_new_business_hours(state: dict) -> list | None:
+    """ROOT_QUERY.placeDetail(...).newBusinessHours(...) 배열을 찾는다.
+
+    Apollo 키는 인자 JSON이 박혀 동적이라 prefix로 매칭한다.
+    """
+    rq = state.get("ROOT_QUERY")
+    if not isinstance(rq, dict):
+        return None
+    pd = next((v for k, v in rq.items() if k.startswith("placeDetail(")), None)
+    if not isinstance(pd, dict):
+        return None
+    nbh = next((v for k, v in pd.items() if k.startswith("newBusinessHours")), None)
+    return nbh if isinstance(nbh, list) else None
+
+
+def _format_business_hours(state: dict) -> str | None:
+    """요일별 영업시간 → 읽기 좋은 한 줄.
+
+    예: '목~화 10:30~21:00 (L.O. 20:30) / 수 정기휴무 (매주 수요일)'
+    동일 시간대 연속 요일은 'A~B'로 묶는다.
+    """
+    nbh = _find_new_business_hours(state)
+    if not nbh:
+        return None
+    days = (nbh[0] or {}).get("businessHours") or []
+    if not days:
+        return None
+
+    def signature(d: dict) -> tuple:
+        bh = d.get("businessHours") or {}
+        start, end = bh.get("start"), bh.get("end")
+        if not start or not end:
+            return ("CLOSED", d.get("description") or "휴무")
+        lo = next((t.get("time") for t in (d.get("lastOrderTimes") or []) if t.get("time")), None)
+        breaks = tuple(
+            (b.get("start"), b.get("end")) for b in (d.get("breakHours") or [])
+        )
+        return ("OPEN", start, end, lo, breaks)
+
+    # 연속 동일 시그니처 요일 묶기
+    groups: list[tuple[list[str], tuple]] = []
+    for d in days:
+        day = d.get("day")
+        if not day:
+            continue
+        sig = signature(d)
+        if groups and groups[-1][1] == sig:
+            groups[-1][0].append(day)
+        else:
+            groups.append(([day], sig))
+
+    parts: list[str] = []
+    for day_list, sig in groups:
+        label = day_list[0] if len(day_list) == 1 else f"{day_list[0]}~{day_list[-1]}"
+        if sig[0] == "CLOSED":
+            parts.append(f"{label} {sig[1]}")
+            continue
+        _, start, end, lo, breaks = sig
+        seg = f"{label} {start}~{end}"
+        if breaks:
+            seg += " (브레이크 " + ", ".join(f"{s}~{e}" for s, e in breaks) + ")"
+        if lo:
+            seg += f" (L.O. {lo})"
+        parts.append(seg)
+    return " / ".join(parts) or None
+
+
 def _won(price) -> str | None:
     """가격 정수/문자 → '15,900원' 형식."""
     if price is None or price == "":
@@ -98,9 +165,8 @@ def parse_place_detail(state: dict, place_id: str) -> PlaceFacts | None:
     ]
 
     phone = base.get("phone") or base.get("virtualPhone")
-    hours = base.get("openingHours")  # 종종 null — best-effort
-    if isinstance(hours, list):
-        hours = " / ".join(str(h) for h in hours) or None
+    # 영업시간은 base.openingHours가 종종 null이라 ROOT_QUERY.newBusinessHours에서 조립
+    hours = _format_business_hours(state)
 
     return PlaceFacts(
         name=base.get("name", ""),
@@ -110,7 +176,7 @@ def parse_place_detail(state: dict, place_id: str) -> PlaceFacts | None:
         phone=phone,
         lat=lat,
         lng=lng,
-        business_hours=hours if isinstance(hours, str) else None,
+        business_hours=hours,
         rating=rating,
         menus=menus,
         place_url=f"https://m.place.naver.com/restaurant/{place_id}/home",
