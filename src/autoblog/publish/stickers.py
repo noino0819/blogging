@@ -181,36 +181,58 @@ def save_sticker_catalog(catalog: StickerCatalog, path: Path | None = None) -> N
 
 
 # --- 비전 자동 라벨링 ---
+# 주의: 프롬프트에 상황 예시 목록을 넣으면 7b 모델이 내용 무시하고 그 예시를 그대로 베낀다.
+# → 예시 없이 "글자 의미·표정에서 직접 유도"로 지시해야 내용 맞는 태그가 나온다(라이브 검증).
+# 그래도 로컬 7b는 글자 환각·감정 오판이 잦아 자동 라벨은 초안일 뿐, config/stickers.yaml 검수가 정답.
 STICKER_LABEL_PROMPT = (
-    "이 이미지는 블로그용 스티커(이모티콘) 한 개입니다. "
-    "어떤 감정/상황에 쓰면 좋을지 한국어 태그로 JSON만 답하세요. "
-    '형식: {"tags":["기쁨","좋아요"],"text":"스티커에 적힌 문구(있으면)"}\n'
-    "tags는 2~4개, 감정(기쁨/슬픔/놀람/사랑/화남 등)이나 상황(인사/감사/맛있음/추천/질문/마무리 등) "
-    "위주로 짧게. 스티커에 글자가 있으면 그 의미도 반영하세요."
+    "이미지는 블로그용 스티커(이모티콘) 한 개입니다. JSON만 답하세요.\n"
+    '형식: {"text":"스티커에 적힌 한글을 정확히(없으면 빈칸)","mood":"한 단어 감정","tags":["상황"]}\n'
+    "글자를 먼저 읽고, 그 글자의 실제 뜻과 캐릭터 표정에서 감정·상황을 직접 끌어내세요. "
+    "주어진 보기에서 고르지 말고 내용에 맞는 한국어 단어를 스스로 쓰세요. "
+    "글자가 힘듦·피곤·짜증이면 기쁨이라 하지 마세요. tags는 2~3개."
 )
+
+# 스티커 crop이 ~100px로 작아 한글 OCR이 뭉개짐 → 업스케일 후 비전에 전달(정확도 크게 향상).
+_STICKER_UPSCALE = 3
+
+
+def _upscaled_png(path: str, factor: int = _STICKER_UPSCALE) -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    im = Image.open(path).convert("RGB")
+    im = im.resize((im.width * factor, im.height * factor), Image.LANCZOS)
+    buf = BytesIO()
+    im.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def label_sticker(image_path: str, model: str | None = None) -> list[str]:
-    """스티커 이미지 1개 → 감정/상황 태그 목록(비전 모델)."""
+    """스티커 이미지 1개 → 감정/상황 태그 목록(비전 모델).
+
+    작은 스티커는 업스케일해 한글 OCR 정확도를 높이고, mood+상황 태그를 합쳐 반환.
+    """
     from autoblog.vision import _ollama_vision, default_vision_model
 
     model = model or default_vision_model()
-    data = Path(image_path).read_bytes()
-    content = _ollama_vision(STICKER_LABEL_PROMPT, [data], model)
+    content = _ollama_vision(STICKER_LABEL_PROMPT, [_upscaled_png(image_path)], model)
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
         return []
-    tags = parsed.get("tags") if isinstance(parsed, dict) else None
+    if not isinstance(parsed, dict):
+        return []
     out: list[str] = []
+    mood = parsed.get("mood")
+    if isinstance(mood, str) and mood.strip():
+        out.append(mood.strip())
+    tags = parsed.get("tags")
     if isinstance(tags, list):
         for t in tags:
             t = str(t).strip()
             if t and t not in out:
                 out.append(t)
-    text = parsed.get("text") if isinstance(parsed, dict) else None
-    if isinstance(text, str) and text.strip() and text.strip() not in out:
-        out.append(text.strip())
     return out
 
 
