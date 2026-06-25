@@ -50,3 +50,6 @@ data/uploads/
 
 # 유저 블로그 카테고리 캐시
 config/categories.json
+
+# 유저 글쓰기 설정(규칙·서식칩·톤)
+config/ui_prefs.json
