@@ -48,6 +48,62 @@ def collect_card(
     return card
 
 
+def build_export_prompt(
+    memo: str,
+    *,
+    card: FactCard | None = None,
+    place_url: str | None = None,
+    product: str | None = None,
+    photos: list[str] | None = None,
+    style: StyleProfile | None = None,
+    rules: CommonRules | None = None,
+    base_prompt: str | None = None,
+    emphasis: bool = False,
+    structure: bool = False,
+    stickers: bool = False,
+    sticker_catalog: StickerCatalog | None = None,
+) -> str:
+    """수집(선택)→프롬프트 조립까지만 하고, 다른 챗봇에 붙여넣을 단일 텍스트로 반환.
+
+    run_pipeline과 동일한 지시문(강조/구조/스티커/규칙)을 넣되 LLM은 호출하지 않는다.
+    system을 지시문으로, user를 입력 자료로 묶어 그대로 복사-붙여넣기 가능하게 만든다.
+    """
+    from autoblog.draft.generate import build_prompt
+
+    if card is None:
+        try:
+            card = collect_card(place_url, product, photos)
+        except Exception:  # noqa: BLE001 — 수집 실패해도 내보내기는 메모만으로 진행
+            card = collect_card(photos=photos) if photos else FactCard(type=CardType.place)
+    labels: list[str] = []
+    if stickers:
+        if sticker_catalog is None:
+            from autoblog.publish.stickers import load_sticker_catalog
+
+            sticker_catalog = load_sticker_catalog()
+        labels = sticker_catalog.labels()
+    req = DraftRequest(
+        fact_card=card,
+        experience_memo=memo,
+        base_prompt=base_prompt,
+        style=style,
+        rules=rules,
+        emphasis=emphasis,
+        structure=structure,
+        sticker_labels=labels,
+    )
+    system, user = build_prompt(req)
+    return (
+        "# 지시문 (이 규칙대로 블로그 글을 써줘)\n\n"
+        f"{system}\n\n"
+        "---\n\n"
+        "# 입력 자료\n\n"
+        f"{user}\n\n"
+        "---\n\n"
+        "위 지시문을 지켜서 네이버 블로그 글 본문을 완성해줘."
+    )
+
+
 def run_pipeline(
     memo: str,
     *,

@@ -91,6 +91,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .toast.err{background:#e5484d}.toast.ok{background:#1f9d57}.toast.info{background:#3b82c4}
  .toast .ic{font-size:18px;line-height:1.2}.toast .x{margin-left:10px;opacity:.7;font-weight:400}
  @keyframes tin{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+ /* 프롬프트 내보내기 모달 */
+ .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:24px}
+ .modalbox{background:#fff;border-radius:16px;width:min(780px,94vw);max-height:88vh;display:flex;flex-direction:column;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+ .modalhd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:15.5px;font-weight:700}
+ .mx{border:0;background:#eef0f2;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px}
+ .modalbox textarea{flex:1;min-height:360px;margin-top:10px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.55;background:#fafbfc}
+ .modalft{margin-top:14px;display:flex;gap:10px}
  /* photo grid */
  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;max-height:230px;overflow:auto;padding:2px}
  .pcell{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;cursor:pointer;border:2px solid transparent}
@@ -176,6 +183,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .logpre{background:#f6f8fa;border:1px solid var(--line);border-radius:9px;padding:12px;font-size:11.5px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow:auto;font-family:ui-monospace,Menlo,monospace;margin:4px 0 8px}
  .logsum{cursor:pointer;font-size:12px;font-weight:600;padding:6px 0;color:#4b5563}
 </style></head><body><div id=toasts></div>
+<div id=pmodal class=modal style="display:none"><div class=modalbox>
+  <div class=modalhd><span>📋 다른 챗봇에 붙여넣을 프롬프트</span><button class=mx id=pmclose>✕</button></div>
+  <div class=muted>내 베이스 프롬프트 + 켜둔 서식/규칙 지시문 + 입력 자료를 합친 전체 프롬프트예요. 복사해서 ChatGPT·Claude 등에 그대로 붙여넣으면 됩니다.</div>
+  <textarea id=ptext readonly></textarea>
+  <div class=modalft><button class=btn id=pcopy style="flex:1">복사하기</button><button class="btn ghost" id=pmclose2 style="flex:0 0 120px">닫기</button></div>
+</div></div>
 <aside class=side>
   <div class=brand>🖋️ 블로그 자동작성</div>
   <div class="nav on" data-view=write><span class=ic>✍️</span> 글쓰기</div>
@@ -195,11 +208,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
         <div class=card>
           <label class=f>수집 <span class=muted>(선택) — 넣으면 정보 자동 수집</span></label>
           <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력">
+          <div class=muted style="margin-top:8px">자동 인식 <span class=muted>(틀리면 눌러서 바꾸기)</span></div>
           <div class=kindseg id=kindseg>
             <button data-k=place class=on><span class=em>🍜</span>맛집</button>
             <button data-k=product><span class=em>🛍️</span>상품</button>
           </div>
-          <div class=muted id=srchint style="margin-top:6px">URL을 넣으면 자동으로 <b>맛집</b>으로 맞춰져요. 직접 골라도 돼요.</div>
+          <div class=muted id=srchint style="margin-top:6px">링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
           <label class=f>경험 메모 <span class=muted>(글의 중심)</span></label>
           <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>사진 <span class=muted id=psel></span></label>
@@ -214,6 +228,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <span class="chip on" data-k=stickers><span class=dot></span>스티커</span>
           </div>
           <div style="margin-top:18px"><button class=btn id=gen>초안 생성</button></div>
+          <div style="margin-top:9px"><button class="btn ghost" id=export>📋 내 프롬프트 합쳐서 복사 <span class=muted>(다른 챗봇에 붙여넣기)</span></button></div>
           <div id=status></div>
         </div>
         <div class=card style="margin-top:16px">
@@ -297,8 +312,11 @@ function toast(msg,kind='err',ms){if(ms==null)ms=kind==='ok'?3500:6000;
   t.onclick=()=>t.remove();$('#toasts').appendChild(t);setTimeout(()=>t.remove(),ms);}
 // 수집 종류: 'place'(맛집·기본) | 'product'(상품). 입력으로 자동 추정하되 직접 고르면 고정.
 let SRCKIND='place', KINDMANUAL=false;
-function autoKind(v){v=(v||'').trim(); if(!v)return 'place';
-  return (/^https?:\/\//.test(v)||/naver\.me|place/.test(v))?'place':'product';}
+function autoKind(v){v=(v||'').trim().toLowerCase(); if(!v)return 'place';
+  // 쇼핑 링크 → 상품, 그 외 URL/플레이스 → 맛집, 그냥 글자 → 상품(검색어)
+  if(/smartstore\.|shopping\.naver|brand\.naver|coupang\.|11st\.|gmarket\.|ssg\.com/.test(v))return 'product';
+  if(/^https?:\/\//.test(v)||/naver\.me|place|map\.naver/.test(v))return 'place';
+  return 'product';}
 function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
   $$('#kindseg button').forEach(b=>{b.classList.toggle('on',b.dataset.k===k);
     b.classList.toggle('auto',!KINDMANUAL&&b.dataset.k===k);});
@@ -400,6 +418,25 @@ $('#gen').onclick=async()=>{
     if(d.debug)showLog(d.debug);
   }catch(e){genDone(false); st('오류: '+e); toast('초안 생성 오류: '+e,'err');}finally{$('#gen').disabled=false;}
 };
+// 프롬프트 내보내기: 내 프롬프트+지시문+입력자료 합쳐서 모달에 보여주고 복사
+$('#export').onclick=async()=>{
+  if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
+  const btn=$('#export'), old=btn.innerHTML; btn.disabled=true; btn.textContent='프롬프트 만드는 중…';
+  try{
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,rules:RULES};
+    const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){toast('프롬프트 생성 실패: '+(d.error||''),'err');return;}
+    $('#ptext').value=d.prompt; $('#pmodal').style.display='flex';
+  }catch(e){toast('프롬프트 오류: '+e,'err');}finally{btn.disabled=false;btn.innerHTML=old;}
+};
+$('#pcopy').onclick=async()=>{const t=$('#ptext');
+  try{await navigator.clipboard.writeText(t.value);}catch(e){t.select();document.execCommand('copy');}
+  toast('복사했어요! 다른 챗봇에 붙여넣으세요.','ok');};
+function closePM(){$('#pmodal').style.display='none';}
+$('#pmclose').onclick=closePM; $('#pmclose2').onclick=closePM;
+$('#pmodal').onclick=e=>{if(e.target===$('#pmodal'))closePM();};
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function renderText(b){let h=esc(b.text);
   (b.emphases||[]).forEach(e=>{const stl=(e.text_color?`color:${e.text_color};`:'')+(e.background_color?`background:${e.background_color};`:'');
@@ -543,35 +580,43 @@ function renderModelInfo(p){if(!p)return;
     <div class=setrow><div><div class=t>비전 (사진/상품 분석)</div><div class=d>${p.vision} <span class=muted>· 로컬</span></div></div></div>
     ${p.note?`<div class=muted style="margin:8px 0 14px">💡 ${p.note}</div>`:''}`;
   if(isApi){
-    h+=`<div class=sub-h>Claude API 키</div>
-      <div class=muted style="margin-bottom:8px">지시를 정확히 따라 강조·구분선·인용구·스티커 마커가 안정적으로 나옵니다(토큰당 과금). 비전은 로컬 유지.</div>
-      <div style="display:flex;gap:8px">
-        <input type=password id=apikey placeholder="${HAS_API_KEY?'키 저장됨 ✓ (다시 입력해 교체)':'sk-ant-...'}" style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
-        <button class=btn id=apikeysave style="width:auto;padding:9px 16px">저장</button>
-      </div>
-      <div class=muted id=apikeystat style="margin-top:6px">키는 <b>console.anthropic.com</b>에서 발급. .env에 저장됩니다.</div>`;
+    h+=`<div class=muted style="margin-bottom:6px">✅ 이 프리셋은 <b>Claude API</b>를 씁니다. 아래에서 API 키를 등록하면 바로 적용돼요(비전은 로컬 유지).</div>`;
   }else{
     h+=`<div class=sub-h>설치 방법 — 터미널에 입력</div>
       <pre class=mcmd>ollama pull ${p.text}\nollama pull ${p.vision}</pre>
       <div class=muted style="margin-top:8px">Ollama가 없으면 <b>ollama.com</b>에서 먼저 설치 → 위 명령으로 모델 다운로드. 한 번만 받으면 계속 씁니다.</div>`;
   }
   $('#minfo').innerHTML=h;
-  if(isApi){$('#apikeysave').onclick=async()=>{const v=$('#apikey').value.trim(); if(!v){$('#apikeystat').textContent='키를 입력하세요';return;}
-    $('#apikeysave').disabled=true; $('#apikeystat').textContent='저장 중…';
-    try{const r=await fetch('/api/anthropic-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:v})});
-      HAS_API_KEY=r.ok; $('#apikeystat').textContent=r.ok?'저장됨 ✓ 이제 Claude로 생성됩니다':'저장 실패'; $('#apikey').value='';
-    }catch(e){$('#apikeystat').textContent='오류';}finally{$('#apikeysave').disabled=false;}};}
 }
+function refreshApiKeyUI(){
+  $('#apikey').placeholder=HAS_API_KEY?'키 저장됨 ✓ (다시 입력해 교체)':'sk-ant-...';
+  $('#apikeystat').innerHTML=HAS_API_KEY
+    ?'저장됨 ✓ · 프리셋에서 <b>Claude API</b>를 고르면 Claude로 생성됩니다.'
+    :'키는 <b>console.anthropic.com</b> › API Keys에서 발급. .env에 저장됩니다.';}
 async function loadModels(){try{const m=await (await fetch('/api/models')).json();
   HAS_API_KEY=!!m.has_api_key;
   const opts=m.presets.map(p=>`<option value="${p.key}"${p.key===m.current?' selected':''}>${p.label}</option>`).join('');
   $('#models').innerHTML=`<h3>🧠 모델 <span class=muted style="font-weight:400">— 내 컴퓨터(GPU)에 맞게</span></h3>
     <div class=setrow><div class=t>프리셋</div><select id=mpreset style="width:auto;min-width:260px;border:1px solid #d6dade;border-radius:8px;padding:8px">${opts}</select></div>
-    <div id=minfo></div>`;
+    <div id=minfo></div>
+    <div class=sub-h style="margin-top:20px">🔑 Claude API 키 <span class=muted style="font-weight:400">— (선택) 로컬 모델이 마커를 잘 못 넣으면 정확함</span></div>
+    <div class=muted style="margin-bottom:8px">키를 등록해두고, 위 <b>프리셋</b>에서 "Claude API"를 고르면 초안을 Claude로 생성합니다(토큰당 과금).</div>
+    <div style="display:flex;gap:8px">
+      <input type=password id=apikey placeholder="sk-ant-..." style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
+      <button class=btn id=apikeysave style="width:auto;padding:9px 16px">저장</button>
+    </div>
+    <div class=muted id=apikeystat style="margin-top:6px"></div>`;
   $('#mpreset').onchange=async()=>{const k=$('#mpreset').value;
     await fetch('/api/models',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({preset:k})});
     renderModelInfo(m.presets.find(p=>p.key===k));};
+  $('#apikeysave').onclick=async()=>{const v=$('#apikey').value.trim(); if(!v){toast('키를 입력하세요.','info');return;}
+    $('#apikeysave').disabled=true; $('#apikeystat').textContent='저장 중…';
+    try{const r=await fetch('/api/anthropic-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:v})});
+      HAS_API_KEY=r.ok; $('#apikey').value=''; refreshApiKeyUI();
+      if(r.ok)toast('API 키 저장됨 ✓ 프리셋에서 "Claude API"를 고르면 적용돼요.','ok'); else toast('API 키 저장 실패','err');
+    }catch(e){toast('API 키 오류: '+e,'err');}finally{$('#apikeysave').disabled=false;}};
   renderModelInfo(m.presets.find(p=>p.key===m.current));
+  refreshApiKeyUI();
 }catch(e){$('#models').innerHTML='<div class=muted>로드 실패</div>';}}
 
 async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).json();
@@ -748,6 +793,8 @@ def _make_handler(state: dict):
             try:
                 if path == "/api/generate":
                     self._generate(self._json_body())
+                elif path == "/api/export-prompt":
+                    self._export_prompt(self._json_body())
                 elif path == "/api/publish":
                     self._publish(self._json_body())
                 elif path == "/api/favorite":
@@ -820,19 +867,45 @@ def _make_handler(state: dict):
                 except Exception:  # noqa: BLE001
                     pass
 
+        @staticmethod
+        def _resolve_src(body):
+            """body의 srcval+kind → (srcval, src) — generate/export 공통 종류 판정."""
+            srcval = (body.get("srcval") or "").strip()
+            kind = (body.get("kind") or "").strip()
+            if srcval and kind in ("place", "product"):
+                return srcval, kind
+            is_url = srcval.startswith("http") or "naver.me" in srcval or "place" in srcval
+            return srcval, ("place" if (srcval and is_url) else ("product" if srcval else None))
+
+        def _export_prompt(self, body):
+            """수집+내 프롬프트+지시문을 한 텍스트로 합쳐 반환(다른 챗봇에 붙여넣기용)."""
+            from autoblog.draft.rules import CommonRules
+            from autoblog.draft.style import StyleProfile
+            from autoblog.pipeline import build_export_prompt
+
+            srcval, src = self._resolve_src(body)
+            photos = [p for p in (body.get("photos") or []) if p]
+            tone = (body.get("tone") or "").strip() or None
+            rules = CommonRules(**body["rules"]) if body.get("rules") else None
+            text = build_export_prompt(
+                body.get("memo", ""),
+                place_url=srcval if src == "place" else None,
+                product=srcval if src == "product" else None,
+                photos=photos or None,
+                style=StyleProfile(tone=tone) if tone else None,
+                rules=rules,
+                emphasis=bool(body.get("emphasis")),
+                structure=bool(body.get("structure")),
+                stickers=bool(body.get("stickers")),
+            )
+            self._send(200, json.dumps({"prompt": text}).encode())
+
         def _generate(self, body):
             from autoblog.draft.rules import CommonRules
             from autoblog.draft.style import StyleProfile
             from autoblog.pipeline import run_pipeline
 
-            srcval = (body.get("srcval") or "").strip()
-            # 종류: UI에서 받은 kind(place/product) 우선, 없으면 자동 인식(URL→맛집, 글자→상품)
-            kind = (body.get("kind") or "").strip()
-            if srcval and kind in ("place", "product"):
-                src = kind
-            else:
-                is_url = srcval.startswith("http") or "naver.me" in srcval or "place" in srcval
-                src = "place" if (srcval and is_url) else ("product" if srcval else None)
+            srcval, src = self._resolve_src(body)
             photos = [p for p in (body.get("photos") or []) if p]
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None

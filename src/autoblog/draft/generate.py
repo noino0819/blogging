@@ -54,10 +54,12 @@ class DraftResult(BaseModel):
         return all(c.ok for c in self.checklist)
 
 
-def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
-    """초안 생성 후, 강조 마킹 배정·포맷 후처리·가이드라인 대조를 수행."""
-    from autoblog.publish.emphasis import DEFAULT_STYLES, load_default_power_shortcuts
+def build_prompt(req: DraftRequest) -> tuple[str, str]:
+    """초안 요청 → (system, user) 프롬프트 조립. LLM 호출은 안 함.
 
+    generate_draft가 쓰는 것과 동일한 조립 로직. 외부 챗봇에 붙여넣을 프롬프트
+    내보내기에도 재사용한다(같은 지시문이 들어가도록 단일 출처 유지).
+    """
     base = req.base_prompt or load_base_prompt()
     system = build_system_prompt(base, req.style, req.guidelines, req.rules)
     if req.emphasis:
@@ -73,6 +75,14 @@ def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
         if instr:
             system = f"{system}\n\n{instr}"
     user = build_user_prompt(req.fact_card, req.experience_memo)
+    return system, user
+
+
+def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
+    """초안 생성 후, 강조 마킹 배정·포맷 후처리·가이드라인 대조를 수행."""
+    from autoblog.publish.emphasis import DEFAULT_STYLES, load_default_power_shortcuts
+
+    system, user = build_prompt(req)
     raw = chat(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
         model=model,
