@@ -109,6 +109,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .stcard{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
  .stcard img{width:100%;aspect-ratio:1;object-fit:contain;background:#fafbfc;border-radius:9px}
  .stcard .tg{font-size:11px;color:var(--sub);margin-top:6px;line-height:1.4;min-height:28px}
+ .tags2{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px;justify-content:center;align-items:center}
+ .tg2{background:#eef1f4;border-radius:6px;padding:2px 5px 2px 7px;font-size:11px;display:inline-flex;align-items:center;gap:3px;color:#374151}
+ .tg2 .x{cursor:pointer;color:#aab;font-weight:700;font-size:12px}
+ .tg2 .x:hover{color:#e2536a}
+ .taginput{border:1px dashed #cdd3da;border-radius:6px;padding:2px 6px;font-size:11px;width:54px;text-align:center}
+ .taginput:focus{outline:none;border-color:var(--green);border-style:solid}
  .favbtn{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:1px solid var(--line);
    background:#fff;color:#cbd2d9;font-size:15px;cursor:pointer;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px #0001}
  .favbtn.on{color:#ffb400;border-color:#ffe2a6;background:#fffaf0}
@@ -375,14 +381,32 @@ function renderStickers(){
     for(const s of packs[pack]){const on=favset.has(s.ref);
       h+=`<div class=stcard><button class="favbtn${on?' on':''}" data-ref="${s.ref}" title="즐겨찾기">★</button>
         <img loading=lazy src="/img?ref=${encodeURIComponent(s.ref)}">
-        <div class=tg>${(s.tags||[]).slice(0,3).join(', ')||'—'}</div></div>`;}
+        ${tagsHtml(s)}</div>`;}
     h+='</div>';
   }
   body.innerHTML=h;
 }
+function tagsHtml(s){return `<div class=tags2 data-ref="${s.ref}">`
+  +(s.tags||[]).map(t=>`<span class=tg2>${esc(t)}<span class=x data-t="${esc(t)}">×</span></span>`).join('')
+  +`<input class=taginput placeholder="+태그"></div>`;}
+function stickerOf(ref){return CAT.stickers.find(z=>z.ref===ref);}
+async function saveTags(s){try{await fetch('/api/sticker-tags',{method:'POST',headers:{'content-type':'application/json'},
+  body:JSON.stringify({ref:s.ref,tags:s.tags})});}catch(e){}}
+function redrawTags(wrap){const s=stickerOf(wrap.dataset.ref); if(s)wrap.outerHTML=tagsHtml(s);}
 $('#stfilter').onclick=e=>{const b=e.target.closest('button'); if(!b)return;
   $$('#stfilter button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
   ST_FILTER=b.dataset.f; renderStickers();};
+// 태그 칩 삭제(×)
+$('#stbody').addEventListener('click', e=>{const x=e.target.closest('.x'); if(!x)return;
+  const wrap=x.closest('.tags2'); const s=stickerOf(wrap.dataset.ref); if(!s)return;
+  s.tags=(s.tags||[]).filter(t=>t!==x.dataset.t); redrawTags(wrap); saveTags(s);});
+// 태그 추가(엔터)
+$('#stbody').addEventListener('keydown', e=>{
+  if(!e.target.classList.contains('taginput')||e.key!=='Enter')return;
+  e.preventDefault(); const wrap=e.target.closest('.tags2'); const s=stickerOf(wrap.dataset.ref);
+  const v=e.target.value.trim(); if(!s||!v)return;
+  if(!(s.tags||[]).includes(v)){s.tags=(s.tags||[]).concat(v);} redrawTags(wrap);
+  const ni=wrap.querySelector('.taginput'); if(ni)ni.focus(); saveTags(s);});
 // 태그 분석(즐겨찾기만, 백그라운드 진행)
 $('#lblbtn').onclick=async()=>{
   $('#lblbtn').disabled=true; $('#lblstat').textContent='시작 중…';
@@ -587,6 +611,10 @@ def _make_handler(state: dict):
                     body = self._json_body()
                     n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
                     self._send(200, json.dumps({"ok": True, "favorites": n}).encode())
+                elif path == "/api/sticker-tags":
+                    body = self._json_body()
+                    _set_sticker_tags(body.get("ref", ""), body.get("tags", []))
+                    self._send(200, b'{"ok":true}')
                 elif path == "/api/prompt":
                     _save_prompt(self._json_body().get("base", ""))
                     self._send(200, b'{"ok":true}')
@@ -889,6 +917,24 @@ def _run_label(state: dict) -> None:
         save_sticker_catalog(result)
     finally:
         lab["running"] = False
+
+
+def _set_sticker_tags(ref: str, tags: list) -> None:
+    """스티커 태그를 유저가 직접 수정 → config/stickers.yaml 저장(reviewed=True로 보호)."""
+    from autoblog.publish.stickers import load_sticker_catalog, save_sticker_catalog
+
+    cat = load_sticker_catalog()
+    by = cat.by_ref()
+    s = by.get(ref)
+    if s:
+        clean = []
+        for t in tags:
+            t = str(t).strip()
+            if t and t not in clean:
+                clean.append(t)
+        s.tags = clean
+        s.reviewed = True
+        save_sticker_catalog(cat)
 
 
 def _toggle_favorite(ref: str, on: bool) -> int:
