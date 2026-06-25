@@ -56,6 +56,8 @@ def build_publish_plan(
     draft: DraftResult,
     photos: list[PhotoItem] | None = None,
     picker: StickerPicker | None = None,
+    divider_variant: int = 1,
+    quote_variant_default: int = 1,
 ) -> PublishPlan:
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
 
@@ -109,7 +111,7 @@ def build_publish_plan(
         sticker_m = _STICKER_RE.match(s)
         if div_m:
             flush_text()
-            blocks.append(PublishBlock(kind="divider", variant=int(div_m.group(1) or 1)))
+            blocks.append(PublishBlock(kind="divider", variant=int(div_m.group(1) or divider_variant)))
         elif sticker_m:
             flush_text()
             chosen = picker.pick(sticker_m.group(1) or "") if picker else None
@@ -122,7 +124,7 @@ def build_publish_plan(
         elif quote_m:
             flush_text()
             in_quote = True
-            quote_variant = int(quote_m.group(1) or 1)
+            quote_variant = int(quote_m.group(1) or quote_variant_default)
         elif s == PHOTO_MARKER:
             flush_text()
             if photo_idx < len(photos):

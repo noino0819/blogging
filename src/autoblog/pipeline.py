@@ -63,6 +63,8 @@ def run_pipeline(
     stickers: bool = False,
     sticker_catalog: StickerCatalog | None = None,
     consistent_pack: bool = False,
+    divider_variant: int = 1,
+    quote_variant: int = 1,
     model: str | None = None,
 ) -> PipelineResult:
     """수집→초안(강조/구조/스티커 마커 자동)→게시 플랜까지 한 번에 조립.
@@ -98,5 +100,8 @@ def run_pipeline(
     picker = (
         StickerPicker(catalog, consistent=consistent_pack) if (catalog and labels) else None
     )
-    plan = build_publish_plan(draft, photos=card.photos, picker=picker)
+    plan = build_publish_plan(
+        draft, photos=card.photos, picker=picker,
+        divider_variant=divider_variant, quote_variant_default=quote_variant,
+    )
     return PipelineResult(card=card, draft=draft, plan=plan)

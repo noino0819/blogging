@@ -38,3 +38,6 @@ out/
 
 # 유저별 스티커 카탈로그(개인 데이터, data/stickers 이미지 참조)
 config/stickers.yaml
+
+# 테스트용 개인 사진(카톡 등) — 커밋 금지
+test/
