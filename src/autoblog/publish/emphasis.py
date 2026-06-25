@@ -130,6 +130,40 @@ DEFAULT_STYLES: dict[int, EmphasisStyle] = {
 }
 
 
+def _hex_to_rgb(value: str) -> tuple[int, int, int] | None:
+    """'#eb7d7d' / 'eb7d7d' → (235,125,125). 형식 불량이면 None."""
+    if not value:
+        return None
+    v = value.strip().lstrip("#")
+    if len(v) == 3:
+        v = "".join(c * 2 for c in v)
+    if len(v) != 6:
+        return None
+    try:
+        return int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16)
+    except ValueError:
+        return None
+
+
+def nearest_palette_color(target: str, palette: list[str]) -> str | None:
+    """target hex에 색거리(제곱합)상 가장 가까운 팔레트 색을 반환.
+
+    네이티브 팔레트는 고정 프리셋만 있어, 커스텀 색을 근사 매핑한다.
+    """
+    tgt = _hex_to_rgb(target)
+    if tgt is None or not palette:
+        return None
+    best, best_d = None, None
+    for cand in palette:
+        rgb = _hex_to_rgb(cand)
+        if rgb is None:
+            continue
+        d = sum((a - b) ** 2 for a, b in zip(tgt, rgb))
+        if best_d is None or d < best_d:
+            best, best_d = cand, d
+    return best
+
+
 class CyclingPool:
     """순환 풀 — preset_ids를 순서대로 돌려쓰며 연속 중복을 회피."""
 

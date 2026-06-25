@@ -24,6 +24,26 @@ from autoblog.publish.plan import PublishBlock, PublishPlan
 # (persistent context는 세션 쿠키 NID_AUT를 닫을 때 버려 매번 로그인됨 → storage_state로 해결)
 STATE_PATH = REPO_ROOT / "data" / "naver_state.json"
 
+# 본문에서 특정 텍스트의 화면 좌표(Range rect)를 구하는 JS.
+# SE는 프로그램적 Range 선택을 색상 적용에 반영하지 않으므로, 좌표를 받아
+# 실제 마우스 드래그로 선택해야 SE가 선택을 인식한다.
+_RANGE_RECT_JS = """(t) => {
+  const root = document.querySelector('.se-component.se-text');
+  if (!root) return null;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let n;
+  while (n = w.nextNode()) {
+    const i = n.textContent.indexOf(t);
+    if (i !== -1) {
+      const r = document.createRange();
+      r.setStart(n, i); r.setEnd(n, i + t.length);
+      const b = r.getBoundingClientRect();
+      return {x: b.x, y: b.y, w: b.width, h: b.height};
+    }
+  }
+  return null;
+}"""
+
 
 class EditorNotImplemented(NotImplementedError):
     """로그인 후 셀렉터 확정 전까지 미구현인 단계."""
@@ -123,11 +143,21 @@ class BlogPublisher:
         self.open_write_page()
         self._type_title(plan.title)
         self._page.click(SMART_EDITOR["content_component"])
+        self._reset_text_toggles()  # 이전 세션에서 남은 토글 서식(취소선 등) 해제
+        emphases = []
         for block in plan.blocks:
             if block.kind == "text":
                 self._type_text_block(block)
+                emphases.extend(block.emphases)
             elif block.kind == "image" and block.image_path:
                 self._insert_image(block.image_path)
+        # 본문 입력을 모두 마친 뒤 강조 서식 적용(커서 간섭 방지)
+        for span in emphases:
+            try:
+                self._apply_emphasis(span.text, span.style)
+            except Exception as exc:  # noqa: BLE001 - 강조는 보조라 실패해도 본문 유지
+                self._page.keyboard.press("Escape")
+                _ = exc
         if save:
             self.save_draft()
         if submit:
@@ -188,24 +218,70 @@ class BlogPublisher:
         self._page.click(SMART_EDITOR["title_component"])
         self._page.keyboard.type(title, delay=8)
 
+    def _reset_text_toggles(self):
+        """남아있는 토글 서식(취소선/굵게/기울임/밑줄, se-is-selected)을 해제.
+
+        SE는 마지막 서식 상태를 유지해, 직전에 켜진 취소선 등이 새 글에 묻어난다.
+        커서가 본문에 자리잡은 뒤(대기) 활성 토글을 JS로 끈다.
+        """
+        self._page.wait_for_timeout(300)
+        self._page.evaluate("""() => {
+          const names = ['se-strikethrough-toolbar-button','se-bold-toolbar-button',
+                         'se-italic-toolbar-button','se-underline-toolbar-button'];
+          for (const name of names) {
+            const b = document.querySelector('button.' + name);
+            if (b && /se-is-selected/.test(b.className)) b.click();
+          }
+        }""")
+        self._page.wait_for_timeout(300)
+
     def _type_text_block(self, block: PublishBlock):
         """본문 한 블록 입력. \\n은 Enter(문단), 블록 끝에 빈 줄 하나."""
         self._page.keyboard.type(block.text, delay=4)
         self._page.keyboard.press("Enter")
-        # 강조 서식은 best-effort로 별도 적용(실패해도 본문은 유지)
-        for span in block.emphases:
-            try:
-                self._apply_emphasis(span.text, span.style)
-            except Exception:
-                pass
 
     def _apply_emphasis(self, text: str, style: EmphasisStyle):
-        """본문에서 text를 선택 → 툴바 글자색/배경 적용.
+        """본문에서 text를 선택 → 글자색/배경색을 커스텀 hex로 정확히 적용.
 
-        색상 팔레트의 커스텀 hex 입력이 필요해 브라우저에서 반복 검증이 필요하다.
-        현재는 연동 지점만 두고, 실제 팔레트 조작은 라이브 셋업에서 확정한다.
+        '더보기 → hex 입력 → 확인'은 SE 네이티브 명령이라 내부 모델을 갱신 →
+        커스텀 색이 저장까지 유지된다(검증됨).
         """
-        raise EditorNotImplemented("색상 팔레트(커스텀 hex) 조작은 라이브 셋업에서 확정")
+        if not (style.text_color or style.background_color):
+            return
+        if not self._select_body_text(text):  # 한 번만 선택(SE가 적용 후 선택 유지)
+            return
+        if style.text_color:
+            self._apply_color(SMART_EDITOR["toolbar_text_color"], style.text_color)
+        if style.background_color:
+            self._apply_color(SMART_EDITOR["toolbar_bg_color"], style.background_color)
+
+    def _select_body_text(self, text: str) -> bool:
+        """본문에서 text를 실제 마우스 드래그로 선택(SE가 선택을 인식하도록)."""
+        rect = self._page.evaluate(_RANGE_RECT_JS, text)
+        if not rect or rect["w"] < 1:
+            return False
+        page = self._page
+        y = rect["y"] + rect["h"] / 2
+        page.mouse.move(rect["x"] + 1, y)
+        page.mouse.down()
+        page.mouse.move(rect["x"] + rect["w"] - 1, y, steps=6)
+        page.mouse.up()
+        page.wait_for_timeout(200)
+        return True
+
+    def _apply_color(self, toolbar_button: str, hex_color: str):
+        """글자색/배경색 버튼 → 더보기 → hex 입력 → 확인 (네이티브, 저장 유지)."""
+        page = self._page
+        page.click(toolbar_button)
+        page.wait_for_timeout(350)
+        page.click(SMART_EDITOR["color_more_button"])
+        page.wait_for_timeout(350)
+        inp = page.query_selector(SMART_EDITOR["color_hex_input"])
+        inp.click()
+        inp.fill(hex_color.lstrip("#"))
+        page.wait_for_timeout(200)
+        page.click(SMART_EDITOR["color_apply_button"])
+        page.wait_for_timeout(350)
 
     def _insert_image(self, path: str):
         """이미지 툴바 버튼 → 파일 다이얼로그로 업로드."""

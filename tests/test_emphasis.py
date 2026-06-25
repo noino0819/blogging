@@ -82,6 +82,17 @@ def test_assign_emphasis_cycle_and_fixed():
     assert price_span.style == DEFAULT_STYLES[7]
 
 
+def test_nearest_palette_color():
+    from autoblog.publish.emphasis import nearest_palette_color
+
+    palette = ["#FF0000", "#00FF00", "#0000FF", "#FFFFFF", "#000000"]
+    assert nearest_palette_color("#eb3578", palette) == "#FF0000"  # 분홍 → 빨강이 최근접
+    assert nearest_palette_color("#1E40AF", palette) == "#0000FF"  # 남색 → 파랑
+    assert nearest_palette_color("#f7f7f7", palette) == "#FFFFFF"  # 거의흰색 → 흰색
+    assert nearest_palette_color("nothex", palette) is None  # 잘못된 형식
+    assert nearest_palette_color("#fff", []) is None  # 빈 팔레트
+
+
 def test_parse_emphasis_markup():
     raw = "오늘 <<name:수지골>>에서 <<price:13,000원>> 추어탕을 먹었는데 <<cycle:정말 좋았어요>>."
     clean, reqs = parse_emphasis_markup(raw)
