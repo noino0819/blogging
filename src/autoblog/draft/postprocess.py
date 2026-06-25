@@ -37,11 +37,16 @@ _CONNECTIVE_RE = re.compile(
 
 
 def _greedy_wrap(segment: str, max_len: int) -> list[str]:
-    """어절(공백) 단위 그리디 줄바꿈."""
+    """어절(공백) 단위 그리디 줄바꿈.
+
+    짧은 어절(의존명사·단위·조사 결합형, 길이 ≤2: '수','것','원에','시에' 등)이
+    줄 맨 앞에 오면 앞말과 분리돼 어색하므로, 그런 어절은 길이를 조금 넘겨도 붙인다.
+    """
     out: list[str] = []
     cur = ""
     for word in segment.split(" "):
-        if cur and len(cur) + 1 + len(word) > max_len:
+        too_long = cur and len(cur) + 1 + len(word) > max_len
+        if too_long and len(word) > 2:  # 짧은 어절은 끊지 않고 붙임
             out.append(cur)
             cur = word
         else:

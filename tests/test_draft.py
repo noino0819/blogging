@@ -114,6 +114,9 @@ def test_wrap_long_lines():
     wrapped = wrap_long_lines(line, max_len=30)
     out_lines = wrapped.split("\n")
     assert len(out_lines) > 1  # 여러 줄로 분할
-    assert all(len(ln) <= 30 for ln in out_lines)  # 모든 줄 30자 이하
+    # 짧은 어절은 안 끊으므로 약간(≤2자) 초과 허용
+    assert all(len(ln) <= 32 for ln in out_lines)
+    # 줄 맨 앞에 짧은 의존명사(수/것 등)가 단독으로 오지 않음
+    assert not any(ln.strip() in ("수", "것", "원에", "때") for ln in out_lines)
     # 빈 줄(문단 간격)은 보존
     assert wrap_long_lines("짧은 줄\n\n다음 문단") == "짧은 줄\n\n다음 문단"
