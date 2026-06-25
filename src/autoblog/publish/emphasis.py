@@ -237,7 +237,9 @@ EMPHASIS_INSTRUCTION = (
     "강조는 문단당 1~2개로 절제하고, 감싼 텍스트는 본문에 그대로 보이게 자연스러운 문장이어야 합니다."
 )
 
-_MARKUP_RE = re.compile(r"<<(\w+):(.*?)>>", re.DOTALL)
+# 꺾쇠는 2개(<<role:text>>)가 원형이지만, 외부 챗봇이 1개(<role:text>)로 줄여
+# 출력하는 경우가 잦다. 1~2개를 모두 받아 본문 누수를 막는다(`\w+:` 조건이 오탐 방지).
+_MARKUP_RE = re.compile(r"<{1,2}(\w+):(.*?)>{1,2}", re.DOTALL)
 
 
 def parse_emphasis_markup(text: str) -> tuple[str, list[EmphasisRequest]]:
