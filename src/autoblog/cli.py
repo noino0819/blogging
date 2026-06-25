@@ -256,6 +256,39 @@ def post(
 
 
 @app.command()
+def ui(
+    port: int = typer.Option(8770, help="글쓰기 UI 포트"),
+    open_browser: bool = typer.Option(True, help="브라우저 자동 열기"),
+):
+    """글쓰기 유저 화면(로컬 웹) — 메모→생성→미리보기→임시저장. 명령 한 줄로 브라우저 열림."""
+    import webbrowser
+
+    from autoblog.webui import serve_ui
+
+    server = None
+    for p in range(port, port + 10):
+        try:
+            server = serve_ui(port=p)
+            port = p
+            break
+        except OSError:
+            continue
+    if server is None:
+        typer.echo("빈 포트를 찾지 못했습니다.")
+        raise typer.Exit(1)
+    url = f"http://127.0.0.1:{port}/"
+    typer.echo(f"글쓰기 UI 열림 → {url}  (종료: Ctrl+C)")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        typer.echo("\n종료.")
+    finally:
+        server.shutdown()
+
+
+@app.command()
 def doctor():
     """환경 점검 — API 키/Ollama 설정 여부 + 검색 API 라이브 호출."""
     from autoblog.collect.place import ping_search_api
