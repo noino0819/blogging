@@ -194,14 +194,14 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 </style></head><body><div id=toasts></div>
 <svg width=0 height=0 style="position:absolute" aria-hidden=true><defs>
  <g id=i-write fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="M13.5 6.5l3 3"/></g>
- <g id=i-sticker fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=12 cy=12 r=9/><path d="M8.5 14.5a4 4 0 0 0 7 0"/><circle cx=9 cy=10 r=.7 fill=currentColor stroke=none/><circle cx=15 cy=10 r=.7 fill=currentColor stroke=none/></g>
- <g id=i-format fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.9 0-.5-.2-.9-.5-1.2-.3-.3-.4-.6-.4-1 0-1 .8-1.7 1.7-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z"/><circle cx=7.5 cy=11.5 r=.9 fill=currentColor stroke=none/><circle cx=12 cy=7.8 r=.9 fill=currentColor stroke=none/><circle cx=16.4 cy=11.5 r=.9 fill=currentColor stroke=none/></g>
+ <g id=i-sticker fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=12 cy=12 r=9 /><path d="M8.5 14.5a4 4 0 0 0 7 0"/><circle cx=9 cy=10 r=.7 fill=currentColor stroke=none /><circle cx=15 cy=10 r=.7 fill=currentColor stroke=none /></g>
+ <g id=i-format fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.9 0-.5-.2-.9-.5-1.2-.3-.3-.4-.6-.4-1 0-1 .8-1.7 1.7-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z"/><circle cx=7.5 cy=11.5 r=.9 fill=currentColor stroke=none /><circle cx=12 cy=7.8 r=.9 fill=currentColor stroke=none /><circle cx=16.4 cy=11.5 r=.9 fill=currentColor stroke=none /></g>
  <g id=i-prompt fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M6 3h8l4 4v14H6V3Z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 16.5h4"/></g>
- <g id=i-settings fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=12 cy=12 r=3/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5Z"/></g>
- <g id=i-model fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><rect x=7 y=7 width=10 height=10 rx=1.5/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></g>
- <g id=i-copy fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><rect x=8 y=3 width=8 height=4 rx=1/><path d="M16 5h2v16H6V5h2"/><path d="M9 12h6M9 16h4"/></g>
+ <g id=i-settings fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=12 cy=12 r=3 /><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5Z"/></g>
+ <g id=i-model fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><rect x=7 y=7 width=10 height=10 rx=1.5 /><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></g>
+ <g id=i-copy fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><rect x=8 y=3 width=8 height=4 rx=1 /><path d="M16 5h2v16H6V5h2"/><path d="M9 12h6M9 16h4"/></g>
  <g id=i-inbox fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 14v5h16v-5"/><path d="M12 4v9m0 0 3.5-3.5M12 13 8.5 9.5"/></g>
- <g id=i-search fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=11 cy=11 r=6/><path d="m20 20-3.6-3.6"/></g>
+ <g id=i-search fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=11 cy=11 r=6 /><path d="m20 20-3.6-3.6"/></g>
 </defs></svg>
 <div id=pmodal class=modal style="display:none"><div class=modalbox>
   <div class=modalhd><span><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg> 다른 챗봇에 붙여넣을 프롬프트</span><button class=mx id=pmclose>✕</button></div>
@@ -1024,6 +1024,7 @@ def _make_handler(state: dict):
             photos = [p for p in (body.get("photos") or []) if p]
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
+            dkeys, qkeys = _enabled_variant_keys()  # '서식'에서 고른 종류만 프롬프트에 안내
             text = build_export_prompt(
                 body.get("memo", ""),
                 place_url=srcval if src == "place" else None,
@@ -1035,6 +1036,8 @@ def _make_handler(state: dict):
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
                 sponsored=bool(body.get("sponsored")),
+                divider_variants=dkeys,
+                quote_variants=qkeys,
             )
             self._send(200, json.dumps({"prompt": text}).encode())
 
@@ -1048,6 +1051,7 @@ def _make_handler(state: dict):
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
             dv, qv = _enabled_variants()  # 활성 종류 중 첫 번째를 기본 적용(다중 중 우선)
+            dkeys, qkeys = _enabled_variant_keys()  # 프롬프트에 안내할 고른 종류 전체
             result = run_pipeline(
                 body["memo"],
                 place_url=srcval if src == "place" else None,
@@ -1062,6 +1066,8 @@ def _make_handler(state: dict):
                 sponsored=bool(body.get("sponsored")),
                 divider_variant=dv[0],
                 quote_variant=qv[0],
+                divider_variants=dkeys,
+                quote_variants=qkeys,
             )
             self._send_plan(result)
 
@@ -1277,13 +1283,14 @@ def _prompt_preview() -> dict:
     """초안 생성에 쓰이는 프롬프트(편집용 raw default.md + 우리가 얹는 마커 지시문 레이어)."""
     from autoblog.draft.prompts import DEFAULT_PROMPT_PATH
     from autoblog.publish.emphasis import EMPHASIS_INSTRUCTION
-    from autoblog.publish.plan import STRUCTURE_INSTRUCTION
+    from autoblog.publish.plan import build_structure_instruction
 
+    dkeys, qkeys = _enabled_variant_keys()  # 미리보기도 현재 고른 종류만 반영
     return {
         "base_raw": DEFAULT_PROMPT_PATH.read_text(encoding="utf-8"),
         "layers": [
             ["강조 표시 (강조색 켤 때)", EMPHASIS_INSTRUCTION],
-            ["구조 마커 (구분선·인용구 켤 때)", STRUCTURE_INSTRUCTION],
+            ["구조 마커 (구분선·인용구 켤 때)", build_structure_instruction(dkeys, qkeys)],
         ],
     }
 
