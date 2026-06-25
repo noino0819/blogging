@@ -252,7 +252,7 @@ class BlogPublisher:
         '더보기 → hex 입력 → 확인'은 SE 네이티브 명령이라 내부 모델을 갱신 →
         커스텀 색이 저장까지 유지된다(검증됨).
         """
-        if not (style.text_color or style.background_color):
+        if not (style.text_color or style.background_color or style.font_family or style.font_size):
             return
         if not self._select_body_text(text):  # 한 번만 선택(SE가 적용 후 선택 유지)
             return
@@ -260,6 +260,34 @@ class BlogPublisher:
             self._apply_color(SMART_EDITOR["toolbar_text_color"], style.text_color)
         if style.background_color:
             self._apply_color(SMART_EDITOR["toolbar_bg_color"], style.background_color)
+        if style.font_family:
+            self._apply_font(style.font_family)
+        if style.font_size:
+            self._apply_font_size(style.font_size)
+
+    def _apply_font(self, font_value: str):
+        """선택 텍스트에 서체 적용(프리셋 fontFamily). 드롭다운 열고 data-value 옵션 클릭."""
+        page = self._page
+        page.evaluate("()=>{const b=document.querySelector('li.se-toolbar-item-font-family button');if(b)b.click();}")
+        page.wait_for_timeout(400)
+        page.evaluate(
+            "(v)=>{const o=[...document.querySelectorAll('button[data-name=\"font-family\"][data-role=\"option\"]')]"
+            ".find(e=>e.getAttribute('data-value')===v);if(o)o.click();}",
+            font_value,
+        )
+        page.wait_for_timeout(300)
+
+    def _apply_font_size(self, size):
+        """선택 텍스트에 글자 크기 적용(프리셋 fontSize → data-value 'fs<N>')."""
+        page = self._page
+        page.evaluate("()=>{const b=document.querySelector('li.se-toolbar-item-font-size-code button');if(b)b.click();}")
+        page.wait_for_timeout(400)
+        page.evaluate(
+            "(v)=>{const o=[...document.querySelectorAll('button[data-name=\"font-size\"][data-role=\"option\"]')]"
+            ".find(e=>e.getAttribute('data-value')===v);if(o)o.click();}",
+            f"fs{size}",
+        )
+        page.wait_for_timeout(300)
 
     def _select_body_text(self, text: str) -> bool:
         """본문에서 text를 실제 마우스 드래그로 선택(SE가 선택을 인식하도록)."""

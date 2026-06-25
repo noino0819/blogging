@@ -343,7 +343,8 @@ async function loadModels(){try{const m=await (await fetch('/api/models')).json(
 async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).json();
   const chip=s=>{if(!s.defined)return `<span class="sw-chip" style="color:#d9534f">미정의<span class=pid>#${s.id}</span></span>`;
     const stl=(s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'');
-    return `<span class="sw-chip" style="${stl}">강조 텍스트<span class=pid>#${s.id}</span></span>`;};
+    const meta=[s.font_name,s.size?s.size+'pt':''].filter(Boolean).join(' · ');
+    return `<span class="sw-chip" style="${stl}">강조 텍스트<span class=pid>#${s.id}</span></span>`+(meta?`<span class=muted style="font-size:11px">${meta}</span>`:'');};
   let h=`<div class=muted style="margin-bottom:4px">색 출처: <b>${e.source}</b></div>`;
   h+='<div class=sub-h>순환 풀 (핵심 문장에 번갈아)</div><div class=swrap>'+(e.cycling.map(chip).join('')||'<span class=muted>없음</span>')+'</div>';
   h+='<div class=sub-h>고정 매핑</div><div class=swrap>'+(Object.entries(e.fixed).map(([k,s])=>chip(s)+`<span class=muted>← ${k}</span>`).join('')||'<span class=muted>없음</span>')+'</div>';
@@ -534,6 +535,15 @@ def _make_handler(state: dict):
     return Handler
 
 
+def _editor_options() -> dict:
+    """라이브 캡처한 에디터 실제 옵션(config/editor_options.json). 없으면 빈 dict."""
+    p = REPO_ROOT / "config" / "editor_options.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+
+
 def _emphasis_preview() -> dict:
     """현재 강조 설정으로 실제 적용될 색을 해석(미리보기).
 
@@ -548,6 +558,7 @@ def _emphasis_preview() -> dict:
     cfg = load_emphasis_config()
     presets = load_default_power_shortcuts() or DEFAULT_STYLES
     source = "파워 단축키 프리셋" if load_default_power_shortcuts() else "내장 기본"
+    fonts = {f.get("value"): f.get("name", "").split("\n")[0] for f in _editor_options().get("fonts", [])}
 
     def resolve(pid):
         st = presets.get(pid)
@@ -555,7 +566,8 @@ def _emphasis_preview() -> dict:
             return {"id": pid, "defined": False}
         return {"id": pid, "defined": True, "text_color": st.text_color,
                 "background_color": st.background_color, "bold": st.bold,
-                "font": st.font_family}
+                "font": st.font_family, "font_name": fonts.get(st.font_family),
+                "size": st.font_size}
 
     return {
         "source": source,
