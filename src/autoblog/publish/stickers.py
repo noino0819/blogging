@@ -303,23 +303,39 @@ def label_sticker(image_path: str, model: str | None = None) -> list[str]:
     return out
 
 
+def _needs_label(s: Sticker, only_new: bool) -> bool:
+    return not (s.stale or not s.image or (only_new and (s.tags or s.reviewed)))
+
+
 def label_catalog(
-    catalog: StickerCatalog, model: str | None = None, only_new: bool = True
+    catalog: StickerCatalog,
+    model: str | None = None,
+    only_new: bool = True,
+    on_progress=None,
+    save_path: Path | None = None,
+    save_every: int = 20,
 ) -> StickerCatalog:
     """카탈로그의 스티커들에 비전 태그 자동 부여(새 객체 반환).
 
     only_new=True면 태그가 비었고 검수 안 된 스티커만 라벨링(증분, 검수 보존).
+    on_progress(done, total, sticker): 진행 콜백(선택) — 342개 등 대량일 때 진행 표시용.
+    save_path 주면 save_every개마다 중간 저장(긴 작업 중 끊겨도 진행분 보존).
     """
-    updated: list[Sticker] = []
-    for s in catalog.stickers:
-        skip = s.stale or not s.image or (only_new and (s.tags or s.reviewed))
-        if skip:
-            updated.append(s)
-            continue
+    working = list(catalog.stickers)
+    targets = [i for i, s in enumerate(working) if _needs_label(s, only_new)]
+    total = len(targets)
+    for done, i in enumerate(targets, 1):
+        s = working[i]
         img = s.image if Path(s.image).is_absolute() else str(REPO_ROOT / s.image)
         try:
             tags = label_sticker(img, model)
         except Exception:  # noqa: BLE001 - 라벨링 실패해도 카탈로그는 유지
             tags = []
-        updated.append(s.model_copy(update={"tags": tags or s.tags}))
-    return StickerCatalog(stickers=updated, favorites=catalog.favorites)
+        working[i] = s.model_copy(update={"tags": tags or s.tags})
+        if on_progress:
+            on_progress(done, total, working[i])
+        if save_path and done % save_every == 0:
+            save_sticker_catalog(
+                StickerCatalog(stickers=working, favorites=catalog.favorites), save_path
+            )
+    return StickerCatalog(stickers=working, favorites=catalog.favorites)

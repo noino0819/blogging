@@ -253,14 +253,23 @@ def stickers_label(
         save_sticker_catalog,
     )
 
+    from autoblog.publish.stickers import STICKER_CONFIG_PATH
+
     cat = load_sticker_catalog()
     if not cat.stickers:
         typer.echo("카탈로그가 비었습니다 — 먼저 autoblog stickers pull")
         raise typer.Exit(1)
-    labeled = label_catalog(cat, only_new=not all_again)
+
+    def progress(done, total, s):
+        if done == 1 or done % 10 == 0 or done == total:
+            typer.echo(f"  [{done}/{total}] {s.ref}: {', '.join(s.tags) or '(태그 없음)'}")
+
+    labeled = label_catalog(
+        cat, only_new=not all_again, on_progress=progress, save_path=STICKER_CONFIG_PATH
+    )
     save_sticker_catalog(labeled)
     tagged = sum(1 for s in labeled.stickers if s.tags)
-    typer.echo(f"라벨링 완료: {tagged}/{len(labeled.stickers)}개에 태그. config/stickers.yaml에서 검수하세요.")
+    typer.echo(f"라벨링 완료: {tagged}/{len(labeled.stickers)}개에 태그. autoblog stickers review 로 검수하세요.")
 
 
 @stickers_app.command("review")
