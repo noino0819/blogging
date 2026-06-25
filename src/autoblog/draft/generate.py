@@ -35,6 +35,8 @@ class DraftRequest(BaseModel):
     postprocess: bool = True  # 결정적 포맷 규칙 후처리 강제
     # 강조(서식) — 켜면 LLM이 <<role:text>> 마킹 → 순환/고정 매핑 배정
     emphasis: bool = False
+    # 구조 마커 — 켜면 LLM이 [구분선]/[인용구]…[/인용구] 마커를 알아서 삽입(plan에서 블록으로 변환)
+    structure: bool = False
     emphasis_config: EmphasisConfig | None = None  # None이면 config/emphasis.yaml
     power_shortcuts: dict[int, EmphasisStyle] | None = None  # None이면 내장 기본 스타일
 
@@ -57,6 +59,10 @@ def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
     system = build_system_prompt(base, req.style, req.guidelines, req.rules)
     if req.emphasis:
         system = f"{system}\n\n{EMPHASIS_INSTRUCTION}"
+    if req.structure:
+        from autoblog.publish.plan import STRUCTURE_INSTRUCTION  # 지연 임포트(순환 회피)
+
+        system = f"{system}\n\n{STRUCTURE_INSTRUCTION}"
     user = build_user_prompt(req.fact_card, req.experience_memo)
     text = chat(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],

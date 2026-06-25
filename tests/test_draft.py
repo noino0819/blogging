@@ -107,6 +107,39 @@ def test_forbidden_phrase_softened():
     assert "추천" in enforce_format("여기 강력 추천 드려요")
 
 
+def test_structure_markers_survive_postprocess():
+    # [구분선]/[인용구] 마커는 postprocess(enforce_format)를 거쳐도 보존돼야
+    # 게시 플랜이 블록으로 파싱할 수 있다([사진] 마커와 동일 형태).
+    from autoblog.draft.postprocess import enforce_format
+
+    raw = "첫 문단이에요\n[구분선]\n[인용구]\n인상 깊은 한마디\n[/인용구]\n마지막 문단"
+    out = enforce_format(raw)
+    assert "[구분선]" in out
+    assert "[인용구]" in out and "[/인용구]" in out
+
+
+def test_structure_flag_appends_instruction(monkeypatch):
+    # generate_draft(structure=True)면 구조 마커 지시문이 시스템 프롬프트에 붙는다.
+    from autoblog.draft import generate as gen
+    from autoblog.publish.plan import STRUCTURE_INSTRUCTION
+
+    captured: dict[str, str] = {}
+
+    def fake_chat(messages, model=None):
+        captured["system"] = messages[0]["content"]
+        return "제목\n\n본문\n[구분선]\n끝"
+
+    monkeypatch.setattr(gen, "chat", fake_chat)
+    req = gen.DraftRequest(fact_card=_place_card(), experience_memo="메모", structure=True)
+    gen.generate_draft(req)
+    assert STRUCTURE_INSTRUCTION in captured["system"]
+
+    captured.clear()
+    req_off = gen.DraftRequest(fact_card=_place_card(), experience_memo="메모")
+    gen.generate_draft(req_off)
+    assert STRUCTURE_INSTRUCTION not in captured["system"]
+
+
 def test_wrap_long_lines():
     from autoblog.draft.postprocess import wrap_long_lines
 

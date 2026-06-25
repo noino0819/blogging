@@ -20,6 +20,17 @@ QUOTE_CLOSE = "[/인용구]"
 _DIVIDER_RE = re.compile(r"^\[구분선(?::(\d+))?\]$")
 _QUOTE_OPEN_RE = re.compile(r"^\[인용구(?::(\d+))?\]$")
 
+# 초안 구조 마커: 구분선 [구분선], 인용 블록 [인용구]…[/인용구]
+# (EMPHASIS_INSTRUCTION과 같은 추가 레이어. generate_draft(structure=True)에서 시스템 프롬프트에 덧붙임)
+STRUCTURE_INSTRUCTION = (
+    "[구조 마커]\n"
+    "가독성을 위해 아래 마커를 절제해서 사용하세요. 마커는 반드시 그 줄에 단독으로 두세요.\n"
+    "- 구분선: 화제가 크게 바뀌는 지점에 [구분선] 을 한 줄로 넣으세요. 글 전체에서 1~3개면 충분합니다.\n"
+    "- 인용구: 특히 강조하고 싶은 핵심 한두 문장을 [인용구] 와 [/인용구] 로 감싸세요. "
+    "한 블록에 1~2문장만, 글 전체에서 1~2개로 절제하세요.\n"
+    "이 마커는 화면에 글자로 보이지 않고 서식으로 바뀌니, 본문 문장 안에 섞지 말고 꼭 필요한 곳에만 쓰세요."
+)
+
 
 class PublishBlock(BaseModel):
     kind: str  # "text" | "image" | "divider" | "quote"
