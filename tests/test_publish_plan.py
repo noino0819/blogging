@@ -37,6 +37,6 @@ def test_build_plan_extra_photos_appended():
     assert [b.image_path for b in image_blocks] == ["a.jpg", "b.jpg"]
 
 
-def test_selectors_not_ready_yet():
-    # Smart Editor 셀렉터는 로그인 후 확정 전까지 비어 있음
-    assert selectors_ready() is False
+def test_selectors_ready():
+    # 라이브 분석으로 핵심 셀렉터(제목/본문/저장/발행) 확정됨
+    assert selectors_ready() is True

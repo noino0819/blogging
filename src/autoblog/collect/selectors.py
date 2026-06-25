@@ -31,11 +31,13 @@ SMART_EDITOR = {
     "content_component": ".se-component.se-text",
     "image_upload_button": ".se-toolbar-item-image button",  # 사진 추가 버튼
     "image_file_input": "input[type=file]",  # 파일 input
+    "save_button": 'button[data-click-area="tpb.save"]',  # 임시저장
     "publish_button": 'button[data-click-area="tpb.publish"]',  # 발행(설정 레이어 열기)
-    "publish_confirm": '.layer_btn_area button[class*=confirm], button[data-click-area="tpb*v.publish"]',
-    # 서식 툴바 (텍스트 선택 후 나타남)
-    "toolbar_text_color": "li.se-toolbar-item-text-color button",
-    "toolbar_bg_color": "li.se-toolbar-item-background-color button",
+    "publish_confirm": 'button[data-click-area="tpb*i.publish"]',  # 레이어 내 최종 발행
+    "category_button": 'button[data-click-area="tpb*i.category"]',  # 카테고리 선택 열기
+    # 서식 툴바 (글자색은 font-color 클래스)
+    "toolbar_text_color": "button.se-font-color-toolbar-button",
+    "toolbar_bg_color": "button.se-background-color-toolbar-button",
     # 글쓰기 진입 시 뜨는 '이전 글 이어쓰기' 팝업 닫기(취소)
     "draft_popup_cancel": ".se-popup-button-cancel",
 }

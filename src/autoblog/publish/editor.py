@@ -20,8 +20,9 @@ from autoblog.config import REPO_ROOT
 from autoblog.publish.emphasis import EmphasisStyle
 from autoblog.publish.plan import PublishBlock, PublishPlan
 
-# 로그인 세션(쿠키)을 저장해 재사용할 디렉터리
-SESSION_DIR = REPO_ROOT / "data" / "naver_session"
+# 로그인 세션을 storage_state(JSON)로 저장해 재사용.
+# (persistent context는 세션 쿠키 NID_AUT를 닫을 때 버려 매번 로그인됨 → storage_state로 해결)
+STATE_PATH = REPO_ROOT / "data" / "naver_state.json"
 
 
 class EditorNotImplemented(NotImplementedError):
@@ -39,46 +40,55 @@ class BlogPublisher:
         pub.close()
     """
 
-    def __init__(self, blog_id: str | None = None, headless: bool = False, session_dir: Path | None = None):
+    def __init__(self, blog_id: str | None = None, headless: bool = False, state_path: Path | None = None):
         from autoblog.config import load_env
 
         self.blog_id = blog_id or load_env().naver_blog_id
         if not self.blog_id:
             raise ValueError("blog_id가 필요합니다(.env NAVER_BLOG_ID 또는 인자로 전달)")
         self.headless = headless  # 게시는 사람 확인이 필요할 때가 많아 기본 headful
-        self.session_dir = session_dir or SESSION_DIR
+        self.state_path = state_path or STATE_PATH
         self._ctx = None
         self._page = None
 
     # --- 세션/브라우저 ---
     def start(self):
-        """persistent context로 브라우저 기동(쿠키 유지)."""
+        """브라우저 기동. 저장된 storage_state(JSON)가 있으면 로드해 자동 로그인."""
         from playwright.sync_api import sync_playwright
 
-        self.session_dir.mkdir(parents=True, exist_ok=True)
         self._pw = sync_playwright().start()
-        self._ctx = self._pw.chromium.launch_persistent_context(
-            user_data_dir=str(self.session_dir),
-            headless=self.headless,
-            locale="ko-KR",
+        self._browser = self._pw.chromium.launch(
+            headless=self.headless, args=["--disable-blink-features=AutomationControlled"]
         )
-        self._page = self._ctx.pages[0] if self._ctx.pages else self._ctx.new_page()
+        storage = str(self.state_path) if self.state_path.exists() else None
+        self._ctx = self._browser.new_context(
+            storage_state=storage, locale="ko-KR", viewport={"width": 1440, "height": 900}
+        )
+        self._page = self._ctx.new_page()
         return self
+
+    def save_state(self):
+        """현재 로그인 세션을 storage_state(JSON)로 저장(세션 쿠키 포함 → 다음 실행 자동 로그인)."""
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        self._ctx.storage_state(path=str(self.state_path))
 
     def is_logged_in(self) -> bool:
         """현재 세션이 로그인 상태인지 확인(NID_AUT 쿠키)."""
         return any(c["name"] == "NID_AUT" for c in self._ctx.cookies())
 
-    def ensure_login(self):
-        """세션이 없으면 로그인 페이지를 띄워 사용자가 직접 로그인하게 한다.
+    def wait_for_login(self, timeout_sec: int = 360) -> bool:
+        """로그인 페이지를 띄우고 사용자가 직접 로그인할 때까지 대기(세션 없을 때)."""
+        import time
 
-        캡차/2차인증·봇 탐지 때문에 자동 입력 대신 수동 로그인이 안전.
-        로그인하면 persistent context에 세션이 저장돼 다음부턴 생략된다.
-        """
         if self.is_logged_in():
             return True
         self._page.goto(NAVER_LOGIN["url"], wait_until="domcontentloaded")
-        return False  # 호출 측에서 로그인 완료를 기다린다
+        for _ in range(timeout_sec // 4):
+            if self.is_logged_in():
+                self.save_state()  # 로그인 즉시 세션 저장
+                return True
+            time.sleep(4)
+        return False
 
     # --- 게시 ---
     def open_write_page(self):
@@ -100,8 +110,13 @@ class BlogPublisher:
             except Exception:
                 pass
 
-    def publish(self, plan: PublishPlan, *, submit: bool = False):
-        """게시 플랜을 에디터에 주입. submit=False면 작성만 하고 발행 직전 멈춘다(안전)."""
+    def publish(
+        self, plan: PublishPlan, *, category: str | None = None, save: bool = True, submit: bool = False
+    ):
+        """게시 플랜을 에디터에 주입. 기본은 임시저장만, submit=True면 발행까지.
+
+        category가 주어지면 발행 레이어에서 해당 카테고리를 선택한다(유저별 동적).
+        """
         self.open_write_page()
         self._type_title(plan.title)
         self._page.click(SMART_EDITOR["content_component"])
@@ -110,8 +125,54 @@ class BlogPublisher:
                 self._type_text_block(block)
             elif block.kind == "image" and block.image_path:
                 self._insert_image(block.image_path)
+        if save:
+            self.save_draft()
         if submit:
+            if category:
+                self._open_publish_layer()
+                self.select_category(category)
             self._submit()
+
+    def save_draft(self):
+        """임시저장."""
+        self._page.click(SMART_EDITOR["save_button"])
+        self._page.wait_for_timeout(1500)
+
+    # --- 카테고리 (유저별 동적) ---
+    def _open_publish_layer(self):
+        self._page.click(SMART_EDITOR["publish_button"])
+        self._page.wait_for_timeout(1500)
+
+    def get_categories(self) -> list[str]:
+        """현재 유저의 블로그 카테고리 목록을 동적으로 읽는다(발행 레이어).
+
+        하드코딩 없이 계정마다 다른 카테고리를 그대로 가져온다.
+        """
+        self._open_publish_layer()
+        self._page.click(SMART_EDITOR["category_button"])
+        self._page.wait_for_timeout(1000)
+        names = self._page.evaluate("""() => {
+            const seen = new Set();
+            document.querySelectorAll('label[class*=radio_label]').forEach(el => {
+                if (!el.offsetParent) return;
+                // '하위 카테고리\\n강남맛집' → 마지막 줄만
+                const t = (el.innerText || '').trim().split('\\n').pop().trim();
+                if (t) seen.add(t);
+            });
+            return [...seen];
+        }""")
+        return names
+
+    def select_category(self, name: str):
+        """카테고리를 이름(텍스트)으로 선택. 레이어/드롭다운이 열려있다고 가정."""
+        # 드롭다운이 닫혀 있으면 연다
+        try:
+            self._page.click(SMART_EDITOR["category_button"], timeout=2000)
+            self._page.wait_for_timeout(600)
+        except Exception:
+            pass
+        self._page.get_by_text(name, exact=True).first.click()
+        self._page.wait_for_timeout(500)
 
     # --- 에디터 조작 ---
     def _type_title(self, title: str):
@@ -152,14 +213,21 @@ class BlogPublisher:
         except Exception:
             pass  # 발행 레이어 확인 버튼은 라이브에서 확정
 
-    def close(self):
+    def close(self, save_session: bool = True):
         if self._ctx:
+            if save_session and self.is_logged_in():
+                try:
+                    self.save_state()  # 세션 영속화(다음 실행 자동 로그인)
+                except Exception:
+                    pass
             self._ctx.close()
+        if getattr(self, "_browser", None):
+            self._browser.close()
         if getattr(self, "_pw", None):
             self._pw.stop()
 
 
-# 셀렉터가 비어 있는지 빠른 점검(개발 보조)
+# 핵심 셀렉터가 채워졌는지 점검(개발 보조). editor_iframe은 top frame이라 비워둠.
 def selectors_ready() -> bool:
-    required = ("editor_iframe", "title_area", "content_area", "publish_button")
+    required = ("title_component", "content_component", "save_button", "publish_button")
     return all(SMART_EDITOR.get(k) for k in required)
