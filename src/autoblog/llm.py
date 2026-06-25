@@ -18,6 +18,33 @@ def default_text_model() -> str:
     return load_models_config().get().text
 
 
+def _chat_anthropic(messages: list[dict], model: str, fmt: str | None = None) -> str:
+    """Claude API(공식 anthropic SDK)로 텍스트 생성. ANTHROPIC_API_KEY 필요."""
+    import anthropic
+
+    env = load_env()
+    if not env.anthropic_api_key:
+        raise LLMUnavailable("ANTHROPIC_API_KEY 미설정 — 설정 탭에서 API 키를 입력하세요")
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    if fmt == "json":
+        system = (system + "\n\nJSON으로만 답하세요.").strip()
+    conv = [
+        {"role": m["role"], "content": m["content"]}
+        for m in messages
+        if m["role"] in ("user", "assistant")
+    ]
+    client = anthropic.Anthropic(api_key=env.anthropic_api_key)
+    try:
+        resp = client.messages.create(
+            model=model, max_tokens=16000, messages=conv, **({"system": system} if system else {})
+        )
+    except anthropic.AuthenticationError as exc:
+        raise LLMUnavailable("ANTHROPIC_API_KEY가 유효하지 않습니다") from exc
+    except anthropic.APIError as exc:
+        raise LLMUnavailable(f"Claude API 오류: {exc}") from exc
+    return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+
+
 def chat(
     messages: list[dict],
     model: str | None = None,
@@ -26,12 +53,14 @@ def chat(
     temperature: float = 0.7,
     timeout: int = 600,
 ) -> str:
-    """Ollama chat API 호출 → 응답 텍스트.
+    """텍스트 LLM 호출 → 응답 텍스트.
 
     messages: [{"role": "system"|"user"|"assistant", "content": "..."}].
-    fmt="json"이면 JSON 응답을 강제한다.
+    모델명이 claude*면 Claude API(anthropic), 그 외는 Ollama. fmt="json"이면 JSON 응답 강제.
     """
     model = model or default_text_model()
+    if model.startswith("claude"):
+        return _chat_anthropic(messages, model, fmt=fmt)
     env = load_env()
     payload: dict = {
         "model": model,

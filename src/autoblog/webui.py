@@ -501,15 +501,34 @@ function renderRules(){const c=$('#rules'); c.innerHTML='';
     row.querySelector('.sw').onclick=function(){RULES[k]=!RULES[k]; this.classList.toggle('on',RULES[k]);};
     c.appendChild(row);});
 }
+let HAS_API_KEY=false;
 function renderModelInfo(p){if(!p)return;
-  $('#minfo').innerHTML=`<div class=setrow><div><div class=t>텍스트 (초안 작성)</div><div class=d>${p.text}</div></div></div>
-    <div class=setrow><div><div class=t>비전 (사진/상품 분석)</div><div class=d>${p.vision}</div></div></div>
-    ${p.note?`<div class=muted style="margin:8px 0 14px">💡 ${p.note}</div>`:''}
-    <div class=sub-h>설치 방법 — 터미널에 입력</div>
-    <pre class=mcmd>ollama pull ${p.text}\nollama pull ${p.vision}</pre>
-    <div class=muted style="margin-top:8px">Ollama가 없으면 <b>ollama.com</b>에서 먼저 설치 → 위 명령으로 모델 다운로드. 한 번만 받으면 계속 씁니다.</div>`;
+  const isApi=p.provider==='anthropic';
+  let h=`<div class=setrow><div><div class=t>텍스트 (초안 작성)</div><div class=d>${p.text} ${isApi?'<span style="color:#7b61ff">· Claude API</span>':'<span class=muted>· 로컬</span>'}</div></div></div>
+    <div class=setrow><div><div class=t>비전 (사진/상품 분석)</div><div class=d>${p.vision} <span class=muted>· 로컬</span></div></div></div>
+    ${p.note?`<div class=muted style="margin:8px 0 14px">💡 ${p.note}</div>`:''}`;
+  if(isApi){
+    h+=`<div class=sub-h>Claude API 키</div>
+      <div class=muted style="margin-bottom:8px">지시를 정확히 따라 강조·구분선·인용구·스티커 마커가 안정적으로 나옵니다(토큰당 과금). 비전은 로컬 유지.</div>
+      <div style="display:flex;gap:8px">
+        <input type=password id=apikey placeholder="${HAS_API_KEY?'키 저장됨 ✓ (다시 입력해 교체)':'sk-ant-...'}" style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
+        <button class=btn id=apikeysave style="width:auto;padding:9px 16px">저장</button>
+      </div>
+      <div class=muted id=apikeystat style="margin-top:6px">키는 <b>console.anthropic.com</b>에서 발급. .env에 저장됩니다.</div>`;
+  }else{
+    h+=`<div class=sub-h>설치 방법 — 터미널에 입력</div>
+      <pre class=mcmd>ollama pull ${p.text}\nollama pull ${p.vision}</pre>
+      <div class=muted style="margin-top:8px">Ollama가 없으면 <b>ollama.com</b>에서 먼저 설치 → 위 명령으로 모델 다운로드. 한 번만 받으면 계속 씁니다.</div>`;
+  }
+  $('#minfo').innerHTML=h;
+  if(isApi){$('#apikeysave').onclick=async()=>{const v=$('#apikey').value.trim(); if(!v){$('#apikeystat').textContent='키를 입력하세요';return;}
+    $('#apikeysave').disabled=true; $('#apikeystat').textContent='저장 중…';
+    try{const r=await fetch('/api/anthropic-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:v})});
+      HAS_API_KEY=r.ok; $('#apikeystat').textContent=r.ok?'저장됨 ✓ 이제 Claude로 생성됩니다':'저장 실패'; $('#apikey').value='';
+    }catch(e){$('#apikeystat').textContent='오류';}finally{$('#apikeysave').disabled=false;}};}
 }
 async function loadModels(){try{const m=await (await fetch('/api/models')).json();
+  HAS_API_KEY=!!m.has_api_key;
   const opts=m.presets.map(p=>`<option value="${p.key}"${p.key===m.current?' selected':''}>${p.label}</option>`).join('');
   $('#models').innerHTML=`<h3>🧠 모델 <span class=muted style="font-weight:400">— 내 컴퓨터(GPU)에 맞게</span></h3>
     <div class=setrow><div class=t>프리셋</div><select id=mpreset style="width:auto;min-width:260px;border:1px solid #d6dade;border-radius:8px;padding:8px">${opts}</select></div>
@@ -704,6 +723,9 @@ def _make_handler(state: dict):
                     self._send(200, b'{"ok":true}')
                 elif path == "/api/models":
                     _set_model_preset(self._json_body().get("preset", ""))
+                    self._send(200, b'{"ok":true}')
+                elif path == "/api/anthropic-key":
+                    _set_anthropic_key(self._json_body().get("key", ""))
                     self._send(200, b'{"ok":true}')
                 elif path == "/api/format":
                     import yaml
@@ -921,15 +943,27 @@ def _save_prompt(text: str) -> None:
 
 def _models_info() -> dict:
     """현재 모델 + 선택 가능한 프리셋 목록(모델 변경용)."""
-    from autoblog.config import load_models_config
+    from autoblog.config import load_env, load_models_config
 
     cfg = load_models_config()
     cur = cfg.get()
     presets = [
-        {"key": k, "label": p.label, "text": p.text, "vision": p.vision, "note": p.note}
+        {"key": k, "label": p.label, "text": p.text, "vision": p.vision,
+         "note": p.note, "provider": p.provider}
         for k, p in cfg.presets.items()
     ]
-    return {"current": cfg.default, "text": cur.text, "vision": cur.vision, "presets": presets}
+    return {
+        "current": cfg.default, "text": cur.text, "vision": cur.vision,
+        "provider": cur.provider, "presets": presets,
+        "has_api_key": bool(load_env().anthropic_api_key),
+    }
+
+
+def _set_anthropic_key(key: str) -> None:
+    from autoblog.config import load_env, save_env_value
+
+    save_env_value("ANTHROPIC_API_KEY", key.strip())
+    load_env.cache_clear()
 
 
 def _fetch_categories() -> list:
@@ -956,6 +990,9 @@ def _set_model_preset(key: str) -> None:
     if key in data.get("presets", {}):
         data["default"] = key
         path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        from autoblog.config import load_models_config
+
+        load_models_config.cache_clear()  # lru_cache 무효화
 
 
 def _sticker_image(ref: str) -> Path | None:

@@ -1,55 +1,52 @@
-# GPU VRAM 티어별 모델 프리셋 (기획서 §5)
-# 모델명을 코드에 박지 않고 여기서만 관리 → 새 모델 나오면 이 파일만 교체.
-# 첫 실행 시 GPU VRAM 자동 감지 → 적절한 프리셋을 default로 추천.
-#
-# vision : 정보 수집 단계(사진 분류 / 상품 이미지 OCR)에 로드
-# text   : 초안 작성 단계에 로드
-# VRAM 한계로 vision → text 순차 로드가 기본 (16GB+는 동시 로드 가능).
-
 presets:
   4gb:
-    label: "4GB (GTX 1650)"
+    label: 4GB (GTX 1650)
     vision: moondream:1.8b
     text: qwen2.5:3b
-    note: "한글 OCR 약함, 상품 리뷰 비권장"
+    note: 한글 OCR 약함, 상품 리뷰 비권장
     concurrent_load: false
-
   8gb:
-    label: "8GB (2070S·3060Ti) — 권장 시작점"
+    label: 8GB (2070S·3060Ti) — 권장 시작점
     vision: qwen2.5vl:7b
     text: qwen2.5:7b
-    note: "권장 시작점"
+    note: 권장 시작점
     concurrent_load: false
-
   12gb:
-    label: "12GB (3060·4070) — 가성비 최고"
+    label: 12GB (3060·4070) — 가성비 최고
     vision: qwen2.5vl:7b
     text: qwen2.5:14b
-    note: "글 품질 큰 향상, 가성비 최고"
+    note: 글 품질 큰 향상, 가성비 최고
     concurrent_load: false
-
   16gb:
-    label: "16GB+ (4080·4090)"
+    label: 16GB+ (4080·4090)
     vision: qwen3vl:8b
     text: qwen2.5:14b
-    note: "동시 로드 가능, 전환 대기 없음"
+    note: 동시 로드 가능, 전환 대기 없음
     concurrent_load: true
-
-  # Apple Silicon (통합 메모리) — nvidia-smi 없음. hw.memsize로 감지.
   apple_18gb:
-    label: "Apple Silicon 16~24GB (M-Pro 등)"
+    label: Apple Silicon 16~24GB (M-Pro 등)
     vision: qwen2.5vl:7b
     text: qwen2.5:14b
-    note: "개발 기본. 14b가 7b보다 일관성 크게 우수(7b는 붕괴/환각). 순차 로드"
+    note: 개발 기본. 14b가 7b보다 일관성 크게 우수(7b는 붕괴/환각). 순차 로드
     concurrent_load: false
-
   apple_32gb:
-    label: "Apple Silicon 32GB+ (M-Max 등)"
+    label: Apple Silicon 32GB+ (M-Max 등)
     vision: qwen2.5vl:7b
     text: qwen2.5:14b
-    note: "동시 로드 여유"
+    note: 동시 로드 여유
     concurrent_load: true
-
-# 자동 감지 전 기본값. 개발 머신이 Apple Silicon이라 apple_18gb 사용
-# (vision=qwen2.5vl:7b, text=qwen2.5:14b). 배포 시 GPU 감지로 교체.
+  claude:
+    label: Claude API (정확·유료)
+    provider: anthropic
+    text: claude-opus-4-8
+    vision: qwen2.5vl:7b
+    note: 지시 정확히 따름(마커 잘 나옴). ANTHROPIC_API_KEY 필요. 토큰당 과금.
+    concurrent_load: true
+  claude_sonnet:
+    label: Claude API — Sonnet (저렴)
+    provider: anthropic
+    text: claude-sonnet-4-6
+    vision: qwen2.5vl:7b
+    note: Opus보다 저렴, 충분히 정확. ANTHROPIC_API_KEY 필요.
+    concurrent_load: true
 default: apple_18gb

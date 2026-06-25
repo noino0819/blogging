@@ -26,6 +26,7 @@ class ModelPreset(BaseModel):
     text: str
     note: str = ""
     concurrent_load: bool = False
+    provider: str = "ollama"  # "ollama"(로컬) | "anthropic"(Claude API) — 텍스트 생성 라우팅
 
 
 class ModelsConfig(BaseModel):
@@ -51,6 +52,7 @@ class Env(BaseModel):
     naver_client_secret: str | None = None
     naver_blog_id: str | None = None  # 게시 대상 블로그 ID (한 번 받아 .env에 저장)
     ollama_host: str = "http://127.0.0.1:11434"
+    anthropic_api_key: str | None = None  # Claude API 키(.env ANTHROPIC_API_KEY) — API 모델용
 
     @property
     def has_naver_api(self) -> bool:
@@ -64,6 +66,7 @@ def load_env() -> Env:
         naver_client_secret=os.getenv("NAVER_CLIENT_SECRET"),
         naver_blog_id=os.getenv("NAVER_BLOG_ID"),
         ollama_host=os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
+        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
     )
 
 
