@@ -49,4 +49,18 @@ presets:
     vision: qwen2.5vl:7b
     note: Opus보다 저렴, 충분히 정확. ANTHROPIC_API_KEY 필요.
     concurrent_load: true
+  gpt:
+    label: OpenAI API — GPT (정확·유료)
+    provider: openai
+    text: gpt-4o
+    vision: qwen2.5vl:7b
+    note: 지시 정확. OPENAI_API_KEY 필요. 토큰당 과금. (비전은 로컬 유지)
+    concurrent_load: true
+  gemini:
+    label: Gemini API (정확·유료)
+    provider: gemini
+    text: gemini-2.5-pro
+    vision: qwen2.5vl:7b
+    note: 지시 정확. GEMINI_API_KEY 필요. 토큰당 과금. (비전은 로컬 유지)
+    concurrent_load: true
 default: apple_18gb

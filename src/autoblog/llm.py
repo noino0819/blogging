@@ -18,6 +18,18 @@ def default_text_model() -> str:
     return load_models_config().get().text
 
 
+def provider_for(model: str) -> str:
+    """모델명으로 API 제공자 판별(라우팅용). 그 외는 로컬 Ollama."""
+    m = model.lower()
+    if m.startswith("claude"):
+        return "anthropic"
+    if m.startswith("gemini"):
+        return "gemini"
+    if m.startswith("gpt") or m.startswith(("o1", "o3", "o4")):
+        return "openai"
+    return "ollama"
+
+
 def _chat_anthropic(messages: list[dict], model: str, fmt: str | None = None) -> str:
     """Claude API(공식 anthropic SDK)로 텍스트 생성. ANTHROPIC_API_KEY 필요."""
     import anthropic
@@ -45,6 +57,63 @@ def _chat_anthropic(messages: list[dict], model: str, fmt: str | None = None) ->
     return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
 
 
+def _chat_openai(messages: list[dict], model: str, fmt: str | None = None) -> str:
+    """OpenAI(GPT) API로 텍스트 생성. OPENAI_API_KEY 필요."""
+    try:
+        from openai import APIError, AuthenticationError, OpenAI
+    except ImportError as exc:
+        raise LLMUnavailable("openai 패키지 미설치 — pip install openai") from exc
+
+    env = load_env()
+    if not env.openai_api_key:
+        raise LLMUnavailable("OPENAI_API_KEY 미설정 — 설정 탭에서 API 키를 입력하세요")
+    msgs = list(messages)
+    kwargs: dict = {}
+    if fmt == "json":
+        kwargs["response_format"] = {"type": "json_object"}
+        msgs = msgs + [{"role": "system", "content": "JSON으로만 답하세요."}]
+    client = OpenAI(api_key=env.openai_api_key)
+    try:
+        resp = client.chat.completions.create(model=model, messages=msgs, **kwargs)
+    except AuthenticationError as exc:
+        raise LLMUnavailable("OPENAI_API_KEY가 유효하지 않습니다") from exc
+    except APIError as exc:
+        raise LLMUnavailable(f"OpenAI API 오류: {exc}") from exc
+    return resp.choices[0].message.content or ""
+
+
+def _chat_gemini(messages: list[dict], model: str, fmt: str | None = None) -> str:
+    """Google Gemini API로 텍스트 생성. GEMINI_API_KEY 필요."""
+    try:
+        from google import genai
+        from google.genai import errors, types
+    except ImportError as exc:
+        raise LLMUnavailable("google-genai 패키지 미설치 — pip install google-genai") from exc
+
+    env = load_env()
+    if not env.gemini_api_key:
+        raise LLMUnavailable("GEMINI_API_KEY 미설정 — 설정 탭에서 API 키를 입력하세요")
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    contents = [
+        types.Content(
+            role="model" if m["role"] == "assistant" else "user",
+            parts=[types.Part(text=m["content"])],
+        )
+        for m in messages
+        if m["role"] in ("user", "assistant")
+    ]
+    cfg = types.GenerateContentConfig(
+        system_instruction=system or None,
+        response_mime_type="application/json" if fmt == "json" else None,
+    )
+    client = genai.Client(api_key=env.gemini_api_key)
+    try:
+        resp = client.models.generate_content(model=model, contents=contents, config=cfg)
+    except errors.APIError as exc:
+        raise LLMUnavailable(f"Gemini API 오류: {exc}") from exc
+    return resp.text or ""
+
+
 def chat(
     messages: list[dict],
     model: str | None = None,
@@ -56,11 +125,17 @@ def chat(
     """텍스트 LLM 호출 → 응답 텍스트.
 
     messages: [{"role": "system"|"user"|"assistant", "content": "..."}].
-    모델명이 claude*면 Claude API(anthropic), 그 외는 Ollama. fmt="json"이면 JSON 응답 강제.
+    모델명 접두사로 라우팅(claude→Claude, gpt/o*→GPT, gemini→Gemini, 그 외→Ollama).
+    fmt="json"이면 JSON 응답 강제.
     """
     model = model or default_text_model()
-    if model.startswith("claude"):
+    provider = provider_for(model)
+    if provider == "anthropic":
         return _chat_anthropic(messages, model, fmt=fmt)
+    if provider == "openai":
+        return _chat_openai(messages, model, fmt=fmt)
+    if provider == "gemini":
+        return _chat_gemini(messages, model, fmt=fmt)
     env = load_env()
     payload: dict = {
         "model": model,

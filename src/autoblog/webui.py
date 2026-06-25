@@ -652,50 +652,58 @@ function renderRules(){const c=$('#rules'); c.innerHTML='';
     row.querySelector('.sw').onclick=function(){RULES[k]=!RULES[k]; this.classList.toggle('on',RULES[k]); savePrefs();};
     c.appendChild(row);});
 }
-let HAS_API_KEY=false;
+// provider별 메타: 라벨·키 발급처·플레이스홀더
+const PROV={
+  anthropic:{name:'Claude API',color:'#7b61ff',ph:'sk-ant-...',issuer:'console.anthropic.com › API Keys'},
+  openai:{name:'OpenAI API',color:'#10a37f',ph:'sk-...',issuer:'platform.openai.com › API keys'},
+  gemini:{name:'Gemini API',color:'#1a73e8',ph:'AIza...',issuer:'aistudio.google.com › API keys'},
+};
+let MODEL_KEYS={};
 function renderModelInfo(p){if(!p)return;
-  const isApi=p.provider==='anthropic';
-  let h=`<div class=setrow><div><div class=t>텍스트 (초안 작성)</div><div class=d>${p.text} ${isApi?'<span style="color:#7b61ff">· Claude API</span>':'<span class=muted>· 로컬</span>'}</div></div></div>
+  const pv=PROV[p.provider]; const isApi=!!pv;
+  let h=`<div class=setrow><div><div class=t>텍스트 (초안 작성)</div><div class=d>${p.text} ${isApi?`<span style="color:${pv.color}">· ${pv.name}</span>`:'<span class=muted>· 로컬</span>'}</div></div></div>
     <div class=setrow><div><div class=t>비전 (사진/상품 분석)</div><div class=d>${p.vision} <span class=muted>· 로컬</span></div></div></div>
     ${p.note?`<div class=muted style="margin:8px 0 14px">💡 ${p.note}</div>`:''}`;
   if(isApi){
-    h+=`<div class=muted style="margin-bottom:6px">✅ 이 프리셋은 <b>Claude API</b>를 씁니다. 아래에서 API 키를 등록하면 바로 적용돼요(비전은 로컬 유지).</div>`;
+    h+=`<div class=muted style="margin-bottom:6px">✅ 이 프리셋은 <b>${pv.name}</b>를 씁니다. 아래에서 API 키를 등록하면 바로 적용돼요(비전은 로컬 유지).</div>`;
   }else{
     h+=`<div class=sub-h>설치 방법 — 터미널에 입력</div>
       <pre class=mcmd>ollama pull ${p.text}\nollama pull ${p.vision}</pre>
       <div class=muted style="margin-top:8px">Ollama가 없으면 <b>ollama.com</b>에서 먼저 설치 → 위 명령으로 모델 다운로드. 한 번만 받으면 계속 씁니다.</div>`;
   }
   $('#minfo').innerHTML=h;
+  renderApiKeyBox(isApi?p.provider:null);
 }
-function refreshApiKeyUI(){
-  $('#apikey').placeholder=HAS_API_KEY?'키 저장됨 ✓ (다시 입력해 교체)':'sk-ant-...';
-  $('#apikeystat').innerHTML=HAS_API_KEY
-    ?'저장됨 ✓ · 프리셋에서 <b>Claude API</b>를 고르면 Claude로 생성됩니다.'
-    :'키는 <b>console.anthropic.com</b> › API Keys에서 발급. .env에 저장됩니다.';}
+function renderApiKeyBox(provider){
+  const box=$('#apikeybox');
+  if(!provider){box.innerHTML='';return;}
+  const pv=PROV[provider]; const has=!!MODEL_KEYS[provider];
+  box.innerHTML=`<div class=sub-h style="margin-top:20px">${pv.name} 키 <span class=muted style="font-weight:400">— (선택) 로컬 모델이 마커를 잘 못 넣으면 정확함</span></div>
+    <div class=muted style="margin-bottom:8px">키를 등록해두면 위 <b>프리셋</b>에서 "${pv.name}"를 고를 때 초안을 ${pv.name}로 생성합니다(토큰당 과금).</div>
+    <div style="display:flex;gap:8px">
+      <input type=password id=apikey placeholder="${has?'키 저장됨 ✓ (다시 입력해 교체)':pv.ph}" style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
+      <button class=btn id=apikeysave style="width:auto;padding:9px 16px">저장</button>
+    </div>
+    <div class=muted id=apikeystat style="margin-top:6px">${has?`저장됨 ✓ · 프리셋에서 <b>${pv.name}</b>를 고르면 적용됩니다.`:`키는 <b>${pv.issuer}</b>에서 발급. .env에 저장됩니다.`}</div>`;
+  $('#apikeysave').onclick=async()=>{const v=$('#apikey').value.trim(); if(!v){toast('키를 입력하세요.','info');return;}
+    $('#apikeysave').disabled=true; $('#apikeystat').textContent='저장 중…';
+    try{const r=await fetch('/api/llm-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({provider:provider,key:v})});
+      if(r.ok){MODEL_KEYS[provider]=true; toast(`${pv.name} 키 저장됨 ✓`,'ok');}
+      else toast('API 키 저장 실패','err');
+      renderApiKeyBox(provider);
+    }catch(e){toast('API 키 오류: '+e,'err');}finally{const b=$('#apikeysave'); if(b)b.disabled=false;}};
+}
 async function loadModels(){try{const m=await (await fetch('/api/models')).json();
-  HAS_API_KEY=!!m.has_api_key;
+  MODEL_KEYS=m.keys||{};
   const opts=m.presets.map(p=>`<option value="${p.key}"${p.key===m.current?' selected':''}>${p.label}</option>`).join('');
   $('#models').innerHTML=`<h3>모델 <span class=muted style="font-weight:400">— 내 컴퓨터(GPU)에 맞게</span></h3>
     <div class=setrow><div class=t>프리셋</div><select id=mpreset style="width:auto;min-width:260px;border:1px solid #d6dade;border-radius:8px;padding:8px">${opts}</select></div>
     <div id=minfo></div>
-    <div class=sub-h style="margin-top:20px">Claude API 키 <span class=muted style="font-weight:400">— (선택) 로컬 모델이 마커를 잘 못 넣으면 정확함</span></div>
-    <div class=muted style="margin-bottom:8px">키를 등록해두고, 위 <b>프리셋</b>에서 "Claude API"를 고르면 초안을 Claude로 생성합니다(토큰당 과금).</div>
-    <div style="display:flex;gap:8px">
-      <input type=password id=apikey placeholder="sk-ant-..." style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
-      <button class=btn id=apikeysave style="width:auto;padding:9px 16px">저장</button>
-    </div>
-    <div class=muted id=apikeystat style="margin-top:6px"></div>`;
+    <div id=apikeybox></div>`;
   $('#mpreset').onchange=async()=>{const k=$('#mpreset').value;
     await fetch('/api/models',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({preset:k})});
     renderModelInfo(m.presets.find(p=>p.key===k));};
-  $('#apikeysave').onclick=async()=>{const v=$('#apikey').value.trim(); if(!v){toast('키를 입력하세요.','info');return;}
-    $('#apikeysave').disabled=true; $('#apikeystat').textContent='저장 중…';
-    try{const r=await fetch('/api/anthropic-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:v})});
-      HAS_API_KEY=r.ok; $('#apikey').value=''; refreshApiKeyUI();
-      if(r.ok)toast('API 키 저장됨 ✓ 프리셋에서 "Claude API"를 고르면 적용돼요.','ok'); else toast('API 키 저장 실패','err');
-    }catch(e){toast('API 키 오류: '+e,'err');}finally{$('#apikeysave').disabled=false;}};
   renderModelInfo(m.presets.find(p=>p.key===m.current));
-  refreshApiKeyUI();
 }catch(e){$('#models').innerHTML='<div class=muted>로드 실패</div>';}}
 
 async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).json();
@@ -906,8 +914,9 @@ def _make_handler(state: dict):
                 elif path == "/api/models":
                     _set_model_preset(self._json_body().get("preset", ""))
                     self._send(200, b'{"ok":true}')
-                elif path == "/api/anthropic-key":
-                    _set_anthropic_key(self._json_body().get("key", ""))
+                elif path == "/api/llm-key":
+                    body = self._json_body()
+                    _set_llm_key(body.get("provider", "anthropic"), body.get("key", ""))
                     self._send(200, b'{"ok":true}')
                 elif path == "/api/format":
                     import yaml
@@ -1240,17 +1249,32 @@ def _models_info() -> dict:
          "note": p.note, "provider": p.provider}
         for k, p in cfg.presets.items()
     ]
+    env = load_env()
     return {
         "current": cfg.default, "text": cur.text, "vision": cur.vision,
         "provider": cur.provider, "presets": presets,
-        "has_api_key": bool(load_env().anthropic_api_key),
+        "keys": {
+            "anthropic": bool(env.anthropic_api_key),
+            "openai": bool(env.openai_api_key),
+            "gemini": bool(env.gemini_api_key),
+        },
     }
 
 
-def _set_anthropic_key(key: str) -> None:
+_LLM_KEY_ENV = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+}
+
+
+def _set_llm_key(provider: str, key: str) -> None:
     from autoblog.config import load_env, save_env_value
 
-    save_env_value("ANTHROPIC_API_KEY", key.strip())
+    env_var = _LLM_KEY_ENV.get(provider)
+    if not env_var:
+        raise ValueError(f"알 수 없는 provider: {provider!r}")
+    save_env_value(env_var, key.strip())
     load_env.cache_clear()
 
 
