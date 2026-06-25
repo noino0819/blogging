@@ -15,7 +15,7 @@ from autoblog.collect.fact_card import CardType, FactCard
 from autoblog.draft.generate import DraftRequest, DraftResult, generate_draft
 from autoblog.draft.rules import CommonRules
 from autoblog.draft.style import StyleProfile
-from autoblog.publish.plan import PublishPlan, build_publish_plan
+from autoblog.publish.plan import PublishPlan, build_publish_plan, load_structure_styles
 from autoblog.publish.stickers import StickerCatalog, StickerPicker
 
 
@@ -60,8 +60,11 @@ def build_export_prompt(
     base_prompt: str | None = None,
     emphasis: bool = False,
     structure: bool = False,
+    sponsored: bool = False,
     stickers: bool = False,
     sticker_catalog: StickerCatalog | None = None,
+    divider_variants: list[str] | None = None,
+    quote_variants: list[str] | None = None,
 ) -> str:
     """수집(선택)→프롬프트 조립까지만 하고, 다른 챗봇에 붙여넣을 단일 텍스트로 반환.
 
@@ -90,7 +93,10 @@ def build_export_prompt(
         rules=rules,
         emphasis=emphasis,
         structure=structure,
+        divider_variants=divider_variants or [],
+        quote_variants=quote_variants or [],
         sticker_labels=labels,
+        sponsored=sponsored,
     )
     system, user = build_prompt(req)
     return (
@@ -113,6 +119,7 @@ def plan_from_text(
     stickers: bool = False,
     sticker_catalog: StickerCatalog | None = None,
     consistent_pack: bool = False,
+    sticker_favorites_only: bool = True,
     divider_variant: int = 1,
     quote_variant: int = 1,
 ) -> PipelineResult:
@@ -144,11 +151,14 @@ def plan_from_text(
     )
     draft = generate_draft(req, raw_override=text)
     picker = (
-        StickerPicker(catalog, consistent=consistent_pack) if (catalog and labels) else None
+        StickerPicker(catalog, consistent=consistent_pack, favorites_only=sticker_favorites_only)
+        if (catalog and labels)
+        else None
     )
     plan = build_publish_plan(
         draft, photos=card.photos, picker=picker,
         divider_variant=divider_variant, quote_variant_default=quote_variant,
+        structure_styles=load_structure_styles(),
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
 
@@ -165,11 +175,15 @@ def run_pipeline(
     base_prompt: str | None = None,
     emphasis: bool = False,
     structure: bool = False,
+    sponsored: bool = False,
     stickers: bool = False,
     sticker_catalog: StickerCatalog | None = None,
     consistent_pack: bool = False,
+    sticker_favorites_only: bool = True,
     divider_variant: int = 1,
     quote_variant: int = 1,
+    divider_variants: list[str] | None = None,
+    quote_variants: list[str] | None = None,
     model: str | None = None,
 ) -> PipelineResult:
     """수집→초안(강조/구조/스티커 마커 자동)→게시 플랜까지 한 번에 조립.
@@ -198,15 +212,21 @@ def run_pipeline(
         rules=rules,
         emphasis=emphasis,
         structure=structure,
+        divider_variants=divider_variants or [],
+        quote_variants=quote_variants or [],
         sticker_labels=labels,
+        sponsored=sponsored,
     )
     draft = generate_draft(req, model=model)
 
     picker = (
-        StickerPicker(catalog, consistent=consistent_pack) if (catalog and labels) else None
+        StickerPicker(catalog, consistent=consistent_pack, favorites_only=sticker_favorites_only)
+        if (catalog and labels)
+        else None
     )
     plan = build_publish_plan(
         draft, photos=card.photos, picker=picker,
         divider_variant=divider_variant, quote_variant_default=quote_variant,
+        structure_styles=load_structure_styles(),
     )
     return PipelineResult(card=card, draft=draft, plan=plan)

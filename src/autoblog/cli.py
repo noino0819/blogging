@@ -187,6 +187,9 @@ def post(
     structure: bool = typer.Option(True, "--structure/--no-structure", help="구분선/인용구 마커"),
     stickers: bool = typer.Option(True, "--stickers/--no-stickers", help="스티커 마커(즐겨찾기 라벨)"),
     consistent_pack: bool = typer.Option(False, "--consistent-pack", help="스티커를 한 팩으로 통일"),
+    favorites_only: bool = typer.Option(
+        True, "--fav-only/--all-stickers", help="즐겨찾기한 스티커만 사용(기본). --all-stickers면 전체"
+    ),
     category: str = typer.Option(None, "--category", help="발행 카테고리(유저별)"),
     model: str = typer.Option(None, "--model", help="텍스트 모델 override"),
     dry_run: bool = typer.Option(False, "--dry-run", help="브라우저 없이 초안/플랜만 출력"),
@@ -220,6 +223,7 @@ def post(
         structure=structure,
         stickers=stickers,
         consistent_pack=consistent_pack,
+        sticker_favorites_only=favorites_only,
         model=model,
     )
     typer.echo(result.draft.text)

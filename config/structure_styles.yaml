@@ -1,0 +1,30 @@
+# 구조별 서식 템플릿 — 글의 각 구조 요소에 자동 적용(서체·크기·색).
+# 자유롭게 수정하세요. 서체 값은 네이버 SmartEditor data-value입니다:
+#   system(기본서체) nanumgothic nanummyeongjo nanumbarungothic nanumsquare
+#   nanummaruburi(마루부리) nanumdasisijaghae(다시시작해)
+#   nanumbareunhipi(바른히피) nanumuriddalsongeulssi(우리딸손글씨)
+# size는 SE 글자크기(11/13/15/16/19/24/28/30/34/38…), color는 hex.
+
+pen_name: 노이노            # "with. 필명"의 필명(협찬 글에만 노출)
+
+big_title:                 # 본문 맨 위 대제목(콘셉트 한 줄)
+  font: nanummaruburi
+  size: 30
+  color: "#395D73"
+
+subheading:                # 소제목 (예: "1. 치즈철판카츠 후기")
+  font: nanumuriddalsongeulssi
+  size: 19
+  color: "#EB7D7D"
+
+byline:                    # with. 필명 (협찬 글에만)
+  font: nanumdasisijaghae
+  size: 15
+  color: "#607D8E"
+
+hashtags:                  # 해시태그 줄
+  font: system
+  size: 11
+  color: "#4383BF"
+  per_line: 2              # 한 줄에 태그 N개씩 보기 좋게 줄바꿈
+  divider: line3           # 해시태그 뒤 구분선 종류(line3=가운데 꺾인 선). 비우면 안 넣음

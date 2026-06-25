@@ -63,4 +63,4 @@ presets:
     vision: qwen2.5vl:7b
     note: 지시 정확. GEMINI_API_KEY 필요. 토큰당 과금. (비전은 로컬 유지)
     concurrent_load: true
-default: apple_18gb
+default: gpt

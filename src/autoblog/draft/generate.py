@@ -37,8 +37,14 @@ class DraftRequest(BaseModel):
     emphasis: bool = False
     # 구조 마커 — 켜면 LLM이 [구분선]/[인용구]…[/인용구] 마커를 알아서 삽입(plan에서 블록으로 변환)
     structure: bool = False
+    # 유저가 '서식'에서 고른 구분선/인용구 종류(DIVIDER_META/QUOTE_META 키). 비우면 기본 한 종류.
+    # 여러 개면 프롬프트가 그 종류만 나열하고 LLM이 상황에 맞게 [구분선:번호]/[인용구:번호]로 고른다.
+    divider_variants: list[str] = Field(default_factory=list)
+    quote_variants: list[str] = Field(default_factory=list)
     # 스티커 — 보유 상황 라벨을 주면 LLM이 [스티커:상황] 마커를 그 어휘 안에서만 emit
     sticker_labels: list[str] = Field(default_factory=list)
+    # 협찬·제공받은 글 — 켜면 헤더에 "with. 필명" 한 줄을 넣게 안내(아니면 넣지 않음)
+    sponsored: bool = False
     emphasis_config: EmphasisConfig | None = None  # None이면 config/emphasis.yaml
     power_shortcuts: dict[int, EmphasisStyle] | None = None  # None이면 내장 기본 스타일
 
@@ -65,15 +71,24 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
     if req.emphasis:
         system = f"{system}\n\n{EMPHASIS_INSTRUCTION}"
     if req.structure:
-        from autoblog.publish.plan import STRUCTURE_INSTRUCTION  # 지연 임포트(순환 회피)
+        from autoblog.publish.plan import build_structure_instruction  # 지연 임포트(순환 회피)
 
-        system = f"{system}\n\n{STRUCTURE_INSTRUCTION}"
+        instr = build_structure_instruction(req.divider_variants, req.quote_variants)
+        system = f"{system}\n\n{instr}"
     if req.sticker_labels:
         from autoblog.publish.stickers import build_sticker_instruction
 
         instr = build_sticker_instruction(req.sticker_labels)
         if instr:
             system = f"{system}\n\n{instr}"
+    if req.sponsored:
+        from autoblog.publish.plan import load_structure_styles  # 지연 임포트(순환 회피)
+
+        pen = load_structure_styles().pen_name or "필명"
+        system = (
+            f"{system}\n\n[협찬 표기] 이 글은 협찬·제공받은 글이야. "
+            f'헤더의 대제목 바로 아래 줄에 "with. {pen}" 한 줄을 넣어.'
+        )
     user = build_user_prompt(req.fact_card, req.experience_memo)
     return system, user
 

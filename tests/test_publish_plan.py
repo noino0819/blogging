@@ -2,7 +2,12 @@ from autoblog.collect.fact_card import PhotoItem
 from autoblog.draft.generate import DraftResult
 from autoblog.publish.editor import selectors_ready
 from autoblog.publish.emphasis import EmphasisStyle, StyledSpan
-from autoblog.publish.plan import build_publish_plan
+from autoblog.publish.plan import (
+    HashtagStyle,
+    RoleStyle,
+    StructureStyles,
+    build_publish_plan,
+)
 
 
 def test_build_plan_title_and_blocks():
@@ -107,6 +112,60 @@ def test_build_plan_sticker_dropped_without_match():
     plan = build_publish_plan(draft)  # picker 없음
     assert all(b.kind != "sticker" for b in plan.blocks)
     assert all("[스티커" not in b.text for b in plan.blocks)
+
+
+def _structure_styles():
+    return StructureStyles(
+        big_title=RoleStyle(font="nanummaruburi", size=30, color="#395D73"),
+        subheading=RoleStyle(font="nanumuriddalsongeulssi", size=19, color="#EB7D7D"),
+        byline=RoleStyle(font="nanumdasisijaghae", size=15, color="#607D8E"),
+        hashtags=HashtagStyle(font="system", size=11, color="#4383BF", per_line=2, divider="line3"),
+    )
+
+
+def test_structure_styles_header_and_subheading():
+    draft = DraftResult(
+        text=(
+            "혜화 치즈철판카츠 메종아카이\n"
+            "친구랑 주말 대학로 데이트 코스\n"
+            "with. 노이노\n"
+            "혜화맛집 #대학로맛집 #혜화내돈내산 #메종아카이\n\n"
+            "인트로 한 줄.\n\n"
+            "1. 치즈철판카츠 후기\n"
+            "겉은 바삭 속은 촉촉."
+        )
+    )
+    plan = build_publish_plan(draft, structure_styles=_structure_styles())
+
+    # 첫 줄은 제목칸, 본문 대제목은 별도(마루부리30)
+    assert plan.title == "혜화 치즈철판카츠 메종아카이"
+    big = next(b for b in plan.blocks if b.text == "친구랑 주말 대학로 데이트 코스")
+    assert big.emphases[0].style.font_family == "nanummaruburi"
+    assert big.emphases[0].style.font_size == "30"
+    assert big.emphases[0].style.text_color == "#395D73"
+
+    # with. 줄은 다시시작해15
+    byline = next(b for b in plan.blocks if b.text == "with. 노이노")
+    assert byline.emphases[0].style.font_family == "nanumdasisijaghae"
+
+    # 해시태그는 2개씩 줄바꿈 + 줄마다 span, 바로 뒤에 가운데 꺾인 선(variant 4)
+    tag_block = next(b for b in plan.blocks if "#대학로맛집" in b.text)
+    assert tag_block.text == "혜화맛집 #대학로맛집\n#혜화내돈내산 #메종아카이"
+    assert len(tag_block.emphases) == 2
+    idx = plan.blocks.index(tag_block)
+    assert plan.blocks[idx + 1].kind == "divider" and plan.blocks[idx + 1].variant == 4
+
+    # 소제목 우리딸손글씨19
+    sub = next(b for b in plan.blocks if b.text == "1. 치즈철판카츠 후기")
+    assert sub.emphases[0].style.font_family == "nanumuriddalsongeulssi"
+    assert sub.emphases[0].style.font_size == "19"
+
+
+def test_structure_styles_off_by_default():
+    # structure_styles 미지정이면 기존 동작 그대로(대제목 서식 부여 안 함)
+    draft = DraftResult(text="제목\n\n짧은 첫 줄\n다음 줄")
+    plan = build_publish_plan(draft)
+    assert all(not b.emphases for b in plan.blocks if b.kind == "text")
 
 
 def test_selectors_ready():

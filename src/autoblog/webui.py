@@ -198,6 +198,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  <g id=i-format fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.9 0-.5-.2-.9-.5-1.2-.3-.3-.4-.6-.4-1 0-1 .8-1.7 1.7-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z"/><circle cx=7.5 cy=11.5 r=.9 fill=currentColor stroke=none/><circle cx=12 cy=7.8 r=.9 fill=currentColor stroke=none/><circle cx=16.4 cy=11.5 r=.9 fill=currentColor stroke=none/></g>
  <g id=i-prompt fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M6 3h8l4 4v14H6V3Z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 16.5h4"/></g>
  <g id=i-settings fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=12 cy=12 r=3/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5Z"/></g>
+ <g id=i-model fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><rect x=7 y=7 width=10 height=10 rx=1.5/><path d="M10 3v2M14 3v2M10 19v2M14 19v2M3 10h2M3 14h2M19 10h2M19 14h2"/></g>
  <g id=i-copy fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><rect x=8 y=3 width=8 height=4 rx=1/><path d="M16 5h2v16H6V5h2"/><path d="M9 12h6M9 16h4"/></g>
  <g id=i-inbox fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 14v5h16v-5"/><path d="M12 4v9m0 0 3.5-3.5M12 13 8.5 9.5"/></g>
  <g id=i-search fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=11 cy=11 r=6/><path d="m20 20-3.6-3.6"/></g>
@@ -228,6 +229,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=nav data-view=stickers><svg class=ic viewBox="0 0 24 24"><use href="#i-sticker"/></svg> 스티커</div>
   <div class=nav data-view=format><svg class=ic viewBox="0 0 24 24"><use href="#i-format"/></svg> 서식</div>
   <div class=nav data-view=prompt><svg class=ic viewBox="0 0 24 24"><use href="#i-prompt"/></svg> 프롬프트</div>
+  <div class=nav data-view=models><svg class=ic viewBox="0 0 24 24"><use href="#i-model"/></svg> 모델</div>
   <div class=nav data-view=settings><svg class=ic viewBox="0 0 24 24"><use href="#i-settings"/></svg> 설정</div>
   <div class=foot>로컬에서 동작 · 네이버 임시저장</div>
 </aside>
@@ -259,6 +261,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <span class="chip on" data-k=emphasis><span class=dot></span>강조색</span>
             <span class="chip on" data-k=structure><span class=dot></span>구분선·인용구</span>
             <span class="chip on" data-k=stickers><span class=dot></span>스티커</span>
+            <span class="chip" data-k=stickerAll><span class=dot></span>스티커 전체 사용 <span class=muted>(끄면 즐겨찾기만)</span></span>
+            <span class="chip" data-k=sponsored><span class=dot></span>협찬 <span class=muted>(켜면 with.필명 표기)</span></span>
           </div>
           <div style="margin-top:18px"><button class=btn id=gen>초안 생성</button></div>
           <div style="margin-top:9px"><button class="btn ghost" id=export><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg>내 프롬프트 합쳐서 복사 <span class=muted>(다른 챗봇에 붙여넣기)</span></button></div>
@@ -297,7 +301,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
         <button data-f=fav class=on>⭐ 즐겨찾기</button>
         <button data-f=all>전체 둘러보기</button>
       </div>
-      <button class="btn ghost" id=lblbtn style="width:auto;padding:9px 14px"><svg class=ic viewBox="0 0 24 24"><use href="#i-search"/></svg>즐겨찾기 태그 분석</button>
+      <button class="btn ghost" id=lblbtn style="width:auto;display:inline-flex;align-items:center;padding:8px 14px;font-size:12.5px;font-weight:600;border-radius:999px"><svg class=ic viewBox="0 0 24 24" style="margin-top:0;width:15px;height:15px"><use href="#i-search"/></svg>즐겨찾기 태그 분석</button>
+      <span class="chip on" id=hidedef title="네이버 기본 제공 팩 숨기기"><span class=dot></span>기본 이모티콘 숨기기</span>
       <span class=muted id=lblstat></span>
     </div>
     <div id=stbody><div class=muted>불러오는 중…</div></div>
@@ -323,12 +328,17 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     </div>
     <div class=card style="margin-top:16px"><h3>자동 추가 레이어 <span class=muted style="font-weight:400">— 마커 지시문(읽기 전용, 토글 켤 때만)</span></h3><div id=promptlayers><div class=muted>불러오는 중…</div></div></div>
   </section>
+  <!-- 모델 -->
+  <section class="view models">
+    <h2 class=title>모델</h2>
+    <p class=desc>초안 작성에 쓸 모델을 고릅니다 — 내 컴퓨터(GPU)에서 돌리는 내장 모델, 또는 외부 API(Claude·GPT·Gemini).</p>
+    <div class=card id=models><h3>모델</h3><div class=muted>불러오는 중…</div></div>
+  </section>
   <!-- 설정 -->
   <section class="view settings">
     <h2 class=title>설정</h2>
-    <p class=desc>글쓰기 규칙과 사용할 모델을 관리합니다.</p>
+    <p class=desc>글쓰기 규칙을 관리합니다.</p>
     <div class=card id=rules></div>
-    <div class=card style="margin-top:16px" id=models><h3>모델</h3><div class=muted>불러오는 중…</div></div>
   </section>
 </main>
 <script>
@@ -357,7 +367,7 @@ function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
   $('#srchint').innerHTML=KINDMANUAL
     ?('<b>'+(k==='place'?'맛집':'상품')+'</b>으로 수집합니다 (직접 선택).')
     :('입력을 보고 <b>'+(k==='place'?'맛집':'상품')+'</b>으로 자동 인식했어요. 직접 골라도 돼요.');}
-const FMT={emphasis:true,structure:true,stickers:true};
+const FMT={emphasis:true,structure:true,stickers:true,stickerAll:false,sponsored:false,hideDefault:true};
 const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:false,emoji:false};
 const RULE_META=[
  ['mobile_friendly','모바일 친화','문단을 2~3줄로 짧게, 여백 넉넉히(네이버 트래픽 대부분 모바일)'],
@@ -444,7 +454,7 @@ $('#gen').onclick=async()=>{
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
-      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,rules:RULES};
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,rules:RULES};
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); toast('초안 생성 실패: '+(d.error||'알 수 없는 오류'),'err'); return;}
@@ -472,7 +482,7 @@ $('#export').onclick=async()=>{
   $('#export').disabled=true; expLoading(true);
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
-      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,rules:RULES};
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,rules:RULES};
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){closePM(); toast('프롬프트 생성 실패: '+(d.error||''),'err');return;}
@@ -495,7 +505,7 @@ $('#iapply').onclick=async()=>{
   if(!text){toast('붙여넣은 글이 비어 있어요.','info');return;}
   $('#iapply').disabled=true;
   try{
-    const body={text,photos:SELP,emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers};
+    const body={text,photos:SELP,emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll};
     const r=await fetch('/api/import-draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){toast('가져오기 실패: '+(d.error||''),'err');return;}
@@ -568,9 +578,12 @@ function updateStat(){if(!CAT)return;
     <div class=b><div class=n>${CAT.label_count}</div><div class=l>상황 라벨</div></div>`;}
 function renderStickers(){
   updateStat();
+  $('#hidedef').classList.toggle('on',!!FMT.hideDefault);
   const favset=new Set(CAT.favorites);
+  const defset=new Set(CAT.default_packs||[]);
   let list=CAT.stickers;
   if(ST_FILTER==='fav') list=list.filter(s=>favset.has(s.ref));
+  if(FMT.hideDefault) list=list.filter(s=>!defset.has(s.pack)||favset.has(s.ref));
   const body=$('#stbody');
   if(!list.length){body.innerHTML=`<div class=muted>${ST_FILTER==='fav'?'아직 즐겨찾기가 없어요. [전체 둘러보기]에서 ★를 눌러 추가하세요.':'스티커가 없어요. 터미널에서 autoblog stickers pull'}</div>`;return;}
   const packs={};
@@ -596,6 +609,9 @@ function redrawTags(wrap){const s=stickerOf(wrap.dataset.ref); if(s)wrap.outerHT
 $('#stfilter').onclick=e=>{const b=e.target.closest('button'); if(!b)return;
   $$('#stfilter button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
   ST_FILTER=b.dataset.f; renderStickers();};
+// 기본(네이버 제공) 이모티콘 숨기기 토글
+$('#hidedef').onclick=function(){FMT.hideDefault=!FMT.hideDefault;
+  this.classList.toggle('on',FMT.hideDefault); savePrefs(); renderStickers();};
 // 태그 칩 삭제(×)
 $('#stbody').addEventListener('click', e=>{const x=e.target.closest('.x'); if(!x)return;
   const wrap=x.closest('.tags2'); const s=stickerOf(wrap.dataset.ref); if(!s)return;
@@ -695,15 +711,40 @@ function renderApiKeyBox(provider){
 }
 async function loadModels(){try{const m=await (await fetch('/api/models')).json();
   MODEL_KEYS=m.keys||{};
-  const opts=m.presets.map(p=>`<option value="${p.key}"${p.key===m.current?' selected':''}>${p.label}</option>`).join('');
+  const isLocal=p=>p.provider==='ollama';
+  const groups={local:m.presets.filter(isLocal), api:m.presets.filter(p=>!isLocal(p))};
+  const cur=m.presets.find(p=>p.key===m.current);
+  let APPLIED=m.current, KIND=(cur&&!isLocal(cur))?'api':'local';
   $('#models').innerHTML=`<h3>모델 <span class=muted style="font-weight:400">— 내 컴퓨터(GPU)에 맞게</span></h3>
-    <div class=setrow><div class=t>프리셋</div><select id=mpreset style="width:auto;min-width:260px;border:1px solid #d6dade;border-radius:8px;padding:8px">${opts}</select></div>
+    <div class=seg style="margin-bottom:12px">
+      <button data-k=local id=kloc>내장 (로컬 GPU)</button>
+      <button data-k=api id=kapi>외부 API</button></div>
+    <div class=setrow><div class=t>프리셋</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id=mpreset style="width:auto;min-width:260px;border:1px solid #d6dade;border-radius:8px;padding:8px"></select>
+        <button class=btn id=mapply style="width:auto;padding:8px 16px">적용</button></div></div>
     <div id=minfo></div>
     <div id=apikeybox></div>`;
-  $('#mpreset').onchange=async()=>{const k=$('#mpreset').value;
-    await fetch('/api/models',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({preset:k})});
-    renderModelInfo(m.presets.find(p=>p.key===k));};
-  renderModelInfo(m.presets.find(p=>p.key===m.current));
+  function fill(){
+    $('#kloc').classList.toggle('on',KIND==='local'); $('#kapi').classList.toggle('on',KIND==='api');
+    const list=groups[KIND];
+    const has=$('#mapply');
+    if(!list.length){$('#mpreset').innerHTML='<option>(없음)</option>'; $('#minfo').innerHTML='<div class=muted>해당 항목이 없습니다.</div>'; $('#apikeybox').innerHTML=''; if(has)has.disabled=true; return;}
+    if(has)has.disabled=false;
+    const sel=list.find(p=>p.key===APPLIED)||list[0];
+    $('#mpreset').innerHTML=list.map(p=>`<option value="${p.key}"${p.key===sel.key?' selected':''}>${p.label}${p.key===APPLIED?' ✓ 적용 중':''}</option>`).join('');
+    renderModelInfo(sel);
+  }
+  $('#kloc').onclick=()=>{KIND='local'; fill();};
+  $('#kapi').onclick=()=>{KIND='api'; fill();};
+  $('#mpreset').onchange=()=>renderModelInfo(m.presets.find(p=>p.key===$('#mpreset').value));
+  $('#mapply').onclick=async()=>{const k=$('#mpreset').value;
+    if(k===APPLIED){toast('이미 적용 중인 프리셋이에요.','info'); return;}
+    $('#mapply').disabled=true;
+    try{const r=await fetch('/api/models',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({preset:k})});
+      if(r.ok){APPLIED=k; fill(); toast('프리셋 적용됨 ✓','ok');} else toast('적용 실패','err');
+    }catch(e){toast('적용 오류: '+e,'err');}finally{const b=$('#mapply'); if(b)b.disabled=false;}};
+  fill();
 }catch(e){$('#models').innerHTML='<div class=muted>로드 실패</div>';}}
 
 async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).json();
@@ -993,6 +1034,7 @@ def _make_handler(state: dict):
                 emphasis=bool(body.get("emphasis")),
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
+                sponsored=bool(body.get("sponsored")),
             )
             self._send(200, json.dumps({"prompt": text}).encode())
 
@@ -1016,6 +1058,8 @@ def _make_handler(state: dict):
                 emphasis=bool(body.get("emphasis")),
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
+                sticker_favorites_only=not bool(body.get("stickerAll")),
+                sponsored=bool(body.get("sponsored")),
                 divider_variant=dv[0],
                 quote_variant=qv[0],
             )
@@ -1037,6 +1081,7 @@ def _make_handler(state: dict):
                 emphasis=bool(body.get("emphasis")),
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
+                sticker_favorites_only=not bool(body.get("stickerAll")),
                 divider_variant=dv[0],
                 quote_variant=qv[0],
             )
@@ -1095,7 +1140,10 @@ _PREFS_DEFAULT = {
         "mobile_friendly": True, "authenticity": True,
         "structure_guide": True, "seo": False, "emoji": False,
     },
-    "fmt": {"emphasis": True, "structure": True, "stickers": True},
+    "fmt": {
+        "emphasis": True, "structure": True, "stickers": True,
+        "stickerAll": False, "hideDefault": True,
+    },
     "tone": "",
 }
 
@@ -1152,15 +1200,23 @@ def _format_summary() -> dict:
     return {"dividers": build(DIVIDER_META, den), "quotes": build(QUOTE_META, qen)}
 
 
+def _enabled_variant_keys() -> tuple[list[str], list[str]]:
+    """현재 활성화된 구분선/인용구 종류 키 목록(프롬프트 안내에 사용)."""
+    from autoblog.publish.plan import DIVIDER_META, QUOTE_META
+
+    cfg = _load_format()
+    den = [v for v in (cfg.get("divider_enabled") or ["default"]) if v in DIVIDER_META]
+    qen = [v for v in (cfg.get("quote_enabled") or ["default"]) if v in QUOTE_META]
+    return den or ["default"], qen or ["default"]
+
+
 def _enabled_variants() -> tuple[list[int], list[int]]:
     """현재 활성화된 구분선/인용구 variant 인덱스 목록(생성에 사용)."""
     from autoblog.publish.plan import DIVIDER_META, QUOTE_META
 
-    cfg = _load_format()
-    den = cfg.get("divider_enabled") or ["default"]
-    qen = cfg.get("quote_enabled") or ["default"]
-    dv = [DIVIDER_META[v][0] for v in den if v in DIVIDER_META]
-    qv = [QUOTE_META[v][0] for v in qen if v in QUOTE_META]
+    den, qen = _enabled_variant_keys()
+    dv = [DIVIDER_META[v][0] for v in den]
+    qv = [QUOTE_META[v][0] for v in qen]
     return dv or [1], qv or [1]
 
 
@@ -1334,7 +1390,7 @@ def _sticker_image(ref: str) -> Path | None:
 
 
 def _catalog_summary() -> dict:
-    from autoblog.publish.stickers import load_sticker_catalog
+    from autoblog.publish.stickers import DEFAULT_PACKS, load_sticker_catalog
 
     cat = load_sticker_catalog()
     favset = set(cat.favorites)
@@ -1348,6 +1404,7 @@ def _catalog_summary() -> dict:
         "favorites": list(cat.favorites),
         "label_count": len(cat.labels()),
         "stickers": stickers,
+        "default_packs": sorted(DEFAULT_PACKS),
     }
 
 

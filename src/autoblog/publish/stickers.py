@@ -24,6 +24,12 @@ from autoblog.config import CONFIG_DIR, REPO_ROOT
 STICKER_CONFIG_PATH = CONFIG_DIR / "stickers.yaml"
 STICKER_DATA_DIR = REPO_ROOT / "data" / "stickers"
 
+# 네이버가 누구에게나 기본 제공하는 팩(직접 구매·추가한 게 아님) — 카탈로그 잡음이라
+# UI에서 토글로 숨길 수 있게 한다(stickers 뷰의 "기본 이모티콘 숨기기").
+DEFAULT_PACKS: frozenset[str] = frozenset(
+    {"motion3d_02", "motion2d_01", "clip_001", "cafe_001", "cafe_002", "cafe_004", "cafe_005"}
+)
+
 
 class Sticker(BaseModel):
     """스티커 1개. (pack, index)가 안정 식별자."""
@@ -126,7 +132,7 @@ class StickerPicker:
 
     def _candidates(self, label: str) -> list[Sticker]:
         if label:
-            cands = self.catalog.find(label)
+            cands = self.catalog.find(label, favorites_only=self.favorites_only)
         else:  # 라벨 없는 [스티커] → 즐겨쓰기
             by_ref = self.catalog.by_ref()
             cands = [by_ref[r] for r in self.catalog.favorites if r in by_ref and not by_ref[r].stale]

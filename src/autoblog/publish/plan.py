@@ -53,16 +53,62 @@ QUOTE_META = {
 # (EMPHASIS_INSTRUCTION과 같은 추가 레이어. generate_draft(structure=True)에서 시스템 프롬프트에 덧붙임)
 # 14b 모델은 "절제" 위주로 안내하면 마커를 아예 안 단다(라이브 측정: 0/0/0).
 # "권장이 아니라 사용 + 예시 + 개수 지정"으로 바꾸니 화제전환 있는 글에서 실제로 emit됨.
-STRUCTURE_INSTRUCTION = (
-    "[구조 마커] — 아래 마커를 본문에 실제로 넣어 글을 읽기 좋게 나누세요(권장이 아니라 사용).\n"
-    "- 화제가 바뀌는 문단 사이에 [구분선] 을 한 줄로 1~2번.\n"
-    "- 글 전체를 관통하는 핵심 메시지·감상 '한마디'가 있을 때만 그 한 문장을 [인용구] 와 [/인용구] 로 "
-    "감싸세요(없으면 넣지 마세요, 최대 1번).\n"
-    "  음식·분위기를 묘사하는 짧은 카피성 문구(예: '겉은 바삭 속은 촉촉')는 인용구로 만들지 말고, "
-    '강조하려면 본문 안에서 큰따옴표(" ")로 감싸 쓰세요.\n'
-    "예시:\n오늘 다녀온 첫 소감 문단.\n\n[구분선]\n\n[인용구]\n여기는 두 번 세 번 와도 안 질릴 곳\n[/인용구]\n\n다음 문단.\n"
-    "마커는 화면에 글자로 안 보이고 서식으로 바뀝니다. 문장 안에 섞지 말고 줄 단독으로 두세요."
-)
+def build_structure_instruction(
+    divider_keys: list[str] | None = None,
+    quote_keys: list[str] | None = None,
+) -> str:
+    """구조 마커 지시문 — 유저가 '서식'에서 고른 구분선/인용구 종류만 쓰도록 안내.
+
+    divider_keys/quote_keys는 DIVIDER_META/QUOTE_META 키 목록(비우면 기본 한 종류).
+    여러 종류를 고르면 종류별 번호·용도를 나열하고 [구분선:번호]/[인용구:번호] 로 상황에 맞게
+    고르게 한다(목록 밖 종류·번호 금지). 한 종류면 번호 없이 [구분선]/[인용구] 만 쓰게 한다(종류 자동).
+    """
+    dkeys = [k for k in (divider_keys or ["default"]) if k in DIVIDER_META] or ["default"]
+    qkeys = [k for k in (quote_keys or ["default"]) if k in QUOTE_META] or ["default"]
+
+    def menu(keys, meta, marker):
+        return "\n".join(f"  · [{marker}:{meta[k][0]}] {meta[k][1]} — {meta[k][2]}" for k in keys)
+
+    if len(dkeys) == 1:
+        divider_line = "- 화제가 바뀌는 문단 사이에 [구분선] 을 한 줄로 1~2번 넣으세요(종류는 자동).\n"
+        d_open = "[구분선]"
+    else:
+        divider_line = (
+            "- 화제가 바뀌는 문단 사이에 구분선을 한 줄로 1~2번 넣으세요. "
+            "아래 고른 종류 중 상황에 맞는 걸 골라 번호까지 붙이세요(여기 없는 종류·번호는 절대 쓰지 마세요):\n"
+            f"{menu(dkeys, DIVIDER_META, '구분선')}\n"
+        )
+        d_open = f"[구분선:{DIVIDER_META[dkeys[0]][0]}]"
+
+    if len(qkeys) == 1:
+        quote_line = (
+            "- 글 전체를 관통하는 핵심 메시지·감상 '한마디'가 있을 때만 그 한 문장을 [인용구] 와 [/인용구] 로 "
+            "감싸세요(없으면 넣지 마세요, 최대 1번).\n"
+        )
+        q_open = "[인용구]"
+    else:
+        quote_line = (
+            "- 글 전체를 관통하는 핵심 메시지·감상 '한마디'가 있을 때만 그 한 문장을 인용구로 "
+            "감싸세요(없으면 넣지 마세요, 최대 1번). 여는 줄은 아래 고른 종류 중 상황에 맞는 걸 골라 "
+            "번호까지 붙이고(여기 없는 종류·번호 금지), 닫는 줄은 [/인용구] 로 두세요:\n"
+            f"{menu(qkeys, QUOTE_META, '인용구')}\n"
+        )
+        q_open = f"[인용구:{QUOTE_META[qkeys[0]][0]}]"
+
+    return (
+        "[구조 마커] — 아래 마커를 본문에 실제로 넣어 글을 읽기 좋게 나누세요(권장이 아니라 사용).\n"
+        f"{divider_line}"
+        f"{quote_line}"
+        "  음식·분위기를 묘사하는 짧은 카피성 문구(예: '겉은 바삭 속은 촉촉')는 인용구로 만들지 말고, "
+        '강조하려면 본문 안에서 큰따옴표(" ")로 감싸 쓰세요.\n'
+        f"예시:\n오늘 다녀온 첫 소감 문단.\n\n{d_open}\n\n"
+        f"{q_open}\n여기는 두 번 세 번 와도 안 질릴 곳\n[/인용구]\n\n다음 문단.\n"
+        "마커는 화면에 글자로 안 보이고 서식으로 바뀝니다. 문장 안에 섞지 말고 줄 단독으로 두세요."
+    )
+
+
+# 기본(한 종류) 지시문 — 종류 미지정 호출·프롬프트 미리보기 등에서 재사용.
+STRUCTURE_INSTRUCTION = build_structure_instruction()
 
 
 # --- 구조별 서식 템플릿 (config/structure_styles.yaml) ---
