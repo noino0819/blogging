@@ -79,6 +79,18 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .spin{width:13px;height:13px;border:2px solid #d6dade;border-top-color:var(--green);border-radius:50%;animation:sp .7s linear infinite;display:none}
  @keyframes sp{to{transform:rotate(360deg)}}
  .loading .spin{display:inline-block}
+ /* 수집 종류(맛집/상품) — 크게 잘 보이게 */
+ .kindseg{display:flex;gap:8px;margin-top:8px}
+ .kindseg button{flex:1;padding:12px;font-size:14px;font-weight:800;background:#fff;color:#9aa3ad;border:2px solid #e0e3e7;border-radius:11px;cursor:pointer;transition:.12s}
+ .kindseg button .em{font-size:17px;margin-right:5px}
+ .kindseg button.on{background:var(--green);color:#fff;border-color:var(--green);box-shadow:0 3px 10px #03c75a44}
+ .kindseg button.auto{outline:3px solid #03c75a33}
+ /* 토스트 팝업 — 에러/완료를 화면 중앙 상단에 크게 */
+ #toasts{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:9px;align-items:center;pointer-events:none;width:max-content;max-width:90vw}
+ .toast{pointer-events:auto;min-width:300px;max-width:560px;padding:14px 18px;border-radius:12px;font-size:14px;font-weight:700;color:#fff;line-height:1.45;box-shadow:0 8px 30px rgba(0,0,0,.22);display:flex;gap:11px;align-items:flex-start;cursor:pointer;animation:tin .22s ease}
+ .toast.err{background:#e5484d}.toast.ok{background:#1f9d57}.toast.info{background:#3b82c4}
+ .toast .ic{font-size:18px;line-height:1.2}.toast .x{margin-left:10px;opacity:.7;font-weight:400}
+ @keyframes tin{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
  /* photo grid */
  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;max-height:230px;overflow:auto;padding:2px}
  .pcell{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;cursor:pointer;border:2px solid transparent}
@@ -163,7 +175,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .lf.ok{background:#eafaf0;color:#02b350}.lf.no{background:#fdecef;color:#d9534f}
  .logpre{background:#f6f8fa;border:1px solid var(--line);border-radius:9px;padding:12px;font-size:11.5px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow:auto;font-family:ui-monospace,Menlo,monospace;margin:4px 0 8px}
  .logsum{cursor:pointer;font-size:12px;font-weight:600;padding:6px 0;color:#4b5563}
-</style></head><body>
+</style></head><body><div id=toasts></div>
 <aside class=side>
   <div class=brand>🖋️ 블로그 자동작성</div>
   <div class="nav on" data-view=write><span class=ic>✍️</span> 글쓰기</div>
@@ -183,7 +195,11 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
         <div class=card>
           <label class=f>수집 <span class=muted>(선택) — 넣으면 정보 자동 수집</span></label>
           <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력">
-          <div class=muted id=srchint style="margin-top:4px">URL이면 맛집, 글자면 상품으로 자동 인식해요.</div>
+          <div class=kindseg id=kindseg>
+            <button data-k=place class=on><span class=em>🍜</span>맛집</button>
+            <button data-k=product><span class=em>🛍️</span>상품</button>
+          </div>
+          <div class=muted id=srchint style="margin-top:6px">URL을 넣으면 자동으로 <b>맛집</b>으로 맞춰져요. 직접 골라도 돼요.</div>
           <label class=f>경험 메모 <span class=muted>(글의 중심)</span></label>
           <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>사진 <span class=muted id=psel></span></label>
@@ -270,10 +286,25 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 // fetch 래퍼: 네트워크 단절(서버 꺼짐/재시작)을 'TypeError: Failed to fetch' 대신 친절한 메시지로
 const _fetch=window.fetch.bind(window);
 window.fetch=async(...a)=>{try{return await _fetch(...a);}
-  catch(e){throw new Error('서버에 연결할 수 없어요. 앱(서버)이 꺼졌거나 재시작 중일 수 있어요 — 잠시 후 새로고침하거나 다시 시도하세요.');}};
+  catch(e){const m='서버에 연결할 수 없어요. 앱(서버)이 꺼졌거나 재시작 중일 수 있어요 — 잠시 후 새로고침하거나 다시 시도하세요.';toast(m,'err');throw new Error(m);}};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let PHOTOS=[], SELP=[], PLAN=null;
-function srcKind(v){v=(v||'').trim(); if(!v)return ''; return (/^https?:\/\//.test(v)||/naver\.me|place/.test(v))?'맛집':'상품';}
+// 토스트 팝업: kind=err|ok|info, ms 후 자동 사라짐(클릭 시 즉시)
+function toast(msg,kind='err',ms){if(ms==null)ms=kind==='ok'?3500:6000;
+  const t=document.createElement('div');t.className='toast '+kind;
+  const ic=kind==='ok'?'✅':kind==='info'?'ℹ️':'⚠️';
+  t.innerHTML='<span class=ic>'+ic+'</span><span>'+String(msg).replace(/</g,'&lt;')+'</span><span class=x>✕</span>';
+  t.onclick=()=>t.remove();$('#toasts').appendChild(t);setTimeout(()=>t.remove(),ms);}
+// 수집 종류: 'place'(맛집·기본) | 'product'(상품). 입력으로 자동 추정하되 직접 고르면 고정.
+let SRCKIND='place', KINDMANUAL=false;
+function autoKind(v){v=(v||'').trim(); if(!v)return 'place';
+  return (/^https?:\/\//.test(v)||/naver\.me|place/.test(v))?'place':'product';}
+function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
+  $$('#kindseg button').forEach(b=>{b.classList.toggle('on',b.dataset.k===k);
+    b.classList.toggle('auto',!KINDMANUAL&&b.dataset.k===k);});
+  $('#srchint').innerHTML=KINDMANUAL
+    ?('<b>'+(k==='place'?'맛집':'상품')+'</b>으로 수집합니다 (직접 선택).')
+    :('입력을 보고 <b>'+(k==='place'?'맛집':'상품')+'</b>으로 자동 인식했어요. 직접 골라도 돼요.');}
 const FMT={emphasis:true,structure:true,stickers:true};
 const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:false,emoji:false};
 const RULE_META=[
@@ -290,9 +321,9 @@ $$('.nav').forEach(n=>n.onclick=()=>{
   $$('.view').forEach(v=>v.classList.remove('on')); $('.view.'+n.dataset.view).classList.add('on');
   if(n.dataset.view==='stickers') loadStickers();
 });
-// 수집 자동 인식(URL→맛집, 글자→상품)
-$('#srcval').oninput=()=>{const k=srcKind($('#srcval').value);
-  $('#srchint').textContent=k?`→ ${k}으로 수집합니다`:'URL이면 맛집, 글자면 상품으로 자동 인식해요.';};
+// 수집 종류: 직접 클릭 → 고정, 안 골랐으면 입력으로 자동 추정
+$$('#kindseg button').forEach(b=>b.onclick=()=>setKind(b.dataset.k,true));
+$('#srcval').oninput=()=>{if(!KINDMANUAL)setKind(autoKind($('#srcval').value),false);};
 // 서식 칩
 $('#fmt').onclick=e=>{const c=e.target.closest('.chip'); if(!c)return;
   c.classList.toggle('on'); FMT[c.dataset.k]=c.classList.contains('on');};
@@ -360,14 +391,14 @@ $('#gen').onclick=async()=>{
   if(!$('#memo').value.trim()){st('경험 메모를 입력하세요.');return;}
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,photos:SELP,tone:$('#tone').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,rules:RULES};
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
-    if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); return;}
-    genDone(true); PLAN=d; setTimeout(()=>renderPreview(d),350); st('생성 완료. 검토 후 임시저장하세요.'); $('#save').disabled=false;
+    if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); toast('초안 생성 실패: '+(d.error||'알 수 없는 오류'),'err'); return;}
+    genDone(true); PLAN=d; setTimeout(()=>renderPreview(d),350); st('생성 완료. 검토 후 임시저장하세요.'); toast('초안 생성 완료! 오른쪽 미리보기를 확인하세요.','ok'); $('#save').disabled=false;
     if(d.debug)showLog(d.debug);
-  }catch(e){genDone(false); st('오류: '+e);}finally{$('#gen').disabled=false;}
+  }catch(e){genDone(false); st('오류: '+e); toast('초안 생성 오류: '+e,'err');}finally{$('#gen').disabled=false;}
 };
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function renderText(b){let h=esc(b.text);
@@ -408,17 +439,17 @@ async function loadCategories(){try{const d=await (await fetch('/api/categories'
   if(d.categories&&d.categories.length){fillCategories(d.categories); $('#catstat').textContent=`저장된 ${d.categories.length}개 · 갱신하려면 [불러오기]`;}
 }catch(e){}}
 $('#catload').onclick=async()=>{
-  $('#catload').disabled=true; $('#catstat').textContent='블로그에서 불러오는 중… 브라우저가 열려요(수십 초)';
+  $('#catload').disabled=true; $('#catstat').textContent='백그라운드에서 불러오는 중… (브라우저 안 뜸, 수십 초)';
   try{const r=await fetch('/api/categories',{method:'POST'}); const d=await r.json();
-    if(!r.ok){$('#catstat').textContent='실패: '+(d.error||''); return;}
-    fillCategories(d.categories); $('#catstat').textContent=`카테고리 ${d.categories.length}개 불러와 저장됨`;
-  }catch(e){$('#catstat').textContent='오류: '+e;}finally{$('#catload').disabled=false;}
+    if(!r.ok){$('#catstat').textContent='실패: '+(d.error||''); toast('카테고리 불러오기 실패: '+(d.error||''),'err'); return;}
+    fillCategories(d.categories); $('#catstat').textContent=`카테고리 ${d.categories.length}개 불러와 저장됨`; toast(`카테고리 ${d.categories.length}개를 불러와 저장했어요.`,'ok');
+  }catch(e){$('#catstat').textContent='오류: '+e; toast('카테고리 오류: '+e,'err');}finally{$('#catload').disabled=false;}
 };
 $('#save').onclick=async()=>{if(!PLAN)return;
   $('#save').disabled=true; st('네이버 에디터에 주입 중… 브라우저가 열립니다',true);
   try{const r=await fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category:$('#category').value})});
-    const d=await r.json(); st(r.ok?'임시저장 완료 ✓ (네이버 글쓰기 › 저장 목록)':'실패: '+(d.error||''));
-  }catch(e){st('오류: '+e);}finally{$('#save').disabled=false;}
+    const d=await r.json(); st(r.ok?'임시저장 완료 ✓ (네이버 글쓰기 › 저장 목록)':'실패: '+(d.error||'')); toast(r.ok?'임시저장 완료! 네이버 글쓰기 › 저장 목록에서 확인하세요.':'임시저장 실패: '+(d.error||''),r.ok?'ok':'err');
+  }catch(e){st('오류: '+e); toast('임시저장 오류: '+e,'err');}finally{$('#save').disabled=false;}
 };
 
 // 스티커 탭
@@ -582,7 +613,7 @@ $('#variants').onclick=async e=>{const c=e.target.closest('.vcell'); if(!c)retur
   c.querySelector('.vname').innerHTML=c.querySelector('.vname').textContent.replace(' ✓','')+(on?' <span class=vck>✓</span>':'');
   try{await fetch('/api/format',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,value,on})});}catch(e){}
 };
-loadPhotos(); setupUpload(); renderRules(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories();
+setKind('place',false); loadPhotos(); setupUpload(); renderRules(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories();
 </script></body></html>"""
 
 
@@ -795,9 +826,13 @@ def _make_handler(state: dict):
             from autoblog.pipeline import run_pipeline
 
             srcval = (body.get("srcval") or "").strip()
-            # 자동 인식: URL이면 맛집(place), 글자면 상품(product)
-            is_url = srcval.startswith("http") or "naver.me" in srcval or "place" in srcval
-            src = "place" if (srcval and is_url) else ("product" if srcval else None)
+            # 종류: UI에서 받은 kind(place/product) 우선, 없으면 자동 인식(URL→맛집, 글자→상품)
+            kind = (body.get("kind") or "").strip()
+            if srcval and kind in ("place", "product"):
+                src = kind
+            else:
+                is_url = srcval.startswith("http") or "naver.me" in srcval or "place" in srcval
+                src = "place" if (srcval and is_url) else ("product" if srcval else None)
             photos = [p for p in (body.get("photos") or []) if p]
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
@@ -1006,10 +1041,13 @@ def _load_categories() -> list:
 
 
 def _fetch_categories() -> list:
-    """네이버 블로그에서 카테고리(이름+뎁스)를 라이브로 불러와 파일에 저장(브라우저 1회 기동)."""
+    """네이버 블로그 카테고리(이름+뎁스)를 헤드리스로 불러와 파일에 저장(브라우저 안 뜸).
+
+    저장된 세션(storage_state)으로 자동로그인되므로 백그라운드(headless)로 동작한다.
+    """
     from autoblog.publish.editor import BlogPublisher
 
-    pub = BlogPublisher(headless=False)
+    pub = BlogPublisher(headless=True)
     pub.start()
     try:
         if not pub.wait_for_login():
@@ -1135,7 +1173,8 @@ def serve_ui(host: str = "127.0.0.1", port: int = 8770) -> ThreadingHTTPServer:
         "thumbs": {},
         "label": {"running": False, "done": 0, "total": 0},
     }
+    ThreadingHTTPServer.request_queue_size = 128  # 동시 요청(이미지 다발) 대비 backlog 확대
+    ThreadingHTTPServer.allow_reuse_address = True
     server = ThreadingHTTPServer((host, port), _make_handler(state))
     server.daemon_threads = True
-    threading.current_thread()
     return server
