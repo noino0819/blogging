@@ -18,6 +18,7 @@ from autoblog.config import REPO_ROOT
 
 PHOTO_DIR = REPO_ROOT / "test"  # 유저 사진 폴더(테스트용)
 _IMG_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+UPLOAD_DIR = REPO_ROOT / "data" / "uploads"  # 유저가 올린 사진
 FONTS_DIR = REPO_ROOT / "config" / "fonts"  # 에디터 웹폰트(로컬 서빙, 미리보기용)
 # 미리보기에서 실제 글씨체로 보이게 — 에디터와 같은 se-* 패밀리명 사용
 _FONT_FAMILIES = [
@@ -83,6 +84,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pcell{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;cursor:pointer;border:2px solid transparent}
  .pcell img{width:100%;height:100%;object-fit:cover;display:block}
  .pcell.sel{border-color:var(--green)}
+ .dropzone{border:2px dashed #cdd3da;border-radius:11px;padding:18px;text-align:center;color:var(--sub);font-size:13px;cursor:pointer;margin-bottom:10px}
+ .dropzone:hover,.dropzone.drag{border-color:var(--green);background:#f3fcf6;color:var(--green-d)}
+ .pcell.uploading{opacity:.5}
  .pcell .num{position:absolute;top:4px;left:4px;background:var(--green);color:#fff;width:18px;height:18px;border-radius:50%;font-size:11px;display:none;align-items:center;justify-content:center;font-weight:700}
  .pcell.sel .num{display:flex}
  /* preview */
@@ -182,7 +186,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <label class=f>경험 메모 <span class=muted>(글의 중심)</span></label>
           <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>사진 <span class=muted id=psel></span></label>
-          <div class=pgrid id=pgrid><div class=muted>불러오는 중…</div></div>
+          <div class=dropzone id=dropzone>📷 사진을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*" multiple hidden></div>
+          <div class=pgrid id=pgrid></div>
           <label class=f>문체 톤 (선택)</label>
           <input type=text id=tone placeholder="예: 친근한 반말로">
           <label class=f>자동 서식</label>
@@ -287,22 +292,38 @@ function st(m,loading){const s=$('#status'); s.innerHTML=(loading?'<span class=s
   s.parentElement.classList.toggle('loading',!!loading);}
 
 // 사진 로드
-async function loadPhotos(){
-  try{const ps=await (await fetch('/api/photos')).json(); PHOTOS=ps;
-    const g=$('#pgrid'); g.innerHTML='';
-    if(!ps.length){g.innerHTML='<div class=muted>test/ 폴더에 사진이 없어요.</div>';return;}
-    ps.forEach(p=>{const d=document.createElement('div'); d.className='pcell';
-      d.innerHTML=`<img loading=lazy src="/photo?path=${encodeURIComponent(p.path)}"><span class=num></span>`;
-      d.onclick=()=>toggleP(p.path,d); g.appendChild(d);});
-  }catch(e){$('#pgrid').innerHTML='<div class=muted>사진 로드 실패</div>';}
+function addCell(path, thumbSrc, sel){
+  const d=document.createElement('div'); d.className='pcell'+(sel?' sel':''); d.dataset.path=path;
+  d.innerHTML=`<img loading=lazy src="${thumbSrc}"><span class=num></span>`;
+  d.onclick=()=>toggleP(d); $('#pgrid').appendChild(d); return d;
 }
-function toggleP(path,el){const i=SELP.indexOf(path);
+function renumP(){$$('#pgrid .pcell').forEach(c=>{const k=SELP.indexOf(c.dataset.path);
+  c.querySelector('.num').textContent=k>=0?k+1:'';});
+  $('#psel').textContent=SELP.length?`${SELP.length}장 선택`:'';}
+async function loadPhotos(){
+  try{const ps=await (await fetch('/api/photos')).json(); $('#pgrid').innerHTML='';
+    ps.forEach(p=>addCell(p.path, '/photo?path='+encodeURIComponent(p.path)));
+  }catch(e){}
+}
+function toggleP(el){const path=el.dataset.path; if(!path)return; const i=SELP.indexOf(path);
   if(i>=0){SELP.splice(i,1);el.classList.remove('sel');} else {SELP.push(path);el.classList.add('sel');}
-  // 번호 갱신
-  $$('.pcell').forEach(c=>{}); SELP.forEach((p,idx)=>{});
-  $$('#pgrid .pcell').forEach(c=>{const img=c.querySelector('img'); const pp=decodeURIComponent(img.src.split('path=')[1]);
-    const n=c.querySelector('.num'); const k=SELP.indexOf(pp); n.textContent=k>=0?k+1:'';});
-  $('#psel').textContent=SELP.length?`${SELP.length}장 선택`:'';
+  renumP();
+}
+function setupUpload(){const dz=$('#dropzone'), fi=$('#fileinput');
+  dz.onclick=()=>fi.click(); fi.onchange=()=>handleFiles(fi.files);
+  dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag');};
+  dz.ondragleave=()=>dz.classList.remove('drag');
+  dz.ondrop=e=>{e.preventDefault();dz.classList.remove('drag');handleFiles(e.dataTransfer.files);};}
+async function handleFiles(files){
+  for(const f of files){ if(!f.type.startsWith('image/'))continue;
+    const dataurl=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f);});
+    const cell=addCell('', dataurl, true); cell.classList.add('uploading');
+    try{const res=await fetch('/api/upload',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({filename:f.name,data:dataurl.split(',')[1]})});
+      const d=await res.json(); cell.dataset.path=d.path; cell.classList.remove('uploading'); SELP.push(d.path);
+    }catch(e){cell.remove();}
+  }
+  renumP();
 }
 
 let GENTIMER=null;
@@ -512,7 +533,7 @@ $('#variants').onclick=async e=>{const c=e.target.closest('.vcell'); if(!c)retur
   c.querySelector('.vname').innerHTML=c.querySelector('.vname').textContent.replace(' ✓','')+(on?' <span class=vck>✓</span>':'');
   try{await fetch('/api/format',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,value,on})});}catch(e){}
 };
-loadPhotos(); renderRules(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants();
+loadPhotos(); setupUpload(); renderRules(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants();
 </script></body></html>"""
 
 
@@ -546,11 +567,25 @@ def _list_photos() -> list[dict]:
 
 def _safe_photo(path: str) -> Path | None:
     p = Path(path).resolve()
-    try:
-        p.relative_to(PHOTO_DIR.resolve())
-    except ValueError:
-        return None
-    return p if p.exists() else None
+    for base in (PHOTO_DIR.resolve(), UPLOAD_DIR.resolve()):
+        try:
+            p.relative_to(base)
+            return p if p.exists() else None
+        except ValueError:
+            continue
+    return None
+
+
+def _save_upload(filename: str, b64: str) -> str:
+    """업로드 이미지를 data/uploads/에 저장하고 경로 반환."""
+    import base64
+    import uuid
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    safe = Path(filename).name or "image"
+    dest = UPLOAD_DIR / f"{uuid.uuid4().hex[:8]}_{safe}"
+    dest.write_bytes(base64.b64decode(b64))
+    return str(dest)
 
 
 def _make_handler(state: dict):
@@ -626,6 +661,10 @@ def _make_handler(state: dict):
                     body = self._json_body()
                     n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
                     self._send(200, json.dumps({"ok": True, "favorites": n}).encode())
+                elif path == "/api/upload":
+                    body = self._json_body()
+                    p = _save_upload(body.get("filename", ""), body.get("data", ""))
+                    self._send(200, json.dumps({"path": p}).encode())
                 elif path == "/api/categories":
                     cats = _fetch_categories()
                     state["categories"] = cats

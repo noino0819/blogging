@@ -44,3 +44,6 @@ test/
 
 # 유저 포맷 선택(구분선/인용구 종류)
 config/format.yaml
+
+# 유저 업로드 사진
+data/uploads/
