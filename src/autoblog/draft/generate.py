@@ -55,7 +55,7 @@ class DraftResult(BaseModel):
 
 def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
     """초안 생성 후, 강조 마킹 배정·포맷 후처리·가이드라인 대조를 수행."""
-    from autoblog.publish.emphasis import DEFAULT_STYLES
+    from autoblog.publish.emphasis import DEFAULT_STYLES, load_default_power_shortcuts
 
     base = req.base_prompt or load_base_prompt()
     system = build_system_prompt(base, req.style, req.guidelines, req.rules)
@@ -81,7 +81,8 @@ def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
     emphases: list[StyledSpan] = []
     if req.emphasis:
         text, requests = parse_emphasis_markup(text)
-        presets = req.power_shortcuts or DEFAULT_STYLES
+        # 우선순위: 요청 지정 > 프로젝트 프리셋(config/power_shortcuts.json) > 내장 기본
+        presets = req.power_shortcuts or load_default_power_shortcuts() or DEFAULT_STYLES
         config = req.emphasis_config or load_emphasis_config()
         requests = apply_density(text, requests, config)  # 밀도 규칙으로 과한 강조 솎기
         emphases = assign_emphasis(requests, presets, config)

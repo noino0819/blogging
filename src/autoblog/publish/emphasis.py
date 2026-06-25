@@ -118,6 +118,25 @@ def load_power_shortcuts(data) -> dict[int, EmphasisStyle]:
     return {num: parse_style(entry) for num, entry in items.items()}
 
 
+_POWER_SHORTCUTS_PATH = CONFIG_DIR / "power_shortcuts.json"
+
+
+def load_default_power_shortcuts(path=None) -> dict[int, EmphasisStyle] | None:
+    """프로젝트의 파워 단축키 프리셋(config/power_shortcuts.json) 로드 → 번호별 스타일.
+
+    유저가 네이버 '파워 단축키' 확장에서 export한 프리셋. 있으면 강조색의 실제 색·폰트가
+    이 프리셋으로 결정된다(emphasis.yaml의 번호가 이 색을 가리킴). 없으면 None → 내장 기본.
+    """
+    import json
+
+    path = path or _POWER_SHORTCUTS_PATH
+    try:
+        data = json.loads(open(path, encoding="utf-8").read())
+    except FileNotFoundError:
+        return None
+    return load_power_shortcuts(data) or None
+
+
 # 확장 프로그램 없이 동작하는 내장 기본 스타일
 DEFAULT_STYLES: dict[int, EmphasisStyle] = {
     1: EmphasisStyle(text_color="#E53935"),  # 빨강

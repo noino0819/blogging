@@ -341,13 +341,14 @@ async function loadModels(){try{const m=await (await fetch('/api/models')).json(
 }catch(e){}}
 
 async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).json();
-  const chip=s=>{const stl=(s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'');
-    return `<span class="sw-chip" style="${stl}">${s.defined?'강조 텍스트':'미정의'}<span class=pid>#${s.id}</span></span>`;};
-  let h='<div class=sub-h>순환 풀 (핵심 문장에 번갈아)</div><div class=swrap>'+(e.cycling.map(chip).join('')||'<span class=muted>없음</span>')+'</div>';
+  const chip=s=>{if(!s.defined)return `<span class="sw-chip" style="color:#d9534f">미정의<span class=pid>#${s.id}</span></span>`;
+    const stl=(s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'');
+    return `<span class="sw-chip" style="${stl}">강조 텍스트<span class=pid>#${s.id}</span></span>`;};
+  let h=`<div class=muted style="margin-bottom:4px">색 출처: <b>${e.source}</b></div>`;
+  h+='<div class=sub-h>순환 풀 (핵심 문장에 번갈아)</div><div class=swrap>'+(e.cycling.map(chip).join('')||'<span class=muted>없음</span>')+'</div>';
   h+='<div class=sub-h>고정 매핑</div><div class=swrap>'+(Object.entries(e.fixed).map(([k,s])=>chip(s)+`<span class=muted>← ${k}</span>`).join('')||'<span class=muted>없음</span>')+'</div>';
-  h+='<div class=sub-h>기본 팔레트 (1~7)</div><div class=swrap>'+e.palette.map(chip).join('')+'</div>';
   const bad=e.cycling.some(s=>!s.defined)||Object.values(e.fixed).some(s=>!s.defined);
-  if(bad)h+='<div class=muted style="margin-top:12px;color:#d9534f">⚠️ 미정의 번호가 있어요. config/emphasis.yaml의 번호가 기본 팔레트(1~7)를 벗어나, 해당 강조는 색이 안 들어갑니다.</div>';
+  if(bad)h+='<div class=muted style="margin-top:12px;color:#d9534f">⚠️ 미정의 번호가 있어요(프리셋 범위 밖).</div>';
   $('#emph').innerHTML=h;
 }catch(e){$('#emph').innerHTML='<div class=muted>로드 실패</div>';}}
 async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json();
@@ -534,20 +535,30 @@ def _make_handler(state: dict):
 
 
 def _emphasis_preview() -> dict:
-    """현재 강조 설정으로 실제 적용될 색을 해석(미리보기). 미정의 번호도 그대로 드러냄."""
-    from autoblog.publish.emphasis import DEFAULT_STYLES, load_emphasis_config
+    """현재 강조 설정으로 실제 적용될 색을 해석(미리보기).
+
+    프로젝트 프리셋(config/power_shortcuts.json)이 있으면 그 색으로, 없으면 내장 기본으로 해석.
+    """
+    from autoblog.publish.emphasis import (
+        DEFAULT_STYLES,
+        load_default_power_shortcuts,
+        load_emphasis_config,
+    )
 
     cfg = load_emphasis_config()
+    presets = load_default_power_shortcuts() or DEFAULT_STYLES
+    source = "파워 단축키 프리셋" if load_default_power_shortcuts() else "내장 기본"
 
     def resolve(pid):
-        st = DEFAULT_STYLES.get(pid)
+        st = presets.get(pid)
         if not st:
             return {"id": pid, "defined": False}
         return {"id": pid, "defined": True, "text_color": st.text_color,
-                "background_color": st.background_color, "bold": st.bold}
+                "background_color": st.background_color, "bold": st.bold,
+                "font": st.font_family}
 
     return {
-        "palette": [resolve(i) for i in sorted(DEFAULT_STYLES)],
+        "source": source,
         "cycling": [resolve(i) for i in (cfg.cycling_pool or [])],
         "fixed": {k: resolve(v) for k, v in (cfg.fixed_map or {}).items()},
         "max_per_paragraph": cfg.max_per_paragraph,
