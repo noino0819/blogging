@@ -103,6 +103,11 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}
  .sw.on::after{left:21px}
  .muted{color:var(--sub);font-size:12.5px}
+ .epgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+ .epcell{border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fff}
+ .epnum{font-size:11px;color:var(--sub);font-weight:600;margin-bottom:6px;display:flex;align-items:center}
+ .epcell .sw-chip{display:inline-block;font-size:14px}
+ .epmeta{font-size:11px;color:var(--sub);margin-top:5px}
  .swrap{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
  .sw-chip{padding:8px 14px;border-radius:9px;font-size:14px;font-weight:600;border:1px solid var(--line);background:#fff}
  .sw-chip .pid{font-size:10px;opacity:.55;margin-left:6px;font-weight:500}
@@ -341,15 +346,16 @@ async function loadModels(){try{const m=await (await fetch('/api/models')).json(
 }catch(e){}}
 
 async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).json();
-  const chip=s=>{if(!s.defined)return `<span class="sw-chip" style="color:#d9534f">미정의<span class=pid>#${s.id}</span></span>`;
-    const stl=(s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'');
+  const tag=u=>u?`<span style="font-size:10px;background:#eafaf0;color:#02b350;border-radius:4px;padding:1px 5px;margin-left:5px">${u==='순환'?'순환':u}</span>`:'';
+  const card=s=>{
+    const hasStyle=s.text_color||s.background_color||s.font;
+    const stl=hasStyle?((s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'')):'color:#9aa5b1';
     const meta=[s.font_name,s.size?s.size+'pt':''].filter(Boolean).join(' · ');
-    return `<span class="sw-chip" style="${stl}">강조 텍스트<span class=pid>#${s.id}</span></span>`+(meta?`<span class=muted style="font-size:11px">${meta}</span>`:'');};
-  let h=`<div class=muted style="margin-bottom:4px">색 출처: <b>${e.source}</b></div>`;
-  h+='<div class=sub-h>순환 풀 (핵심 문장에 번갈아)</div><div class=swrap>'+(e.cycling.map(chip).join('')||'<span class=muted>없음</span>')+'</div>';
-  h+='<div class=sub-h>고정 매핑</div><div class=swrap>'+(Object.entries(e.fixed).map(([k,s])=>chip(s)+`<span class=muted>← ${k}</span>`).join('')||'<span class=muted>없음</span>')+'</div>';
-  const bad=e.cycling.some(s=>!s.defined)||Object.values(e.fixed).some(s=>!s.defined);
-  if(bad)h+='<div class=muted style="margin-top:12px;color:#d9534f">⚠️ 미정의 번호가 있어요(프리셋 범위 밖).</div>';
+    return `<div class=epcell><div class=epnum>#${s.id}${tag(s.use)}</div>
+      <span class="sw-chip" style="${stl}">${hasStyle?'강조 텍스트':'(서식 없음)'}</span>
+      ${meta?`<div class=epmeta>${meta}</div>`:'<div class=epmeta>&nbsp;</div>'}</div>`;};
+  let h=`<div class=muted style="margin-bottom:10px">출처: <b>${e.source}</b> · 순환 풀 [${e.cycling.join(', ')}] · 고정 ${Object.entries(e.fixed).map(([k,v])=>k+'→#'+v).join(', ')||'없음'}</div>`;
+  h+='<div class=epgrid>'+e.all.map(card).join('')+'</div>';
   $('#emph').innerHTML=h;
 }catch(e){$('#emph').innerHTML='<div class=muted>로드 실패</div>';}}
 async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json();
@@ -569,10 +575,17 @@ def _emphasis_preview() -> dict:
                 "font": st.font_family, "font_name": fonts.get(st.font_family),
                 "size": st.font_size}
 
+    used = {}
+    for i in cfg.cycling_pool or []:
+        used.setdefault(i, "순환")
+    for k, v in (cfg.fixed_map or {}).items():
+        used[v] = k
+    all_styles = [{**resolve(i), "use": used.get(i)} for i in sorted(presets)]
     return {
         "source": source,
-        "cycling": [resolve(i) for i in (cfg.cycling_pool or [])],
-        "fixed": {k: resolve(v) for k, v in (cfg.fixed_map or {}).items()},
+        "all": all_styles,
+        "cycling": list(cfg.cycling_pool or []),
+        "fixed": cfg.fixed_map or {},
         "max_per_paragraph": cfg.max_per_paragraph,
         "min_sentence_gap": cfg.min_sentence_gap,
     }
