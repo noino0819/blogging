@@ -117,6 +117,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}
  .sw.on::after{left:21px}
  .muted{color:var(--sub);font-size:12.5px}
+ .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:6px}
+ .vcell{border:2px solid var(--line);border-radius:10px;padding:6px;cursor:pointer;background:#fff;position:relative}
+ .vcell.on{border-color:var(--green);background:#f3fcf6}
+ .vcell img{width:100%;height:54px;object-fit:contain;object-position:left center}
+ .vcell.q img{height:80px}
+ .vcell .vn{position:absolute;top:5px;right:8px;font-size:10px;color:var(--sub)}
+ .vcell.on .vn{color:var(--green-d);font-weight:700}
  .epgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
  .epcell{border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fff}
  .epnum{font-size:11px;color:var(--sub);font-weight:600;margin-bottom:6px;display:flex;align-items:center}
@@ -200,6 +207,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <p class=desc>글쓰기 규칙을 켜고 끄면 다음 생성부터 반영됩니다.</p>
     <div class=card id=rules></div>
     <div class=card style="margin-top:16px"><h3>🎨 강조색 미리보기 <span class=muted style="font-weight:400">— 핵심 문장에 번갈아 적용</span></h3><div id=emph><div class=muted>불러오는 중…</div></div></div>
+    <div class=card style="margin-top:16px"><h3>➖ 구분선·인용구 종류 <span class=muted style="font-weight:400">— 글에 들어갈 기본 모양</span></h3><div id=variants><div class=muted>불러오는 중…</div></div></div>
     <div class=card style="margin-top:16px"><h3>📝 초안 생성 프롬프트 <span class=muted style="font-weight:400">— config/prompts/default.md + 마커 레이어</span></h3><div id=prompt><div class=muted>불러오는 중…</div></div></div>
     <div class=card style="margin-top:16px" id=models><h3>모델</h3><div class=muted>불러오는 중…</div></div>
   </section>
@@ -377,7 +385,22 @@ async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json(
   p.layers.forEach(([t,b])=>{h+=`<details><summary>${esc(t)}</summary><pre>${esc(b)}</pre></details>`;});
   $('#prompt').innerHTML=h+'</div>';
 }catch(e){$('#prompt').innerHTML='<div class=muted>로드 실패</div>';}}
-loadPhotos(); renderRules(); loadModels(); loadEmphasis(); loadPrompt();
+async function loadVariants(){try{const f=await (await fetch('/api/format')).json();
+  const row=(items,type,sel,qcls)=>{
+    if(!items.length)return '<div class=muted>캡쳐된 종류가 없어요</div>';
+    return '<div class=vgrid>'+items.map(it=>`<div class="vcell ${qcls}${it.index===sel?' on':''}" data-type=${type} data-idx=${it.index}>
+      <img loading=lazy src="/variant-img?type=${type}&value=${encodeURIComponent(it.value)}"><span class=vn>${it.index===sel?'선택됨':'#'+it.index}</span></div>`).join('')+'</div>';};
+  $('#variants').innerHTML='<div class=sub-h>구분선</div>'+row(f.dividers,'divider',f.divider_variant,'')
+    +'<div class=sub-h>인용구</div>'+row(f.quotes,'quote',f.quote_variant,'q');
+}catch(e){$('#variants').innerHTML='<div class=muted>로드 실패</div>';}}
+$('#variants').onclick=async e=>{const c=e.target.closest('.vcell'); if(!c)return;
+  const type=c.dataset.type, idx=+c.dataset.idx;
+  c.parentElement.querySelectorAll('.vcell').forEach(x=>{x.classList.remove('on');x.querySelector('.vn').textContent='#'+x.dataset.idx;});
+  c.classList.add('on'); c.querySelector('.vn').textContent='선택됨';
+  const key=type==='divider'?'divider_variant':'quote_variant';
+  try{await fetch('/api/format',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({[key]:idx})});}catch(e){}
+};
+loadPhotos(); renderRules(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants();
 </script></body></html>"""
 
 
@@ -466,6 +489,16 @@ def _make_handler(state: dict):
 
                 m = load_models_config().get()
                 self._send(200, json.dumps({"text": m.text, "vision": m.vision}).encode())
+            elif u.path == "/variant-img":
+                typ = Path(q.get("type", [""])[0]).name
+                val = Path(q.get("value", [""])[0]).name
+                fp = PREVIEW_DIR / f"{typ}_{val}.png"
+                if fp.exists() and fp.parent == PREVIEW_DIR:
+                    self._send(200, fp.read_bytes(), "image/png")
+                else:
+                    self._send(404, b"x", "text/plain")
+            elif u.path == "/api/format":
+                self._send(200, json.dumps(_format_summary()).encode())
             elif u.path == "/api/emphasis":
                 self._send(200, json.dumps(_emphasis_preview()).encode())
             elif u.path == "/api/prompt":
@@ -484,6 +517,19 @@ def _make_handler(state: dict):
                     body = self._json_body()
                     n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
                     self._send(200, json.dumps({"ok": True, "favorites": n}).encode())
+                elif path == "/api/format":
+                    import yaml
+
+                    body = self._json_body()
+                    cfg = _load_format()
+                    if "divider_variant" in body:
+                        cfg["divider_variant"] = int(body["divider_variant"])
+                    if "quote_variant" in body:
+                        cfg["quote_variant"] = int(body["quote_variant"])
+                    FORMAT_CONFIG_PATH.write_text(
+                        yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8"
+                    )
+                    self._send(200, b'{"ok":true}')
                 elif path == "/api/label":
                     lab = state["label"]
                     if lab.get("running"):
@@ -513,6 +559,7 @@ def _make_handler(state: dict):
             photos = [p for p in (body.get("photos") or []) if p]
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
+            fmt = _load_format()
             result = run_pipeline(
                 body["memo"],
                 place_url=srcval if src == "place" else None,
@@ -523,6 +570,8 @@ def _make_handler(state: dict):
                 emphasis=bool(body.get("emphasis")),
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
+                divider_variant=int(fmt.get("divider_variant", 1)),
+                quote_variant=int(fmt.get("quote_variant", 1)),
             )
             state["last"] = result
             blocks = []
@@ -561,6 +610,36 @@ def _make_handler(state: dict):
             self._send(200, b'{"ok":true}')
 
     return Handler
+
+
+FORMAT_CONFIG_PATH = REPO_ROOT / "config" / "format.yaml"
+PREVIEW_DIR = REPO_ROOT / "config" / "editor_previews"
+
+
+def _load_format() -> dict:
+    import yaml
+
+    try:
+        return yaml.safe_load(FORMAT_CONFIG_PATH.read_text(encoding="utf-8")) or {}
+    except FileNotFoundError:
+        return {}
+
+
+def _format_summary() -> dict:
+    """구분선/인용구 종류 목록(인덱스=variant) + 현재 선택."""
+    man = {}
+    mp = PREVIEW_DIR / "manifest.json"
+    if mp.exists():
+        man = json.loads(mp.read_text(encoding="utf-8"))
+    cfg = _load_format()
+    dividers = [{"value": d["value"], "index": i + 1} for i, d in enumerate(man.get("dividers", []))]
+    quotes = [{"value": q["value"], "index": i + 1} for i, q in enumerate(man.get("quotes", []))]
+    return {
+        "divider_variant": int(cfg.get("divider_variant", 1)),
+        "quote_variant": int(cfg.get("quote_variant", 1)),
+        "dividers": dividers,
+        "quotes": quotes,
+    }
 
 
 def _editor_options() -> dict:

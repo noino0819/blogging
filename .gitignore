@@ -41,3 +41,6 @@ config/stickers.yaml
 
 # 테스트용 개인 사진(카톡 등) — 커밋 금지
 test/
+
+# 유저 포맷 선택(구분선/인용구 종류)
+config/format.yaml
