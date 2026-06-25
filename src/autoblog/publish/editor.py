@@ -155,6 +155,8 @@ class BlogPublisher:
                 self._insert_divider(block.variant)
             elif block.kind == "quote":
                 self._insert_quote(block.text, block.variant)
+            elif block.kind == "sticker" and block.sticker_pack is not None:
+                self._insert_sticker(block.sticker_pack, block.sticker_index or 0)
         # 본문 입력을 모두 마친 뒤 강조 서식 적용(커서 간섭 방지)
         for span in emphases:
             try:
@@ -331,6 +333,105 @@ class BlogPublisher:
             {"name": name, "n": n},
         )
         page.wait_for_timeout(500)
+
+    # --- 스티커 ---
+    def _open_sticker_panel(self):
+        """스티커 사이드바 패널을 연다(이미 열려있으면 그대로)."""
+        panel = self._page.query_selector(SMART_EDITOR["sticker_panel"])
+        if panel and panel.is_visible():
+            return
+        self._page.click(SMART_EDITOR["sticker_button"])
+        self._page.wait_for_selector(SMART_EDITOR["sticker_panel"], timeout=8000)
+        self._page.wait_for_timeout(800)
+
+    def _select_sticker_pack(self, pack: str):
+        """팩 코드(ogq_xxx/clip_xxx)가 썸네일 URL에 든 탭을 클릭해 그 팩을 활성화."""
+        ok = self._page.evaluate(
+            """(code)=>{
+              const tabs=[...document.querySelectorAll('ul.se-panel-tab-list li.se-tab-item button.se-tab-button')];
+              const t=tabs.find(b=>((b.getAttribute('style')||'')+ (b.querySelector('*')?.getAttribute?.('style')||'')).includes(code));
+              if(t){t.click();return true;} return false;
+            }""",
+            pack,
+        )
+        self._page.wait_for_timeout(700)
+        return ok
+
+    def _insert_sticker(self, pack: str, index: int):
+        """(팩, 인덱스) 스티커를 본문 커서 위치에 삽입(검증된 메커니즘).
+
+        패널 열기 → 팩 탭 선택 → 활성 목록에서 data-index 클릭 → 본문 끝으로 포커스 복귀.
+        """
+        self._open_sticker_panel()
+        self._select_sticker_pack(pack)
+        sel = f"{SMART_EDITOR['sticker_active_list']} {SMART_EDITOR['sticker_element']}[data-index='{index}']"
+        try:
+            self._page.click(sel, timeout=4000)
+        except Exception:
+            return  # 해당 스티커가 없으면(팩 변경 등) 조용히 건너뜀
+        self._page.wait_for_timeout(700)
+        # 다음 본문 입력을 위해 본문 끝으로 포커스 복귀
+        try:
+            self._page.click(SMART_EDITOR["canvas_bottom_button"])
+            self._page.wait_for_timeout(200)
+        except Exception:
+            pass
+
+    def pull_stickers(self, out_dir: Path | None = None) -> list:
+        """현재 계정의 스티커를 전부 훑어 개별 PNG로 저장하고 Sticker 목록 반환(라이브).
+
+        스티커는 스프라이트라 URL 다운로드가 안 되므로 각 버튼을 element 스크린샷으로 뜬다.
+        팩 코드는 스티커 span의 background-image URL에서 추출. (collect 흐름과 분리된 보조 작업)
+        """
+        from autoblog.publish.stickers import STICKER_DATA_DIR, Sticker
+
+        out_dir = out_dir or STICKER_DATA_DIR
+        page = self._page
+        self.open_write_page()
+        page.click(SMART_EDITOR["content_component"])
+        self._open_sticker_panel()
+        tabs = page.query_selector_all(SMART_EDITOR["sticker_tab_button"])
+        results: list = []
+        for tab in tabs:
+            if "history" in (tab.get_attribute("class") or ""):
+                continue  # 최근사용 탭은 건너뜀(중복)
+            try:
+                tab.click()
+                page.wait_for_timeout(700)
+            except Exception:
+                continue
+            meta = page.evaluate(
+                """() => {
+                  const ul=document.querySelector('ul.se-sidebar-list.se-is-on');
+                  if(!ul) return {pack:null, items:[]};
+                  const btns=[...ul.querySelectorAll('button.se-sidebar-element-sticker')];
+                  const span=btns[0]?.querySelector('.se-sidebar-sticker');
+                  const bg=span?getComputedStyle(span).backgroundImage:'';
+                  const m=bg.match(/pstatic\\.net\\/([^/]+)\\//);
+                  return {pack: m?m[1]:null,
+                          items: btns.map(b=>({idx:+b.getAttribute('data-index'),
+                                               animated:b.getAttribute('data-animated')==='true'}))};
+                }"""
+            )
+            pack = meta.get("pack")
+            if not pack:
+                continue
+            pack_dir = out_dir / pack
+            pack_dir.mkdir(parents=True, exist_ok=True)
+            btns = page.query_selector_all(
+                f"{SMART_EDITOR['sticker_active_list']} {SMART_EDITOR['sticker_element']}"
+            )
+            for b, item in zip(btns, meta["items"]):
+                idx = item["idx"]
+                img_path = pack_dir / f"{idx}.png"
+                try:
+                    b.scroll_into_view_if_needed()
+                    b.screenshot(path=str(img_path))
+                except Exception:
+                    continue
+                rel = str(img_path.relative_to(REPO_ROOT)) if img_path.is_relative_to(REPO_ROOT) else str(img_path)
+                results.append(Sticker(pack=pack, index=idx, animated=item["animated"], image=rel))
+        return results
 
     def _insert_image(self, path: str):
         """이미지 툴바 버튼 → 파일 다이얼로그로 업로드."""

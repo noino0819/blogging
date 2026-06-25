@@ -58,6 +58,28 @@ def test_build_plan_divider_variant():
     assert div.variant == 5
 
 
+def test_build_plan_sticker_marker_resolved():
+    from autoblog.publish.stickers import Sticker, StickerCatalog, StickerPicker
+
+    cat = StickerCatalog(stickers=[Sticker(pack="ogq_a", index=3, tags=["맛있음"])])
+    picker = StickerPicker(cat)
+    draft = DraftResult(text="제목\n\n정말 맛있었어요.\n[스티커:맛있음]\n또 갈래요.")
+    plan = build_publish_plan(draft, picker=picker)
+    sticker = next(b for b in plan.blocks if b.kind == "sticker")
+    assert sticker.sticker_pack == "ogq_a" and sticker.sticker_index == 3
+    # 텍스트는 스티커 기준으로 분리
+    texts = [b.text for b in plan.blocks if b.kind == "text"]
+    assert "정말 맛있었어요." in texts and "또 갈래요." in texts
+
+
+def test_build_plan_sticker_dropped_without_match():
+    # picker 없거나 매칭 실패면 마커는 본문에 누수되지 않고 사라진다
+    draft = DraftResult(text="제목\n\n본문\n[스티커:없음]\n끝")
+    plan = build_publish_plan(draft)  # picker 없음
+    assert all(b.kind != "sticker" for b in plan.blocks)
+    assert all("[스티커" not in b.text for b in plan.blocks)
+
+
 def test_selectors_ready():
     # 라이브 분석으로 핵심 셀렉터(제목/본문/저장/발행) 확정됨
     assert selectors_ready() is True

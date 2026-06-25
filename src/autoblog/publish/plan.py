@@ -13,12 +13,15 @@ from pydantic import BaseModel, Field
 from autoblog.collect.fact_card import PhotoItem
 from autoblog.draft.generate import DraftResult
 from autoblog.publish.emphasis import StyledSpan
+from autoblog.publish.stickers import StickerPicker
 
 PHOTO_MARKER = "[사진]"
 QUOTE_CLOSE = "[/인용구]"
 # [구분선] / [구분선:2], [인용구] / [인용구:3] — 종류(variant) 선택 가능
 _DIVIDER_RE = re.compile(r"^\[구분선(?::(\d+))?\]$")
 _QUOTE_OPEN_RE = re.compile(r"^\[인용구(?::(\d+))?\]$")
+# [스티커] / [스티커:상황] — picker가 라벨을 (팩,인덱스)로 해석
+_STICKER_RE = re.compile(r"^\[스티커(?::(.+?))?\]$")
 
 # 초안 구조 마커: 구분선 [구분선], 인용 블록 [인용구]…[/인용구]
 # (EMPHASIS_INSTRUCTION과 같은 추가 레이어. generate_draft(structure=True)에서 시스템 프롬프트에 덧붙임)
@@ -33,12 +36,14 @@ STRUCTURE_INSTRUCTION = (
 
 
 class PublishBlock(BaseModel):
-    kind: str  # "text" | "image" | "divider" | "quote"
+    kind: str  # "text" | "image" | "divider" | "quote" | "sticker"
     text: str = ""
     emphases: list[StyledSpan] = Field(default_factory=list)
     image_path: str | None = None
     image_label: str = ""
     variant: int = 1  # 구분선/인용구 종류(1=기본)
+    sticker_pack: str | None = None  # 스티커 팩 코드(picker 해석 결과)
+    sticker_index: int | None = None  # 스티커 data-index
 
 
 class PublishPlan(BaseModel):
@@ -47,7 +52,9 @@ class PublishPlan(BaseModel):
 
 
 def build_publish_plan(
-    draft: DraftResult, photos: list[PhotoItem] | None = None
+    draft: DraftResult,
+    photos: list[PhotoItem] | None = None,
+    picker: StickerPicker | None = None,
 ) -> PublishPlan:
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
 
@@ -55,6 +62,7 @@ def build_publish_plan(
     - [사진]      → 이미지(photos 순서대로)
     - [구분선]    → 구분선
     - [인용구]…[/인용구] → 인용 블록
+    - [스티커:상황] → picker가 (팩,인덱스)로 해석한 스티커(picker 없거나 미해석이면 무시)
     그 외 줄은 텍스트 문단으로 누적. 강조 span은 해당 텍스트 블록에 배분.
     """
     photos = list(photos or [])
@@ -97,9 +105,19 @@ def build_publish_plan(
             continue
         div_m = _DIVIDER_RE.match(s)
         quote_m = _QUOTE_OPEN_RE.match(s)
+        sticker_m = _STICKER_RE.match(s)
         if div_m:
             flush_text()
             blocks.append(PublishBlock(kind="divider", variant=int(div_m.group(1) or 1)))
+        elif sticker_m:
+            flush_text()
+            chosen = picker.pick(sticker_m.group(1) or "") if picker else None
+            if chosen:  # 해석 실패(picker 없음/매칭 없음)면 마커 자체를 버림(본문 누수 방지)
+                blocks.append(
+                    PublishBlock(
+                        kind="sticker", sticker_pack=chosen.pack, sticker_index=chosen.index
+                    )
+                )
         elif quote_m:
             flush_text()
             in_quote = True

@@ -33,6 +33,12 @@ SMART_EDITOR = {
     "image_file_input": "input[type=file]",  # 파일 input
     "divider_button": "button.se-insert-horizontal-line-default-toolbar-button",  # 구분선
     "quote_button": "button.se-insert-quotation-default-toolbar-button",  # 인용구
+    # 스티커: 툴바 버튼 → 우측 사이드바 패널(팩 탭 + 스티커 그리드). (팩코드,인덱스)로 삽입.
+    "sticker_button": "li.se-toolbar-item-sticker button",
+    "sticker_panel": ".se-sidebar-container-sticker",
+    "sticker_tab_button": "ul.se-panel-tab-list li.se-tab-item button.se-tab-button",
+    "sticker_active_list": "ul.se-sidebar-list.se-is-on",  # 선택된 팩의 스티커 목록
+    "sticker_element": "button.se-sidebar-element-sticker",  # [data-index=N]
     "canvas_bottom_button": "button.se-canvas-bottom-button",  # 본문 끝에 새 문단(블록 탈출용)
     "save_button": 'button[data-click-area="tpb.save"]',  # 임시저장
     "publish_button": 'button[data-click-area="tpb.publish"]',  # 발행(설정 레이어 열기)
