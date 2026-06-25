@@ -120,6 +120,7 @@ def _make_handler(state: dict):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")  # 편집 중 이미지/카탈로그 stale 방지
             self.end_headers()
             self.wfile.write(body)
 

@@ -141,6 +141,33 @@ class StickerPicker:
         return chosen
 
 
+# --- 개별 스티커 이미지(CDN 고해상도) ---
+# 에디터 패널은 한 장의 스프라이트(축소 렌더 ~80px)라 캡처하면 깨진다. 대신 CDN의
+# 개별 원본을 직접 받는다: ogq_ 팩은 .../ogq_<코드>/original_<N>.png 로 노출되며
+# **에디터 data-index(0-based) → CDN original_{index+1}.png(1-based)**, native ~370px.
+# (type=m480_480이 원본 최대; OGQ 마켓과 동일 CDN). clip/moti 등 다른 스킴 팩은 실패→스크린샷 폴백.
+_CDN_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://ogqmarket.naver.com/"}
+
+
+def sticker_image_url(pack: str, index: int, size: int = 480) -> str:
+    return f"https://storep-phinf.pstatic.net/{pack}/original_{index + 1}.png?type=m{size}_{size}"
+
+
+def download_sticker_image(pack: str, index: int, dest: Path, size: int = 480) -> bool:
+    """CDN에서 개별 스티커 고해상도 PNG를 받아 dest에 저장. 성공 여부 반환(404 등 실패=False)."""
+    import requests
+
+    try:
+        r = requests.get(sticker_image_url(pack, index, size), headers=_CDN_HEADERS, timeout=15)
+    except requests.RequestException:
+        return False
+    if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
+        return False
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(r.content)
+    return True
+
+
 # --- 초안 지시문 (LLM이 [스티커:상황] 마커 emit) ---
 def build_sticker_instruction(labels: list[str]) -> str | None:
     """보유 스티커 상황 라벨 목록 → 초안 지시문(EMPHASIS_INSTRUCTION 패턴).

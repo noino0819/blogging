@@ -378,12 +378,17 @@ class BlogPublisher:
             pass
 
     def pull_stickers(self, out_dir: Path | None = None) -> list:
-        """현재 계정의 스티커를 전부 훑어 개별 PNG로 저장하고 Sticker 목록 반환(라이브).
+        """현재 계정의 스티커를 전부 훑어 개별 고해상도 PNG로 저장하고 Sticker 목록 반환(라이브).
 
-        스티커는 스프라이트라 URL 다운로드가 안 되므로 각 버튼을 element 스크린샷으로 뜬다.
-        팩 코드는 스티커 span의 background-image URL에서 추출. (collect 흐름과 분리된 보조 작업)
+        에디터에서 보유 팩(코드·인덱스·애니여부)만 열거하고, 이미지는 **CDN 개별 원본**을
+        직접 받는다(에디터 스프라이트는 ~80px로 깨짐). CDN 실패 팩(clip/moti 등 다른 스킴)은
+        그 자리에서 element 스크린샷으로 폴백. 팩 코드는 스티커 span URL에서 추출.
         """
-        from autoblog.publish.stickers import STICKER_DATA_DIR, Sticker
+        from autoblog.publish.stickers import (
+            STICKER_DATA_DIR,
+            Sticker,
+            download_sticker_image,
+        )
 
         out_dir = out_dir or STICKER_DATA_DIR
         page = self._page
@@ -417,25 +422,33 @@ class BlogPublisher:
             if not pack:
                 continue
             pack_dir = out_dir / pack
-            pack_dir.mkdir(parents=True, exist_ok=True)
             btns = page.query_selector_all(
                 f"{SMART_EDITOR['sticker_active_list']} {SMART_EDITOR['sticker_element']}"
             )
-            for b, item in zip(btns, meta["items"]):
+            btn_by_idx = {it["idx"]: b for b, it in zip(btns, meta["items"])}
+            for item in meta["items"]:
                 idx = item["idx"]
                 img_path = pack_dir / f"{idx}.png"
-                try:
-                    # 애니메이션 스티커는 element.screenshot이 '안정 대기'로 멈추므로
-                    # JS 스크롤 + bounding_box + page.screenshot(clip, animations=disabled) 사용.
-                    b.evaluate("e => e.scrollIntoView({block: 'center'})")
-                    page.wait_for_timeout(60)
-                    box = b.bounding_box()
-                    if not box or box["width"] < 1:
+                # 1순위: CDN 개별 고해상도. 실패 시 에디터 버튼 스크린샷 폴백.
+                if not download_sticker_image(pack, idx, img_path):
+                    b = btn_by_idx.get(idx)
+                    if b is None:
                         continue
-                    page.screenshot(path=str(img_path), animations="disabled", clip=box)
-                except Exception:
-                    continue
-                rel = str(img_path.relative_to(REPO_ROOT)) if img_path.is_relative_to(REPO_ROOT) else str(img_path)
+                    try:
+                        b.evaluate("e => e.scrollIntoView({block: 'center'})")
+                        page.wait_for_timeout(60)
+                        box = b.bounding_box()
+                        if not box or box["width"] < 1:
+                            continue
+                        pack_dir.mkdir(parents=True, exist_ok=True)
+                        page.screenshot(path=str(img_path), animations="disabled", clip=box)
+                    except Exception:
+                        continue
+                rel = (
+                    str(img_path.relative_to(REPO_ROOT))
+                    if img_path.is_relative_to(REPO_ROOT)
+                    else str(img_path)
+                )
                 results.append(Sticker(pack=pack, index=idx, animated=item["animated"], image=rel))
         return results
 
