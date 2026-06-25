@@ -10,9 +10,12 @@ import re
 
 from pydantic import BaseModel, Field
 
+import yaml
+
 from autoblog.collect.fact_card import PhotoItem
+from autoblog.config import CONFIG_DIR
 from autoblog.draft.generate import DraftResult
-from autoblog.publish.emphasis import StyledSpan
+from autoblog.publish.emphasis import EmphasisStyle, StyledSpan
 from autoblog.publish.stickers import StickerPicker
 
 PHOTO_MARKER = "[사진]"
@@ -62,6 +65,57 @@ STRUCTURE_INSTRUCTION = (
 )
 
 
+# --- 구조별 서식 템플릿 (config/structure_styles.yaml) ---
+# 대제목·소제목·with.필명·해시태그 줄을 패턴으로 인식해 서체/크기/색을 자동 배정한다.
+# 마커가 아니라 패턴 인식이라, 외부 챗봇에서 받아온 글에도 동일하게 먹는다.
+_STRUCTURE_STYLES_PATH = CONFIG_DIR / "structure_styles.yaml"
+
+# with. 필명 / "1. 가게명 후기" 소제목 / 해시태그 줄 인식
+_BYLINE_RE = re.compile(r"(?i)^with\.\s*\S")
+_SUBHEADING_RE = re.compile(r"^\d+\.\s+\S")
+
+
+class RoleStyle(BaseModel):
+    font: str | None = None
+    size: int | None = None
+    color: str | None = None
+
+    def to_style(self) -> EmphasisStyle:
+        return EmphasisStyle(
+            text_color=self.color,
+            font_family=self.font,
+            font_size=str(self.size) if self.size else None,
+        )
+
+
+class HashtagStyle(RoleStyle):
+    per_line: int = 2  # 한 줄에 태그 N개씩
+    divider: str | None = None  # 해시태그 뒤 구분선 종류(DIVIDER_META 키)
+
+
+class StructureStyles(BaseModel):
+    pen_name: str = ""
+    big_title: RoleStyle = Field(default_factory=RoleStyle)
+    subheading: RoleStyle = Field(default_factory=RoleStyle)
+    byline: RoleStyle = Field(default_factory=RoleStyle)
+    hashtags: HashtagStyle = Field(default_factory=HashtagStyle)
+
+
+def load_structure_styles(path=None) -> StructureStyles:
+    """구조별 서식 템플릿 로드(사용자 편집 파일). 없으면 빈 기본값."""
+    path = path or _STRUCTURE_STYLES_PATH
+    try:
+        data = yaml.safe_load(open(path, encoding="utf-8")) or {}
+    except FileNotFoundError:
+        return StructureStyles()
+    return StructureStyles(**data)
+
+
+def _is_hashtag_line(s: str) -> bool:
+    """해시태그가 2개 이상인 줄(헤더의 태그 묶음). 본문 속 우연한 # 한 개는 제외."""
+    return sum(1 for t in s.split() if t.startswith("#")) >= 2
+
+
 class PublishBlock(BaseModel):
     kind: str  # "text" | "image" | "divider" | "quote" | "sticker"
     text: str = ""
@@ -84,6 +138,7 @@ def build_publish_plan(
     picker: StickerPicker | None = None,
     divider_variant: int = 1,
     quote_variant_default: int = 1,
+    structure_styles: StructureStyles | None = None,
 ) -> PublishPlan:
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
 
@@ -112,6 +167,7 @@ def build_publish_plan(
     in_quote = False
     quote_variant = 1
     used = [False] * len(photos)  # 사진별 사용 여부(순서 아닌 라벨로 매칭)
+    first_body_seen = False  # 대제목은 본문 첫 줄에만 부여
 
     def take_photo(label: str | None) -> PhotoItem | None:
         """라벨이 같은 안 쓴 사진 우선, 없으면 남은 사진 순서대로. 다 쓰면 None."""
@@ -132,6 +188,37 @@ def build_publish_plan(
         if text:
             spans = [e for e in draft.emphases if e.text and e.text in text]
             blocks.append(PublishBlock(kind="text", text=text, emphases=spans))
+
+    def classify_role(s: str) -> str | None:
+        """구조별 서식이 켜져 있을 때, 이 줄이 어떤 구조 요소인지 판정(없으면 None)."""
+        if structure_styles is None:
+            return None
+        if _BYLINE_RE.match(s):
+            return "byline"
+        if _is_hashtag_line(s):
+            return "hashtags"
+        if _SUBHEADING_RE.match(s):
+            return "subheading"
+        if not first_body_seen and 0 < len(s) <= 40:
+            return "big_title"  # 본문 첫 줄의 짧은 콘셉트 한 줄
+        return None
+
+    def emit_role_block(role: str, s: str):
+        """구조 요소 한 줄을 서식 span이 박힌 텍스트 블록(+해시태그 뒤 구분선)으로 추가."""
+        ss = structure_styles
+        if role == "hashtags":
+            toks = s.split()
+            per = max(1, ss.hashtags.per_line)
+            rows = [" ".join(toks[i : i + per]) for i in range(0, len(toks), per)]
+            spans = [StyledSpan(text=r, preset_id=None, style=ss.hashtags.to_style()) for r in rows]
+            blocks.append(PublishBlock(kind="text", text="\n".join(rows), emphases=spans))
+            div = ss.hashtags.divider
+            if div and div in DIVIDER_META:
+                blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0]))
+            return
+        role_style = {"byline": ss.byline, "subheading": ss.subheading, "big_title": ss.big_title}[role]
+        span = StyledSpan(text=s, preset_id=None, style=role_style.to_style())
+        blocks.append(PublishBlock(kind="text", text=s, emphases=[span]))
 
     for line in body_lines:
         s = line.strip()
@@ -171,16 +258,46 @@ def build_publish_plan(
             if ph is not None:
                 blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.label))
         else:
-            text_buf.append(line)
+            role = classify_role(s)
+            if role:
+                flush_text()
+                emit_role_block(role, s)
+            else:
+                text_buf.append(line)
+            if s:
+                first_body_seen = True
     flush_text()
     if in_quote and quote_buf:  # 닫힘 누락 방어
         blocks.append(
             PublishBlock(kind="quote", text="\n".join(quote_buf).strip(), variant=quote_variant)
         )
 
-    # [사진] 마커보다 사진이 많으면 본문 끝에 남은 사진 첨부
-    for i, ph in enumerate(photos):
-        if not used[i]:
-            blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.label))
+    # 마커로 못 채운 남은 사진: 글 끝에 몰지 않고 본문 텍스트 블록 사이에 고루 분산
+    # (업로드한 사진은 모두 본문에 들어가되, 끝에 우르르 붙는 걸 방지)
+    leftover = [ph for i, ph in enumerate(photos) if not used[i]]
+    if leftover:
+        text_pos = [i for i, b in enumerate(blocks) if b.kind == "text"]
+        if not text_pos:  # 본문 텍스트가 없으면 그대로 끝에
+            for ph in leftover:
+                blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.label))
+        else:
+            def trailing_end(idx: int) -> int:  # 텍스트 블록 뒤 마커 이미지까지 건너뛴 위치
+                while idx + 1 < len(blocks) and blocks[idx + 1].kind == "image":
+                    idx += 1
+                return idx
+
+            after: dict[int, list[PhotoItem]] = {}
+            t = len(text_pos)
+            for k, ph in enumerate(leftover):
+                anchor = trailing_end(text_pos[(k * t) // len(leftover)])
+                after.setdefault(anchor, []).append(ph)
+            spread: list[PublishBlock] = []
+            for i, b in enumerate(blocks):
+                spread.append(b)
+                for ph in after.get(i, []):
+                    spread.append(
+                        PublishBlock(kind="image", image_path=ph.path, image_label=ph.label)
+                    )
+            blocks = spread
 
     return PublishPlan(title=title, blocks=blocks)

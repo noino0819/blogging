@@ -47,13 +47,23 @@ def test_build_plan_distributes_emphasis():
     assert text_block.emphases == [span]  # 해당 텍스트 블록에 배분
 
 
-def test_build_plan_extra_photos_appended():
-    draft = DraftResult(text="제목\n\n본문만 있고 사진 마커는 없음")
+def test_build_plan_leftover_photos_spread_across_body():
+    # 마커가 부족해도 남은 사진은 본문 텍스트 블록들 사이에 분산(끝에 몰지 않음)
+    draft = DraftResult(text="제목\n\n첫 문단.\n[구분선]\n둘째 문단.")
     photos = [PhotoItem(path="a.jpg", label="외관"), PhotoItem(path="b.jpg", label="음식")]
     plan = build_publish_plan(draft, photos)
-    # [사진] 마커가 없으면 본문 뒤에 사진들이 첨부됨
-    image_blocks = [b for b in plan.blocks if b.kind == "image"]
-    assert [b.image_path for b in image_blocks] == ["a.jpg", "b.jpg"]
+    kinds = [b.kind for b in plan.blocks]
+    # 두 텍스트 블록 각각 뒤에 사진이 분산됨 (끝에 [..image, image]로 몰리지 않음)
+    assert kinds == ["text", "image", "divider", "text", "image"]
+    assert [b.image_path for b in plan.blocks if b.kind == "image"] == ["a.jpg", "b.jpg"]
+
+
+def test_build_plan_leftover_photos_no_text_appended():
+    # 본문 텍스트 블록이 없으면 남은 사진은 그대로 첨부
+    draft = DraftResult(text="제목\n\n[구분선]")
+    photos = [PhotoItem(path="a.jpg", label="외관")]
+    plan = build_publish_plan(draft, photos)
+    assert [b.image_path for b in plan.blocks if b.kind == "image"] == ["a.jpg"]
 
 
 def test_build_plan_divider_and_quote():
