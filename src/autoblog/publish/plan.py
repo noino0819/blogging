@@ -16,6 +16,8 @@ from autoblog.publish.emphasis import StyledSpan
 from autoblog.publish.stickers import StickerPicker
 
 PHOTO_MARKER = "[사진]"
+# [사진] / [사진:음식] — 라벨로 어떤 사진을 그 자리에 놓을지 지정 가능
+_PHOTO_RE = re.compile(r"^\[사진(?::(.+?))?\]$")
 QUOTE_CLOSE = "[/인용구]"
 # [구분선] / [구분선:2], [인용구] / [인용구:3] — 종류(variant) 선택 가능
 _DIVIDER_RE = re.compile(r"^\[구분선(?::(\d+))?\]$")
@@ -86,7 +88,7 @@ def build_publish_plan(
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
 
     첫 비어있지 않은 줄=제목. 본문에서 마커를 블록으로 분리:
-    - [사진]      → 이미지(photos 순서대로)
+    - [사진]/[사진:라벨] → 이미지(라벨 같은 사진 우선, 없으면 남은 순서대로)
     - [구분선]    → 구분선
     - [인용구]…[/인용구] → 인용 블록
     - [스티커:상황] → picker가 (팩,인덱스)로 해석한 스티커(picker 없거나 미해석이면 무시)
@@ -109,7 +111,20 @@ def build_publish_plan(
     quote_buf: list[str] = []
     in_quote = False
     quote_variant = 1
-    photo_idx = 0
+    used = [False] * len(photos)  # 사진별 사용 여부(순서 아닌 라벨로 매칭)
+
+    def take_photo(label: str | None) -> PhotoItem | None:
+        """라벨이 같은 안 쓴 사진 우선, 없으면 남은 사진 순서대로. 다 쓰면 None."""
+        if label:
+            for i, ph in enumerate(photos):
+                if not used[i] and ph.label == label:
+                    used[i] = True
+                    return ph
+        for i, ph in enumerate(photos):
+            if not used[i]:
+                used[i] = True
+                return ph
+        return None
 
     def flush_text():
         text = "\n".join(text_buf).strip()
@@ -133,6 +148,7 @@ def build_publish_plan(
         div_m = _DIVIDER_RE.match(s)
         quote_m = _QUOTE_OPEN_RE.match(s)
         sticker_m = _STICKER_RE.match(s)
+        photo_m = _PHOTO_RE.match(s)
         if div_m:
             flush_text()
             blocks.append(PublishBlock(kind="divider", variant=int(div_m.group(1) or divider_variant)))
@@ -149,12 +165,11 @@ def build_publish_plan(
             flush_text()
             in_quote = True
             quote_variant = int(quote_m.group(1) or quote_variant_default)
-        elif s == PHOTO_MARKER:
+        elif photo_m:
             flush_text()
-            if photo_idx < len(photos):
-                ph = photos[photo_idx]
+            ph = take_photo(photo_m.group(1))
+            if ph is not None:
                 blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.label))
-                photo_idx += 1
         else:
             text_buf.append(line)
     flush_text()
@@ -164,7 +179,8 @@ def build_publish_plan(
         )
 
     # [사진] 마커보다 사진이 많으면 본문 끝에 남은 사진 첨부
-    for ph in photos[photo_idx:]:
-        blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.label))
+    for i, ph in enumerate(photos):
+        if not used[i]:
+            blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.label))
 
     return PublishPlan(title=title, blocks=blocks)

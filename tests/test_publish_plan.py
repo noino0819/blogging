@@ -20,6 +20,25 @@ def test_build_plan_title_and_blocks():
     assert "추어탕이 진했어요" in plan.blocks[2].text
 
 
+def test_build_plan_photo_label_matching():
+    # 외관 문단 뒤 [사진:외관], 음식 문단 뒤 [사진:음식] — 업로드 순서(음식 먼저)와 무관하게 라벨로 매칭
+    draft = DraftResult(text="제목\n\n외관이 멋졌어요.\n[사진:외관]\n파스타가 맛있었어요.\n[사진:음식]")
+    photos = [PhotoItem(path="food.jpg", label="음식"), PhotoItem(path="exterior.jpg", label="외관")]
+    plan = build_publish_plan(draft, photos)
+    imgs = [b for b in plan.blocks if b.kind == "image"]
+    assert [b.image_path for b in imgs] == ["exterior.jpg", "food.jpg"]
+
+
+def test_build_plan_photo_label_fallback_and_leftover():
+    # 라벨 없는 [사진]은 남은 순서대로, 매칭 안 된 사진은 끝에 첨부
+    draft = DraftResult(text="제목\n\n본문.\n[사진:메뉴판]\n다음.\n[사진]")
+    photos = [PhotoItem(path="a.jpg", label="음식"), PhotoItem(path="b.jpg", label="외관")]
+    plan = build_publish_plan(draft, photos)
+    imgs = [b.image_path for b in plan.blocks if b.kind == "image"]
+    # [사진:메뉴판] 매칭 실패 → 남은 첫 사진(a), [사진] → 남은 사진(b)
+    assert imgs == ["a.jpg", "b.jpg"]
+
+
 def test_build_plan_distributes_emphasis():
     span = StyledSpan(text="13,000원", preset_id=20, style=EmphasisStyle(text_color="#C2410C"))
     draft = DraftResult(text="제목\n\n추어탕은 13,000원이었어요.", emphases=[span])

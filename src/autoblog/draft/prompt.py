@@ -107,10 +107,14 @@ def build_user_prompt(card: FactCard, experience_memo: str) -> str:
     if card.photos:
         from autoblog.collect.photos import photo_summary
 
+        labels = sorted({p.label for p in card.photos})
         parts.append(
             "# 사진 구성 (분류 결과)\n"
-            f"{photo_summary(card.photos)}\n"
-            "본문 흐름에 맞는 위치에 [사진] 표시를 넣어 사진 자리를 잡으세요."
+            f"보유 사진: {photo_summary(card.photos)}\n"
+            "본문 흐름에 맞는 위치에 [사진:라벨] 을 한 줄로 넣어 그 내용에 어울리는 사진을 배치하세요"
+            f"(라벨은 보유 사진의 분류명: {', '.join(labels)}).\n"
+            "예: 음식 묘사 문단 뒤엔 [사진:음식], 가게 첫인상 문단 뒤엔 [사진:외관]. "
+            "라벨을 모르겠으면 그냥 [사진] 으로 두면 됩니다. 같은 라벨 사진이 여러 장이면 그만큼 마커를 반복하세요."
         )
     parts.append("위 경험을 중심으로 네이버 블로그 후기 글을 제목과 본문으로 작성하세요.")
     return "\n\n".join(parts)
