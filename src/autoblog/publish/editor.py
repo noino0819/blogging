@@ -99,14 +99,17 @@ class BlogPublisher:
         self._page.wait_for_selector(SMART_EDITOR["content_component"], timeout=20000)
 
     def _dismiss_draft_popup(self):
-        """진입 시 뜨는 '이전 글 이어쓰기' 팝업이 있으면 취소(새 글)."""
-        for sel in (SMART_EDITOR["draft_popup_cancel"], "button:has-text('취소')"):
+        """진입 시 뜨는 팝업/오버레이 닫기(이어쓰기 팝업 취소 + 도움말 패널 닫기)."""
+        for sel in (
+            SMART_EDITOR["draft_popup_cancel"],
+            "button:has-text('취소')",
+            SMART_EDITOR["help_close"],
+        ):
             try:
                 el = self._page.query_selector(sel)
                 if el and el.is_visible():
                     el.click()
-                    self._page.wait_for_timeout(500)
-                    return
+                    self._page.wait_for_timeout(400)
             except Exception:
                 pass
 
@@ -147,21 +150,27 @@ class BlogPublisher:
         """현재 유저의 블로그 카테고리 목록을 동적으로 읽는다(발행 레이어).
 
         하드코딩 없이 계정마다 다른 카테고리를 그대로 가져온다.
+        글쓰기 페이지가 아니면 먼저 연다.
         """
+        if "postwrite" not in (self._page.url or ""):
+            self.open_write_page()
         self._open_publish_layer()
         self._page.click(SMART_EDITOR["category_button"])
         self._page.wait_for_timeout(1000)
         names = self._page.evaluate("""() => {
-            const seen = new Set();
-            document.querySelectorAll('label[class*=radio_label]').forEach(el => {
+            const seen = [];
+            // 카테고리 셀렉트박스 내부 라벨만(공개설정/발행시점 라디오 제외)
+            const scope = document.querySelector('[class*=option_category]') || document;
+            scope.querySelectorAll('label[class*=radio_label]').forEach(el => {
                 if (!el.offsetParent) return;
-                // '하위 카테고리\\n강남맛집' → 마지막 줄만
                 const t = (el.innerText || '').trim().split('\\n').pop().trim();
-                if (t) seen.add(t);
+                if (t && !seen.includes(t)) seen.push(t);
             });
-            return [...seen];
+            return seen;
         }""")
-        return names
+        # 네이버 표준 공개설정/발행시점 값은 카테고리가 아니므로 제외
+        skip = {"전체공개", "이웃공개", "서로이웃공개", "비공개", "공개", "현재", "예약"}
+        return [n for n in names if n not in skip]
 
     def select_category(self, name: str):
         """카테고리를 이름(텍스트)으로 선택. 레이어/드롭다운이 열려있다고 가정."""

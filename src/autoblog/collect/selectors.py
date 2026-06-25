@@ -38,8 +38,9 @@ SMART_EDITOR = {
     # 서식 툴바 (글자색은 font-color 클래스)
     "toolbar_text_color": "button.se-font-color-toolbar-button",
     "toolbar_bg_color": "button.se-background-color-toolbar-button",
-    # 글쓰기 진입 시 뜨는 '이전 글 이어쓰기' 팝업 닫기(취소)
-    "draft_popup_cancel": ".se-popup-button-cancel",
+    # 글쓰기 진입 시 뜨는 팝업/오버레이 닫기
+    "draft_popup_cancel": ".se-popup-button-cancel",  # '이전 글 이어쓰기' 팝업 취소
+    "help_close": "button.se-help-panel-close-button",  # 도움말 패널 닫기
 }
 
 # 네이버 로그인
