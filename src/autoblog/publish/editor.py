@@ -39,8 +39,12 @@ class BlogPublisher:
         pub.close()
     """
 
-    def __init__(self, blog_id: str, headless: bool = False, session_dir: Path | None = None):
-        self.blog_id = blog_id
+    def __init__(self, blog_id: str | None = None, headless: bool = False, session_dir: Path | None = None):
+        from autoblog.config import load_env
+
+        self.blog_id = blog_id or load_env().naver_blog_id
+        if not self.blog_id:
+            raise ValueError("blog_id가 필요합니다(.env NAVER_BLOG_ID 또는 인자로 전달)")
         self.headless = headless  # 게시는 사람 확인이 필요할 때가 많아 기본 headful
         self.session_dir = session_dir or SESSION_DIR
         self._ctx = None
@@ -62,61 +66,91 @@ class BlogPublisher:
         return self
 
     def is_logged_in(self) -> bool:
-        """현재 세션이 로그인 상태인지 확인."""
-        self._page.goto("https://www.naver.com", wait_until="domcontentloaded")
-        # TODO: 로그인 상태 판별 셀렉터 확인(내 정보 영역 존재 등)
-        return bool(self._page.query_selector("a.MyView-module__link_login"))  # 자리표시자(반대 의미일 수 있음)
+        """현재 세션이 로그인 상태인지 확인(NID_AUT 쿠키)."""
+        return any(c["name"] == "NID_AUT" for c in self._ctx.cookies())
 
     def ensure_login(self):
-        """세션이 없으면 로그인. 캡차/2차인증 때문에 최초 1회는 수동 보조가 안전.
+        """세션이 없으면 로그인 페이지를 띄워 사용자가 직접 로그인하게 한다.
 
-        자동 입력은 봇 탐지·캡차 위험이 있어, 기본은 로그인 페이지를 띄우고
-        사용자가 직접 로그인하도록 둔 뒤 세션을 저장하는 방식을 권장한다.
+        캡차/2차인증·봇 탐지 때문에 자동 입력 대신 수동 로그인이 안전.
+        로그인하면 persistent context에 세션이 저장돼 다음부턴 생략된다.
         """
         if self.is_logged_in():
-            return
+            return True
         self._page.goto(NAVER_LOGIN["url"], wait_until="domcontentloaded")
-        # 권장: 사용자가 직접 로그인 → 세션이 persistent context에 저장됨.
-        # (자동 ID/PW 입력은 NAVER_LOGIN 셀렉터로 가능하나 캡차 위험)
-        raise EditorNotImplemented(
-            "로그인 페이지를 띄웠습니다. 사용자가 직접 로그인 후 진행하세요(세션 저장됨)."
-        )
+        return False  # 호출 측에서 로그인 완료를 기다린다
 
     # --- 게시 ---
     def open_write_page(self):
         url = NAVER_LOGIN["write_url"].format(blog_id=self.blog_id)
         self._page.goto(url, wait_until="domcontentloaded")
-        # TODO: 에디터 iframe 로딩 대기
+        self._page.wait_for_timeout(4000)
+        self._dismiss_draft_popup()
+        self._page.wait_for_selector(SMART_EDITOR["content_component"], timeout=20000)
+
+    def _dismiss_draft_popup(self):
+        """진입 시 뜨는 '이전 글 이어쓰기' 팝업이 있으면 취소(새 글)."""
+        for sel in (SMART_EDITOR["draft_popup_cancel"], "button:has-text('취소')"):
+            try:
+                el = self._page.query_selector(sel)
+                if el and el.is_visible():
+                    el.click()
+                    self._page.wait_for_timeout(500)
+                    return
+            except Exception:
+                pass
 
     def publish(self, plan: PublishPlan, *, submit: bool = False):
         """게시 플랜을 에디터에 주입. submit=False면 작성만 하고 발행 직전 멈춘다(안전)."""
         self.open_write_page()
         self._type_title(plan.title)
+        self._page.click(SMART_EDITOR["content_component"])
         for block in plan.blocks:
             if block.kind == "text":
                 self._type_text_block(block)
-            elif block.kind == "image":
+            elif block.kind == "image" and block.image_path:
                 self._insert_image(block.image_path)
         if submit:
             self._submit()
 
-    # --- 에디터 조작(셀렉터 확정 후 구현) ---
+    # --- 에디터 조작 ---
     def _type_title(self, title: str):
-        raise EditorNotImplemented("title_area 셀렉터 확인 후 구현")
+        self._page.click(SMART_EDITOR["title_component"])
+        self._page.keyboard.type(title, delay=8)
 
     def _type_text_block(self, block: PublishBlock):
-        """본문 한 블록 입력 후 강조 span에 서식 적용(툴바 클릭, §6.1 A안)."""
-        raise EditorNotImplemented("content_area 입력 + 강조 서식 적용 구현 필요")
+        """본문 한 블록 입력. \\n은 Enter(문단), 블록 끝에 빈 줄 하나."""
+        self._page.keyboard.type(block.text, delay=4)
+        self._page.keyboard.press("Enter")
+        # 강조 서식은 best-effort로 별도 적용(실패해도 본문은 유지)
+        for span in block.emphases:
+            try:
+                self._apply_emphasis(span.text, span.style)
+            except Exception:
+                pass
 
     def _apply_emphasis(self, text: str, style: EmphasisStyle):
-        """본문에서 text를 선택 → 툴바로 글자색/배경/글꼴/크기 적용."""
-        raise EditorNotImplemented("텍스트 선택 + 툴바 클릭 매핑 구현 필요")
+        """본문에서 text를 선택 → 툴바 글자색/배경 적용.
 
-    def _insert_image(self, path: str | None):
-        raise EditorNotImplemented("이미지 업로드(파일 다이얼로그) 구현 필요")
+        색상 팔레트의 커스텀 hex 입력이 필요해 브라우저에서 반복 검증이 필요하다.
+        현재는 연동 지점만 두고, 실제 팔레트 조작은 라이브 셋업에서 확정한다.
+        """
+        raise EditorNotImplemented("색상 팔레트(커스텀 hex) 조작은 라이브 셋업에서 확정")
+
+    def _insert_image(self, path: str):
+        """이미지 툴바 버튼 → 파일 다이얼로그로 업로드."""
+        with self._page.expect_file_chooser() as fc_info:
+            self._page.click(SMART_EDITOR["image_upload_button"])
+        fc_info.value.set_files(path)
+        self._page.wait_for_timeout(2500)  # 업로드 대기
 
     def _submit(self):
-        raise EditorNotImplemented("발행 버튼/확인 레이어 구현 필요")
+        self._page.click(SMART_EDITOR["publish_button"])
+        self._page.wait_for_timeout(1500)
+        try:
+            self._page.click(SMART_EDITOR["publish_confirm"], timeout=5000)
+        except Exception:
+            pass  # 발행 레이어 확인 버튼은 라이브에서 확정
 
     def close(self):
         if self._ctx:

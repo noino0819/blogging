@@ -49,6 +49,7 @@ def load_models_config(path: Path | None = None) -> ModelsConfig:
 class Env(BaseModel):
     naver_client_id: str | None = None
     naver_client_secret: str | None = None
+    naver_blog_id: str | None = None  # 게시 대상 블로그 ID (한 번 받아 .env에 저장)
     ollama_host: str = "http://127.0.0.1:11434"
 
     @property
@@ -61,5 +62,25 @@ def load_env() -> Env:
     return Env(
         naver_client_id=os.getenv("NAVER_CLIENT_ID"),
         naver_client_secret=os.getenv("NAVER_CLIENT_SECRET"),
+        naver_blog_id=os.getenv("NAVER_BLOG_ID"),
         ollama_host=os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
     )
+
+
+def save_env_value(key: str, value: str, path: Path | None = None) -> None:
+    """`.env`에 키=값을 추가/갱신(한 번 받은 설정을 영속화). 캐시도 무효화."""
+    path = path or (REPO_ROOT / ".env")
+    lines: list[str] = []
+    found = False
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith(f"{key}="):
+                lines.append(f"{key}={value}")
+                found = True
+            else:
+                lines.append(line)
+    if not found:
+        lines.append(f"{key}={value}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    os.environ[key] = value
+    load_env.cache_clear()

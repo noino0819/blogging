@@ -20,21 +20,24 @@ PRODUCT = {
     "detail_images": "",  # 이미지형일 때 다운로드 대상 <img>
 }
 
-# 네이버 Smart Editor 3.0 (게시 단계, §6) — iframe 기반 contenteditable
-# 로그인 후 실제 에디터에서 확인해 채운다(여기 한 곳만 수정). 현재는 자리표시자.
+# 네이버 Smart Editor ONE (게시 단계, §6).
+# 확인 결과: 에디터는 별도 iframe이 아니라 글쓰기 페이지(top frame)에 직접 렌더된다.
+# se-* 클래스는 안정적, 발행 버튼은 data-click-area 속성으로 잡는다(해시 클래스 회피).
 SMART_EDITOR = {
-    "editor_iframe": "",  # 에디터 본체 iframe (mainFrame 등)
-    "title_area": "",  # 제목 입력 contenteditable
-    "content_area": "",  # 본문 contenteditable
-    "image_upload_button": "",  # 사진 추가 버튼
-    "image_file_input": "",  # 파일 다이얼로그 input[type=file]
-    "publish_button": "",  # 발행 버튼
-    "publish_confirm": "",  # 발행 확인(레이어) 버튼
-    # 서식 툴바 (텍스트 선택 후 클릭)
-    "toolbar_text_color": "",  # 글자색 버튼
-    "toolbar_bg_color": "",  # 배경색 버튼
-    "toolbar_font_family": "",  # 글꼴
-    "toolbar_font_size": "",  # 크기
+    "editor_iframe": "",  # 없음(top frame). 비워두면 page에서 바로 조작.
+    "title_area": ".se-documentTitle .se-text-paragraph",  # 제목 입력 영역
+    "title_component": ".se-component.se-documentTitle",
+    "content_area": ".se-component.se-text .se-text-paragraph",  # 본문 입력 영역
+    "content_component": ".se-component.se-text",
+    "image_upload_button": ".se-toolbar-item-image button",  # 사진 추가 버튼
+    "image_file_input": "input[type=file]",  # 파일 input
+    "publish_button": 'button[data-click-area="tpb.publish"]',  # 발행(설정 레이어 열기)
+    "publish_confirm": '.layer_btn_area button[class*=confirm], button[data-click-area="tpb*v.publish"]',
+    # 서식 툴바 (텍스트 선택 후 나타남)
+    "toolbar_text_color": "li.se-toolbar-item-text-color button",
+    "toolbar_bg_color": "li.se-toolbar-item-background-color button",
+    # 글쓰기 진입 시 뜨는 '이전 글 이어쓰기' 팝업 닫기(취소)
+    "draft_popup_cancel": ".se-popup-button-cancel",
 }
 
 # 네이버 로그인
