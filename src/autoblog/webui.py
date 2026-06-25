@@ -103,6 +103,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}
  .sw.on::after{left:21px}
  .muted{color:var(--sub);font-size:12.5px}
+ .swrap{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+ .sw-chip{padding:8px 14px;border-radius:9px;font-size:14px;font-weight:600;border:1px solid var(--line);background:#fff}
+ .sw-chip .pid{font-size:10px;opacity:.55;margin-left:6px;font-weight:500}
+ .sub-h{font-size:12px;color:#6b7280;font-weight:700;margin:16px 0 9px}.sub-h:first-child{margin-top:4px}
+ .promptbox details{border-top:1px solid var(--line);padding:4px 0}.promptbox details:first-child{border:none}
+ .promptbox summary{cursor:pointer;font-size:13px;font-weight:600;padding:8px 0}
+ .promptbox pre{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:12px;line-height:1.65;white-space:pre-wrap;max-height:320px;overflow:auto;font-family:ui-monospace,Menlo,monospace;margin:4px 0 10px}
 </style></head><body>
 <aside class=side>
   <div class=brand>🖋️ 블로그 자동작성</div>
@@ -173,6 +180,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <h2 class=title>설정</h2>
     <p class=desc>글쓰기 규칙을 켜고 끄면 다음 생성부터 반영됩니다.</p>
     <div class=card id=rules></div>
+    <div class=card style="margin-top:16px"><h3>🎨 강조색 미리보기 <span class=muted style="font-weight:400">— 핵심 문장에 번갈아 적용</span></h3><div id=emph><div class=muted>불러오는 중…</div></div></div>
+    <div class=card style="margin-top:16px"><h3>📝 초안 생성 프롬프트 <span class=muted style="font-weight:400">— config/prompts/default.md + 마커 레이어</span></h3><div id=prompt><div class=muted>불러오는 중…</div></div></div>
     <div class=card style="margin-top:16px" id=models><h3>모델</h3><div class=muted>불러오는 중…</div></div>
   </section>
 </main>
@@ -331,7 +340,22 @@ async function loadModels(){try{const m=await (await fetch('/api/models')).json(
     <div class=setrow><div class=t>비전</div><div class=muted>${m.vision}</div></div>`;
 }catch(e){}}
 
-loadPhotos(); renderRules(); loadModels();
+async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).json();
+  const chip=s=>{const stl=(s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'');
+    return `<span class="sw-chip" style="${stl}">${s.defined?'강조 텍스트':'미정의'}<span class=pid>#${s.id}</span></span>`;};
+  let h='<div class=sub-h>순환 풀 (핵심 문장에 번갈아)</div><div class=swrap>'+(e.cycling.map(chip).join('')||'<span class=muted>없음</span>')+'</div>';
+  h+='<div class=sub-h>고정 매핑</div><div class=swrap>'+(Object.entries(e.fixed).map(([k,s])=>chip(s)+`<span class=muted>← ${k}</span>`).join('')||'<span class=muted>없음</span>')+'</div>';
+  h+='<div class=sub-h>기본 팔레트 (1~7)</div><div class=swrap>'+e.palette.map(chip).join('')+'</div>';
+  const bad=e.cycling.some(s=>!s.defined)||Object.values(e.fixed).some(s=>!s.defined);
+  if(bad)h+='<div class=muted style="margin-top:12px;color:#d9534f">⚠️ 미정의 번호가 있어요. config/emphasis.yaml의 번호가 기본 팔레트(1~7)를 벗어나, 해당 강조는 색이 안 들어갑니다.</div>';
+  $('#emph').innerHTML=h;
+}catch(e){$('#emph').innerHTML='<div class=muted>로드 실패</div>';}}
+async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json();
+  let h='<div class=promptbox><details open><summary>베이스 프롬프트 (역할·포맷 규칙)</summary><pre>'+esc(p.base)+'</pre></details>';
+  p.layers.forEach(([t,b])=>{h+=`<details><summary>${esc(t)}</summary><pre>${esc(b)}</pre></details>`;});
+  $('#prompt').innerHTML=h+'</div>';
+}catch(e){$('#prompt').innerHTML='<div class=muted>로드 실패</div>';}}
+loadPhotos(); renderRules(); loadModels(); loadEmphasis(); loadPrompt();
 </script></body></html>"""
 
 
@@ -412,6 +436,10 @@ def _make_handler(state: dict):
 
                 m = load_models_config().get()
                 self._send(200, json.dumps({"text": m.text, "vision": m.vision}).encode())
+            elif u.path == "/api/emphasis":
+                self._send(200, json.dumps(_emphasis_preview()).encode())
+            elif u.path == "/api/prompt":
+                self._send(200, json.dumps(_prompt_preview()).encode())
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -503,6 +531,43 @@ def _make_handler(state: dict):
             self._send(200, b'{"ok":true}')
 
     return Handler
+
+
+def _emphasis_preview() -> dict:
+    """현재 강조 설정으로 실제 적용될 색을 해석(미리보기). 미정의 번호도 그대로 드러냄."""
+    from autoblog.publish.emphasis import DEFAULT_STYLES, load_emphasis_config
+
+    cfg = load_emphasis_config()
+
+    def resolve(pid):
+        st = DEFAULT_STYLES.get(pid)
+        if not st:
+            return {"id": pid, "defined": False}
+        return {"id": pid, "defined": True, "text_color": st.text_color,
+                "background_color": st.background_color, "bold": st.bold}
+
+    return {
+        "palette": [resolve(i) for i in sorted(DEFAULT_STYLES)],
+        "cycling": [resolve(i) for i in (cfg.cycling_pool or [])],
+        "fixed": {k: resolve(v) for k, v in (cfg.fixed_map or {}).items()},
+        "max_per_paragraph": cfg.max_per_paragraph,
+        "min_sentence_gap": cfg.min_sentence_gap,
+    }
+
+
+def _prompt_preview() -> dict:
+    """초안 생성에 쓰이는 프롬프트(베이스 + 우리가 얹는 마커 지시문 레이어)."""
+    from autoblog.draft.prompts import load_base_prompt
+    from autoblog.publish.emphasis import EMPHASIS_INSTRUCTION
+    from autoblog.publish.plan import STRUCTURE_INSTRUCTION
+
+    return {
+        "base": load_base_prompt(),
+        "layers": [
+            ["강조 표시 (강조색 켤 때)", EMPHASIS_INSTRUCTION],
+            ["구조 마커 (구분선·인용구 켤 때)", STRUCTURE_INSTRUCTION],
+        ],
+    }
 
 
 def _sticker_image(ref: str) -> Path | None:
