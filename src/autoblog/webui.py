@@ -117,14 +117,15 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}
  .sw.on::after{left:21px}
  .muted{color:var(--sub);font-size:12.5px}
- .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;margin-bottom:8px}
- .vcell{border:2px solid var(--line);border-radius:11px;padding:14px 16px;cursor:pointer;background:#fff;position:relative;display:flex;align-items:center;justify-content:center;min-height:64px}
- .vcell.q{min-height:120px}
+ .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;margin-bottom:8px}
+ .vcell{border:2px solid var(--line);border-radius:12px;padding:13px 15px;cursor:pointer;background:#fff}
  .vcell.on{border-color:var(--green);background:#f3fcf6}
- .vcell img{width:100%;height:auto;max-height:40px;object-fit:contain}
- .vcell.q img{max-height:150px}
- .vcell .vn{position:absolute;top:7px;right:10px;font-size:10px;color:var(--sub)}
- .vcell.on .vn{color:var(--green-d);font-weight:700}
+ .vcell .vinfo{margin-bottom:8px}
+ .vcell .vname{font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:6px}
+ .vcell .vck{color:var(--green-d)}
+ .vcell .vdesc{font-size:11.5px;color:var(--sub);margin-top:2px;line-height:1.4}
+ .vcell img{width:100%;height:auto;max-height:38px;object-fit:contain;object-position:left}
+ .vcell.q img{max-height:140px;object-position:center}
  .epgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
  .epcell{border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fff}
  .epnum{font-size:11px;color:var(--sub);font-weight:600;margin-bottom:6px;display:flex;align-items:center}
@@ -387,19 +388,20 @@ async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json(
   $('#prompt').innerHTML=h+'</div>';
 }catch(e){$('#prompt').innerHTML='<div class=muted>로드 실패</div>';}}
 async function loadVariants(){try{const f=await (await fetch('/api/format')).json();
-  const row=(items,type,sel,qcls)=>{
+  const row=(items,type,qcls)=>{
     if(!items.length)return '<div class=muted>캡쳐된 종류가 없어요</div>';
-    return '<div class=vgrid>'+items.map(it=>`<div class="vcell ${qcls}${it.index===sel?' on':''}" data-type=${type} data-idx=${it.index}>
-      <img loading=lazy src="/variant-img?type=${type}&value=${encodeURIComponent(it.value)}"><span class=vn>${it.index===sel?'선택됨':'#'+it.index}</span></div>`).join('')+'</div>';};
-  $('#variants').innerHTML='<div class=sub-h>구분선</div>'+row(f.dividers,'divider',f.divider_variant,'')
-    +'<div class=sub-h>인용구</div>'+row(f.quotes,'quote',f.quote_variant,'q');
+    return '<div class=vgrid>'+items.map(it=>`<div class="vcell ${qcls}${it.enabled?' on':''}" data-type=${type} data-value="${it.value}">
+      <div class=vinfo><div class=vname>${it.name} ${it.enabled?'<span class=vck>✓</span>':''}</div><div class=vdesc>${it.desc}</div></div>
+      <img loading=lazy src="/variant-img?type=${type}&value=${encodeURIComponent(it.value)}"></div>`).join('')+'</div>';};
+  $('#variants').innerHTML='<div class=muted style="margin-bottom:8px">쓰고 싶은 종류를 여러 개 골라두세요. 글 생성 때 그 중에서 쓰입니다.</div>'
+    +'<div class=sub-h>구분선</div>'+row(f.dividers,'divider','')
+    +'<div class=sub-h>인용구</div>'+row(f.quotes,'quote','q');
 }catch(e){$('#variants').innerHTML='<div class=muted>로드 실패</div>';}}
 $('#variants').onclick=async e=>{const c=e.target.closest('.vcell'); if(!c)return;
-  const type=c.dataset.type, idx=+c.dataset.idx;
-  c.parentElement.querySelectorAll('.vcell').forEach(x=>{x.classList.remove('on');x.querySelector('.vn').textContent='#'+x.dataset.idx;});
-  c.classList.add('on'); c.querySelector('.vn').textContent='선택됨';
-  const key=type==='divider'?'divider_variant':'quote_variant';
-  try{await fetch('/api/format',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({[key]:idx})});}catch(e){}
+  const type=c.dataset.type, value=c.dataset.value, on=!c.classList.contains('on');
+  c.classList.toggle('on',on);
+  c.querySelector('.vname').innerHTML=c.querySelector('.vname').textContent.replace(' ✓','')+(on?' <span class=vck>✓</span>':'');
+  try{await fetch('/api/format',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,value,on})});}catch(e){}
 };
 loadPhotos(); renderRules(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants();
 </script></body></html>"""
@@ -523,14 +525,18 @@ def _make_handler(state: dict):
 
                     body = self._json_body()
                     cfg = _load_format()
-                    if "divider_variant" in body:
-                        cfg["divider_variant"] = int(body["divider_variant"])
-                    if "quote_variant" in body:
-                        cfg["quote_variant"] = int(body["quote_variant"])
+                    key = "divider_enabled" if body.get("type") == "divider" else "quote_enabled"
+                    lst = list(cfg.get(key) or ["default"])
+                    value, on = body.get("value"), bool(body.get("on"))
+                    if on and value not in lst:
+                        lst.append(value)
+                    elif not on and value in lst:
+                        lst.remove(value)
+                    cfg[key] = lst or ["default"]  # 최소 1개 유지
                     FORMAT_CONFIG_PATH.write_text(
                         yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8"
                     )
-                    self._send(200, b'{"ok":true}')
+                    self._send(200, json.dumps({"ok": True, "enabled": cfg[key]}).encode())
                 elif path == "/api/label":
                     lab = state["label"]
                     if lab.get("running"):
@@ -560,7 +566,7 @@ def _make_handler(state: dict):
             photos = [p for p in (body.get("photos") or []) if p]
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
-            fmt = _load_format()
+            dv, qv = _enabled_variants()  # 활성 종류 중 첫 번째를 기본 적용(다중 중 우선)
             result = run_pipeline(
                 body["memo"],
                 place_url=srcval if src == "place" else None,
@@ -571,8 +577,8 @@ def _make_handler(state: dict):
                 emphasis=bool(body.get("emphasis")),
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
-                divider_variant=int(fmt.get("divider_variant", 1)),
-                quote_variant=int(fmt.get("quote_variant", 1)),
+                divider_variant=dv[0],
+                quote_variant=qv[0],
             )
             state["last"] = result
             blocks = []
@@ -627,20 +633,32 @@ def _load_format() -> dict:
 
 
 def _format_summary() -> dict:
-    """구분선/인용구 종류 목록(인덱스=variant) + 현재 선택."""
-    man = {}
-    mp = PREVIEW_DIR / "manifest.json"
-    if mp.exists():
-        man = json.loads(mp.read_text(encoding="utf-8"))
+    """구분선/인용구 종류 목록(이름·용도·인덱스) + 유저가 쓸 종류(다중 선택)."""
+    from autoblog.publish.plan import DIVIDER_META, QUOTE_META
+
     cfg = _load_format()
-    dividers = [{"value": d["value"], "index": i + 1} for i, d in enumerate(man.get("dividers", []))]
-    quotes = [{"value": q["value"], "index": i + 1} for i, q in enumerate(man.get("quotes", []))]
-    return {
-        "divider_variant": int(cfg.get("divider_variant", 1)),
-        "quote_variant": int(cfg.get("quote_variant", 1)),
-        "dividers": dividers,
-        "quotes": quotes,
-    }
+    den = cfg.get("divider_enabled") or ["default"]
+    qen = cfg.get("quote_enabled") or ["default"]
+
+    def build(meta, enabled):
+        return [
+            {"value": v, "index": idx, "name": name, "desc": desc, "enabled": v in enabled}
+            for v, (idx, name, desc) in meta.items()
+        ]
+
+    return {"dividers": build(DIVIDER_META, den), "quotes": build(QUOTE_META, qen)}
+
+
+def _enabled_variants() -> tuple[list[int], list[int]]:
+    """현재 활성화된 구분선/인용구 variant 인덱스 목록(생성에 사용)."""
+    from autoblog.publish.plan import DIVIDER_META, QUOTE_META
+
+    cfg = _load_format()
+    den = cfg.get("divider_enabled") or ["default"]
+    qen = cfg.get("quote_enabled") or ["default"]
+    dv = [DIVIDER_META[v][0] for v in den if v in DIVIDER_META]
+    qv = [QUOTE_META[v][0] for v in qen if v in QUOTE_META]
+    return dv or [1], qv or [1]
 
 
 def _editor_options() -> dict:
