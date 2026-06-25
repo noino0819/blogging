@@ -141,6 +141,24 @@ class StickerPicker:
         return chosen
 
 
+# --- 초안 지시문 (LLM이 [스티커:상황] 마커 emit) ---
+def build_sticker_instruction(labels: list[str]) -> str | None:
+    """보유 스티커 상황 라벨 목록 → 초안 지시문(EMPHASIS_INSTRUCTION 패턴).
+
+    LLM이 없는 상황을 지어내지 않도록 실제 보유 라벨만 노출한다. 라벨 없으면 None.
+    """
+    labels = [str(label).strip() for label in labels if str(label).strip()]
+    if not labels:
+        return None
+    shown = ", ".join(labels[:40])
+    return (
+        "[스티커]\n"
+        "감정/분위기를 살리고 싶은 지점에 아래 상황 중 하나로 [스티커:상황] 을 그 줄에 단독으로 넣으세요.\n"
+        f"- 사용 가능한 상황: {shown}\n"
+        "목록에 없는 상황은 쓰지 말고, 글 전체에서 2~4개로 절제하세요. 한 문단에 연속으로 넣지 마세요."
+    )
+
+
 # --- YAML IO (유저 검수 파일) ---
 def load_sticker_catalog(path: Path | None = None) -> StickerCatalog:
     """카탈로그 로드(config/stickers.yaml). 없으면 빈 카탈로그."""

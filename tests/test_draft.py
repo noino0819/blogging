@@ -140,6 +140,24 @@ def test_structure_flag_appends_instruction(monkeypatch):
     assert STRUCTURE_INSTRUCTION not in captured["system"]
 
 
+def test_sticker_labels_append_instruction(monkeypatch):
+    # sticker_labels를 주면 보유 상황 어휘가 시스템 프롬프트에 붙는다.
+    from autoblog.draft import generate as gen
+
+    captured: dict[str, str] = {}
+
+    def fake_chat(messages, model=None):
+        captured["system"] = messages[0]["content"]
+        return "제목\n\n본문"
+
+    monkeypatch.setattr(gen, "chat", fake_chat)
+    req = gen.DraftRequest(
+        fact_card=_place_card(), experience_memo="메모", sticker_labels=["맛있음", "기쁨"]
+    )
+    gen.generate_draft(req)
+    assert "맛있음" in captured["system"] and "[스티커:상황]" in captured["system"]
+
+
 def test_wrap_long_lines():
     from autoblog.draft.postprocess import wrap_long_lines
 

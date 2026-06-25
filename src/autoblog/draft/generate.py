@@ -37,6 +37,8 @@ class DraftRequest(BaseModel):
     emphasis: bool = False
     # 구조 마커 — 켜면 LLM이 [구분선]/[인용구]…[/인용구] 마커를 알아서 삽입(plan에서 블록으로 변환)
     structure: bool = False
+    # 스티커 — 보유 상황 라벨을 주면 LLM이 [스티커:상황] 마커를 그 어휘 안에서만 emit
+    sticker_labels: list[str] = Field(default_factory=list)
     emphasis_config: EmphasisConfig | None = None  # None이면 config/emphasis.yaml
     power_shortcuts: dict[int, EmphasisStyle] | None = None  # None이면 내장 기본 스타일
 
@@ -63,6 +65,12 @@ def generate_draft(req: DraftRequest, model: str | None = None) -> DraftResult:
         from autoblog.publish.plan import STRUCTURE_INSTRUCTION  # 지연 임포트(순환 회피)
 
         system = f"{system}\n\n{STRUCTURE_INSTRUCTION}"
+    if req.sticker_labels:
+        from autoblog.publish.stickers import build_sticker_instruction
+
+        instr = build_sticker_instruction(req.sticker_labels)
+        if instr:
+            system = f"{system}\n\n{instr}"
     user = build_user_prompt(req.fact_card, req.experience_memo)
     text = chat(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],

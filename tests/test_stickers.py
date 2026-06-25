@@ -2,10 +2,20 @@ from autoblog.publish.stickers import (
     Sticker,
     StickerCatalog,
     StickerPicker,
+    build_sticker_instruction,
     load_sticker_catalog,
     merge_catalog,
     save_sticker_catalog,
 )
+
+
+def test_sticker_instruction_lists_labels():
+    instr = build_sticker_instruction(["맛있음", "기쁨", "", "기쁨"])
+    assert instr is not None
+    assert "맛있음" in instr and "기쁨" in instr
+    assert "[스티커:상황]" in instr
+    assert build_sticker_instruction([]) is None
+    assert build_sticker_instruction(["  "]) is None
 
 
 def _cat():

@@ -201,5 +201,79 @@ def doctor():
         typer.echo(f"Ollama         : 미실행 ({env.ollama_host}) — ollama serve")
 
 
+stickers_app = typer.Typer(help="스티커 카탈로그 — 불러오기/라벨링/검수")
+app.add_typer(stickers_app, name="stickers")
+
+
+@stickers_app.command("pull")
+def stickers_pull(
+    blog_id: str = typer.Option(None, help="블로그 ID(미지정 시 .env NAVER_BLOG_ID)"),
+    headless: bool = typer.Option(False, help="브라우저 숨김"),
+):
+    """에디터에서 보유 스티커를 전부 훑어 개별 이미지로 저장하고 카탈로그에 증분 병합.
+
+    새 스티커만 추가하고 기존 태그/검수/즐겨쓰기는 보존(사라진 건 stale 표시).
+    """
+    from autoblog.publish.editor import BlogPublisher
+    from autoblog.publish.stickers import (
+        load_sticker_catalog,
+        merge_catalog,
+        save_sticker_catalog,
+    )
+
+    pub = BlogPublisher(blog_id=blog_id, headless=headless)
+    pub.start()
+    try:
+        if not pub.wait_for_login():
+            typer.echo("로그인 필요 — 시간 내 로그인하지 못했습니다.")
+            raise typer.Exit(1)
+        scraped = pub.pull_stickers()
+    finally:
+        pub.close()
+    existing = load_sticker_catalog()
+    merged = merge_catalog(existing, scraped)
+    save_sticker_catalog(merged)
+    new = sum(1 for s in merged.stickers if not s.tags and not s.stale)
+    stale = sum(1 for s in merged.stickers if s.stale)
+    typer.echo(
+        f"불러오기 완료: 총 {len(merged.stickers)}개 "
+        f"(이번에 긁음 {len(scraped)}, 라벨 필요 {new}, 사라짐 {stale})"
+    )
+    typer.echo("다음: autoblog stickers label  (비전 자동 라벨) → config/stickers.yaml 검수")
+
+
+@stickers_app.command("label")
+def stickers_label(
+    all_again: bool = typer.Option(False, "--all", help="검수/기존태그 무시하고 전부 재라벨"),
+):
+    """비전 모델로 스티커에 감정/상황 태그 자동 부여(증분: 새 것만, 검수 보존)."""
+    from autoblog.publish.stickers import (
+        label_catalog,
+        load_sticker_catalog,
+        save_sticker_catalog,
+    )
+
+    cat = load_sticker_catalog()
+    if not cat.stickers:
+        typer.echo("카탈로그가 비었습니다 — 먼저 autoblog stickers pull")
+        raise typer.Exit(1)
+    labeled = label_catalog(cat, only_new=not all_again)
+    save_sticker_catalog(labeled)
+    tagged = sum(1 for s in labeled.stickers if s.tags)
+    typer.echo(f"라벨링 완료: {tagged}/{len(labeled.stickers)}개에 태그. config/stickers.yaml에서 검수하세요.")
+
+
+@stickers_app.command("list")
+def stickers_list():
+    """카탈로그 요약 — 보유 상황 라벨과 스티커 수."""
+    from autoblog.publish.stickers import load_sticker_catalog
+
+    cat = load_sticker_catalog()
+    active = [s for s in cat.stickers if not s.stale]
+    typer.echo(f"스티커 {len(active)}개 (사라짐 {len(cat.stickers) - len(active)}), 즐겨쓰기 {len(cat.favorites)}")
+    labels = cat.labels()
+    typer.echo(f"상황 라벨({len(labels)}): {', '.join(labels) if labels else '(없음 — label 먼저)'}")
+
+
 if __name__ == "__main__":
     app()

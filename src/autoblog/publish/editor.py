@@ -425,8 +425,14 @@ class BlogPublisher:
                 idx = item["idx"]
                 img_path = pack_dir / f"{idx}.png"
                 try:
-                    b.scroll_into_view_if_needed()
-                    b.screenshot(path=str(img_path))
+                    # 애니메이션 스티커는 element.screenshot이 '안정 대기'로 멈추므로
+                    # JS 스크롤 + bounding_box + page.screenshot(clip, animations=disabled) 사용.
+                    b.evaluate("e => e.scrollIntoView({block: 'center'})")
+                    page.wait_for_timeout(60)
+                    box = b.bounding_box()
+                    if not box or box["width"] < 1:
+                        continue
+                    page.screenshot(path=str(img_path), animations="disabled", clip=box)
                 except Exception:
                     continue
                 rel = str(img_path.relative_to(REPO_ROOT)) if img_path.is_relative_to(REPO_ROOT) else str(img_path)
