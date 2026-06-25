@@ -68,6 +68,22 @@ def place_url(
 
 
 @app.command()
+def style(
+    posts: list[str] = typer.Argument(..., help="과거 글 파일 경로(2~3개)"),
+    out: str = typer.Option(None, "--out", "-o", help="추출된 문체 프로파일 저장 경로"),
+):
+    """과거 글에서 문체 프로파일 추출 (기획서 §4.2)."""
+    from autoblog.draft.style import extract_style_profile
+
+    texts = [open(p, encoding="utf-8").read() for p in posts]
+    profile = extract_style_profile(texts)
+    typer.echo(profile)
+    if out:
+        open(out, "w", encoding="utf-8").write(profile)
+        typer.echo(f"\n저장됨: {out}", err=True)
+
+
+@app.command()
 def classify(images: list[str] = typer.Argument(..., help="분류할 사진 경로(여러 장)")):
     """입력 사진 자동 분류 (음식/메뉴판/외관/내부/영수증/상품/기타)."""
     from autoblog.collect.fact_card import CardType, FactCard
@@ -88,6 +104,9 @@ def draft(
     product: str = typer.Option(None, "--product", help="상품: 검색어로 사실 카드"),
     photo: list[str] = typer.Option(None, "--photo", "-p", help="입력 사진(분류 후 배치 안내)"),
     tone: str = typer.Option(None, "--tone", help="문체 톤 지시 (예: '친근한 반말로')"),
+    style_file: str = typer.Option(
+        None, "--style-file", help="문체 프로파일 파일(autoblog style로 추출)"
+    ),
     prompt_file: str = typer.Option(
         None, "--prompt-file", help="베이스 프롬프트 파일 경로(기본 config/prompts/default.md)"
     ),
@@ -132,7 +151,12 @@ def draft(
         fact_card=card,
         experience_memo=memo,
         base_prompt=load_base_prompt(prompt_file) if prompt_file else None,
-        style=StyleProfile(tone=tone) if tone else None,
+        style=StyleProfile(
+            tone=tone,
+            profile=open(style_file, encoding="utf-8").read() if style_file else None,
+        )
+        if (tone or style_file)
+        else None,
         emphasis=emphasis,
         power_shortcuts=power_shortcuts,
     )

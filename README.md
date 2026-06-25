@@ -79,6 +79,8 @@ uv run autoblog classify 사진1.jpg 사진2.jpg  # 사진 자동 분류
 uv run autoblog draft "경험 메모" --place-url "<플레이스 URL>" -p 사진1.jpg  # 초안+사진배치
 uv run autoblog draft "경험 메모" --product "상품명" --tone "친근한 반말로"
 # 글쓰기 스타일은 config/prompts/default.md 편집 (또는 --prompt-file)
+uv run autoblog style 과거글1.txt 과거글2.txt -o 내문체.txt  # 과거 글로 문체 추출
+uv run autoblog draft "경험 메모" --place-url "<URL>" --style-file 내문체.txt --emphasis
 uv run pytest                       # 테스트
 ```
 
