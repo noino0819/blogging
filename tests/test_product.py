@@ -1,8 +1,10 @@
-import pytest
+from io import BytesIO
+
+from PIL import Image
 
 from autoblog.collect.fact_card import CardType, Source
 from autoblog.collect.product import collect_product, parse_shop_item
-from autoblog.vision import VisionUnavailable, extract_product_specs
+from autoblog.vision import VisionUnavailable, _parse_specs, _split_tall_image
 
 # 쇼핑 검색 API 실응답 형태 (라이브 캡처 기반)
 SHOP_ITEM = {
@@ -43,14 +45,45 @@ def test_collect_product_basics(monkeypatch):
 
 
 def test_collect_product_vision_unavailable(monkeypatch):
-    # 이미지가 있어도 Vision 미연동이면 경고만 남기고 기본정보는 유지
+    # Vision 미연동(서버다운 등)이면 경고만 남기고 기본정보는 유지
     monkeypatch.setattr("autoblog.collect.product.search_product", lambda q, display=5: [parse_shop_item(SHOP_ITEM)])
+
+    def _fail(paths, model=None):
+        raise VisionUnavailable("ollama down")
+
+    monkeypatch.setattr("autoblog.vision.extract_product_specs", _fail)
     card = collect_product("강아지 노즈워크", detail_images=["/tmp/detail1.jpg"])
     assert card.product.detail_images == ["/tmp/detail1.jpg"]
     assert card.product.specs == []
     assert any("Vision" in w for w in card.warnings)
 
 
-def test_vision_stub_raises():
-    with pytest.raises(VisionUnavailable):
-        extract_product_specs(["/tmp/x.jpg"])
+def test_parse_specs():
+    content = '{"specs":[{"key":"재질","value":"실리콘"},{"key":"크기","value":"20cm"},{"bad":1}]}'
+    specs = _parse_specs(content)
+    assert [(s.key, s.value) for s in specs] == [("재질", "실리콘"), ("크기", "20cm")]
+    assert _parse_specs("not json") == []
+
+
+def test_parse_specs_list_value():
+    # 모델이 값을 배열로 줄 때 콤마로 합쳐 문자열화
+    specs = _parse_specs('{"specs":[{"key":"구성","value":["당근 12개","매트 1개"]}]}')
+    assert specs[0].key == "구성"
+    assert specs[0].value == "당근 12개, 매트 1개"
+
+
+def _png(w, h):
+    buf = BytesIO()
+    Image.new("RGB", (w, h), (255, 255, 255)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_split_tall_image(tmp_path):
+    # 정사각형 → 1조각
+    sq = tmp_path / "sq.png"
+    sq.write_bytes(_png(400, 400))
+    assert len(_split_tall_image(str(sq))) == 1
+    # 매우 긴 이미지(가로400 세로2000, max_aspect=2 → 800px 타일 → 3조각) → 분할
+    tall = tmp_path / "tall.png"
+    tall.write_bytes(_png(400, 2000))
+    assert len(_split_tall_image(str(tall))) == 3

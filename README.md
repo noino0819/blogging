@@ -44,6 +44,11 @@ tests/
 uv sync                      # 의존성 설치 (.venv 생성)
 uv run playwright install    # 스크래핑/게시용 브라우저 (chromium)
 cp .env.example .env         # 네이버 검색 API 키 입력 (발급: docs/naver-search-api.md)
+
+# Vision LLM (상품 이미지 분석·사진 분류)
+brew install ollama          # macOS. Windows는 ollama.com 설치 파일
+ollama serve &               # 로컬 서버 기동
+ollama pull qwen2.5vl:7b     # 비전 모델 (~6GB, config/models.yaml의 vision 모델)
 ```
 
 ### 사용

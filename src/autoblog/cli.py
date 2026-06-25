@@ -38,11 +38,14 @@ def product(
     image: list[str] = typer.Option(
         None, "--image", "-i", help="상세설명 이미지 경로(반복 지정). Vision 스펙 추출용"
     ),
+    vision_main: bool = typer.Option(
+        False, "--vision-main", help="쇼핑 API 메인 이미지도 내려받아 Vision 분석"
+    ),
 ):
     """상품 사실 카드 수집 (쇼핑 검색 API 기본정보 + 이미지 Vision 상세)."""
     from autoblog.collect.product import collect_product
 
-    card = collect_product(query, detail_images=image or None)
+    card = collect_product(query, detail_images=image or None, vision_on_main=vision_main)
     typer.echo(card.model_dump_json(indent=2, exclude_none=True))
 
 
@@ -64,11 +67,25 @@ def doctor():
     """환경 점검 — API 키/Ollama 설정 여부 + 검색 API 라이브 호출."""
     from autoblog.collect.place import ping_search_api
 
+    import requests
+
     env = load_env()
     typer.echo(f"네이버 검색 API : {'설정됨' if env.has_naver_api else '미설정 (.env)'}")
     ok, msg = ping_search_api()
     typer.echo(f"검색 API 라이브 : {'OK' if ok else msg}")
-    typer.echo(f"Ollama host    : {env.ollama_host}")
+
+    cfg = load_models_config()
+    vision_model = cfg.get().vision
+    try:
+        tags = requests.get(f"{env.ollama_host}/api/tags", timeout=3).json()
+        installed = {m["name"] for m in tags.get("models", [])}
+        typer.echo(f"Ollama         : OK ({env.ollama_host})")
+        has_vision = vision_model in installed
+        typer.echo(
+            f"비전 모델       : {'OK' if has_vision else f'미설치 (ollama pull {vision_model})'} [{vision_model}]"
+        )
+    except requests.RequestException:
+        typer.echo(f"Ollama         : 미실행 ({env.ollama_host}) — ollama serve")
 
 
 if __name__ == "__main__":

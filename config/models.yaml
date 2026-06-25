@@ -35,5 +35,21 @@ presets:
     note: "동시 로드 가능, 전환 대기 없음"
     concurrent_load: true
 
-# VRAM 자동 감지 실패 시 사용할 안전 기본값
+  # Apple Silicon (통합 메모리) — nvidia-smi 없음. hw.memsize로 감지.
+  apple_18gb:
+    label: "Apple Silicon 16~24GB (M-Pro 등)"
+    vision: qwen2.5vl:7b
+    text: qwen2.5:7b
+    note: "개발 기본. 통합메모리라 순차 로드 권장"
+    concurrent_load: false
+
+  apple_32gb:
+    label: "Apple Silicon 32GB+ (M-Max 등)"
+    vision: qwen2.5vl:7b
+    text: qwen2.5:14b
+    note: "동시 로드 여유"
+    concurrent_load: true
+
+# VRAM/메모리 자동 감지 실패 시 사용할 안전 기본값
+# (vision=qwen2.5vl:7b 로 8gb·apple_18gb 모두 동일)
 default: 8gb
