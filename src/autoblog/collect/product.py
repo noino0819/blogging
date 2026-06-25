@@ -85,16 +85,16 @@ def download_image(url: str) -> str:
 def collect_product(
     query: str,
     detail_images: list[str] | None = None,
+    detail_text: str | None = None,
     vision_on_main: bool = False,
 ) -> FactCard:
     """상품 사실 카드 조립.
 
-    query로 쇼핑 API 기본정보(최상위 결과)를 잡고, 이미지가 있으면 Vision으로
-    상세 스펙을 추출해 병합한다.
-    - detail_images: 사용자가 제공한 상세설명 이미지(스펙 텍스트가 풍부, 권장).
-    - vision_on_main=True: 쇼핑 API의 메인 이미지도 내려받아 Vision에 포함
-      (시각적 묘사 위주, 스펙 텍스트는 제한적).
-    상세 이미지 URL은 쇼핑 API가 주지 않으므로(상품 페이지는 WTM 차단) 별도 입력해야 한다.
+    query로 쇼핑 API 기본정보(최상위 결과)를 잡고, 상세설명은 두 경로 중 하나로:
+    - detail_text: 사용자가 상세설명을 텍스트로 직접 입력 → Vision 없이 그대로 사용.
+    - detail_images: 사용자가 상세설명 이미지 제공 → Vision으로 전사+셀링포인트+스펙 추출.
+    - vision_on_main=True: 쇼핑 API 메인 이미지도 내려받아 Vision에 포함(시각 묘사 위주).
+    상세 이미지 URL은 쇼핑 API가 주지 않으므로(상품 페이지는 WTM 차단) 사용자가 직접 제공한다.
     """
     results = search_product(query, display=5)
     if not results:
@@ -108,6 +108,12 @@ def collect_product(
     facts = results[0]
     card = FactCard(type=CardType.product, sources=[Source.search_api], product=facts)
 
+    # 상세설명 본문은 텍스트 입력 + 이미지 전사를 모두 합친다(둘 다 선택적).
+    text_parts: list[str] = []
+    if detail_text and detail_text.strip():
+        text_parts.append(detail_text.strip())
+
+    # 이미지 경로: Vision으로 전사+셀링포인트+스펙
     images = list(detail_images or [])
     if vision_on_main and facts.image:
         try:
@@ -117,15 +123,20 @@ def collect_product(
 
     if images:
         facts.detail_images = list(detail_images or [])
-        from autoblog.vision import VisionUnavailable, extract_product_specs
+        from autoblog.vision import VisionUnavailable, extract_product_detail
 
         context = " / ".join(c for c in (facts.name, facts.category) if c)
         try:
-            facts.specs = extract_product_specs(images, context=context)
+            detail = extract_product_detail(images, context=context)
+            if detail.text:
+                text_parts.append(detail.text)
+            facts.selling_points = detail.selling_points
+            facts.specs = detail.specs
             card.sources.append(Source.vision)
         except VisionUnavailable as exc:
-            card.warnings.append(f"Vision 미연동 — 상세 스펙 생략: {exc}")
+            card.warnings.append(f"Vision 미연동 — 이미지 상세 생략: {exc}")
         except Exception as exc:  # noqa: BLE001 - 상세는 보조라 실패해도 기본정보 유지
             card.warnings.append(f"Vision 상세 추출 실패: {exc}")
 
+    facts.detail_text = "\n\n".join(text_parts) or None
     return card

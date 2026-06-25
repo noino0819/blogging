@@ -4,7 +4,13 @@ from PIL import Image
 
 from autoblog.collect.fact_card import CardType, Source
 from autoblog.collect.product import collect_product, parse_shop_item
-from autoblog.vision import VisionUnavailable, _parse_specs, _split_tall_image
+from autoblog.vision import (
+    ProductDetail,
+    VisionUnavailable,
+    _parse_detail,
+    _parse_specs,
+    _split_tall_image,
+)
 
 # 쇼핑 검색 API 실응답 형태 (라이브 캡처 기반)
 SHOP_ITEM = {
@@ -44,30 +50,54 @@ def test_collect_product_basics(monkeypatch):
     assert not card.is_fallback
 
 
+def test_collect_product_text_only(monkeypatch):
+    # 텍스트만 입력하면 Vision 없이 그대로 상세설명으로 사용
+    monkeypatch.setattr("autoblog.collect.product.search_product", lambda q, display=5: [parse_shop_item(SHOP_ITEM)])
+    card = collect_product("강아지 노즈워크", detail_text="  말랑말랑 젤리 촉감, 1+1 구성  ")
+    assert card.product.detail_text == "말랑말랑 젤리 촉감, 1+1 구성"
+    assert Source.vision not in card.sources  # 이미지 없으니 Vision 미호출
+
+
+def test_collect_product_text_and_image_combined(monkeypatch):
+    # 텍스트 + 이미지 둘 다 주면 본문이 합쳐지고 스펙/포인트는 이미지에서
+    monkeypatch.setattr("autoblog.collect.product.search_product", lambda q, display=5: [parse_shop_item(SHOP_ITEM)])
+    detail = ProductDetail(text="이미지 전사 문구", selling_points=["촉감 좋음"], specs=[])
+    monkeypatch.setattr("autoblog.vision.extract_product_detail", lambda imgs, model=None, context=None: detail)
+    card = collect_product("강아지 노즈워크", detail_text="사용자 입력", detail_images=["/tmp/d.jpg"])
+    assert card.product.detail_text == "사용자 입력\n\n이미지 전사 문구"
+    assert card.product.selling_points == ["촉감 좋음"]
+    assert Source.vision in card.sources
+
+
 def test_collect_product_vision_unavailable(monkeypatch):
     # Vision 미연동(서버다운 등)이면 경고만 남기고 기본정보는 유지
     monkeypatch.setattr("autoblog.collect.product.search_product", lambda q, display=5: [parse_shop_item(SHOP_ITEM)])
 
-    def _fail(paths, model=None):
+    def _fail(paths, model=None, context=None):
         raise VisionUnavailable("ollama down")
 
-    monkeypatch.setattr("autoblog.vision.extract_product_specs", _fail)
+    monkeypatch.setattr("autoblog.vision.extract_product_detail", _fail)
     card = collect_product("강아지 노즈워크", detail_images=["/tmp/detail1.jpg"])
     assert card.product.detail_images == ["/tmp/detail1.jpg"]
     assert card.product.specs == []
     assert any("Vision" in w for w in card.warnings)
 
 
-def test_parse_specs():
-    content = '{"specs":[{"key":"재질","value":"실리콘"},{"key":"크기","value":"20cm"},{"bad":1}]}'
-    specs = _parse_specs(content)
-    assert [(s.key, s.value) for s in specs] == [("재질", "실리콘"), ("크기", "20cm")]
-    assert _parse_specs("not json") == []
+def test_parse_detail():
+    content = (
+        '{"text":"블핑 멤버가 쓰던 촉감","selling_points":["동일 촉감","휴대 간편"],'
+        '"specs":[{"key":"재질","value":"젤리"}]}'
+    )
+    d = _parse_detail(content)
+    assert d.text == "블핑 멤버가 쓰던 촉감"
+    assert d.selling_points == ["동일 촉감", "휴대 간편"]
+    assert d.specs[0].key == "재질" and d.specs[0].value == "젤리"
+    assert _parse_detail("not json").text == ""
 
 
 def test_parse_specs_list_value():
     # 모델이 값을 배열로 줄 때 콤마로 합쳐 문자열화
-    specs = _parse_specs('{"specs":[{"key":"구성","value":["당근 12개","매트 1개"]}]}')
+    specs = _parse_specs([{"key": "구성", "value": ["당근 12개", "매트 1개"]}])
     assert specs[0].key == "구성"
     assert specs[0].value == "당근 12개, 매트 1개"
 

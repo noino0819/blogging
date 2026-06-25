@@ -57,7 +57,10 @@ ollama pull qwen2.5vl:7b     # 비전 모델 (~6GB, config/models.yaml의 vision
 uv run autoblog doctor              # 환경 점검
 uv run autoblog models --tier 8gb   # 선택 프리셋의 vision/text 모델 확인
 uv run autoblog place-url "<플레이스 URL>"  # 맛집 상세(메뉴/영업시간/리뷰)
-uv run autoblog product "강아지 노즈워크 장난감"  # 상품 기본정보(쇼핑 API)
+uv run autoblog product "상품명"                  # 상품 기본정보(쇼핑 API)
+uv run autoblog product "상품명" --image 상세1.png --image 상세2.png  # 이미지 Vision 전사
+uv run autoblog product "상품명" --text "상세설명 텍스트"  # 텍스트 직접 입력
+# --image 와 --text 는 둘 다/각각 선택적, 본문이 합쳐짐
 uv run pytest                       # 테스트
 ```
 

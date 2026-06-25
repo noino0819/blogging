@@ -14,6 +14,7 @@ import base64
 import json
 
 import requests
+from pydantic import BaseModel
 
 from autoblog.collect.fact_card import ProductSpec
 from autoblog.config import load_env, load_models_config
@@ -85,60 +86,87 @@ def _ollama_vision(prompt: str, images: list[bytes], model: str) -> str:
     return resp.json().get("message", {}).get("content", "")
 
 
-_SPEC_PROMPT = (
-    "이 이미지는 상품 상세설명입니다. 이미지에서 읽을 수 있는 제품 정보를 "
-    "구조화해 JSON으로만 답하세요. 형식: "
-    '{"specs":[{"key":"재질","value":"..."},{"key":"크기","value":"..."}]}. '
-    "재질·크기·구성·사용법·주의사항·원산지 등 사실 정보만 담고, 추측하지 마세요. "
-    "이미지에 없으면 해당 항목을 비우세요."
+class ProductDetail(BaseModel):
+    """상세 이미지 Vision 추출 결과."""
+
+    text: str = ""  # 이미지에 적힌 문구 전사(마케팅 카피·후기 포함)
+    selling_points: list[str] = []  # 핵심 셀링포인트/특징
+    specs: list[ProductSpec] = []  # 재질/크기 등 스펙(있을 때만)
+
+
+_DETAIL_PROMPT = (
+    "이 상품 상세설명 이미지를 분석해 JSON으로만 답하세요. 형식:\n"
+    '{"text":"이미지에 적힌 한국어 문구를 빠짐없이 그대로 전사",'
+    '"selling_points":["핵심 셀링포인트/특징을 짧게"],'
+    '"specs":[{"key":"재질","value":"..."}]}\n'
+    "text에는 마케팅 카피·후기·문구를 그대로 옮기고, specs는 재질·크기·구성·사용법·"
+    "주의사항·원산지 등 사실 스펙이 명시된 경우만 채우세요. 없으면 빈 배열. 추측 금지."
 )
 
 
-def _spec_prompt(context: str | None) -> str:
-    """상품명/카테고리 컨텍스트를 프롬프트에 주입(오인식 방지)."""
+def _detail_prompt(context: str | None) -> str:
     if not context:
-        return _SPEC_PROMPT
-    return (
-        f"참고 — 이 상품의 이름/분류: {context}. 이 맥락에 맞춰 해석하세요.\n"
-        + _SPEC_PROMPT
+        return _DETAIL_PROMPT
+    return f"참고 상품명/분류: {context}. 이 맥락에 맞춰 해석하세요.\n" + _DETAIL_PROMPT
+
+
+def extract_product_detail(
+    image_paths: list[str], model: str | None = None, context: str | None = None
+) -> ProductDetail:
+    """이미지형 상세설명 → 전사 텍스트 + 셀링포인트 + 스펙.
+
+    context: 상품명/카테고리. 모델이 이미지를 오인식하지 않도록 함께 제공한다.
+    긴 이미지는 분할해 조각별로 처리하고, 텍스트는 이어붙이고 포인트/스펙은 중복 제거 병합.
+    """
+    model = model or default_vision_model()
+    prompt = _detail_prompt(context)
+    texts: list[str] = []
+    points: list[str] = []
+    specs: dict[str, str] = {}
+    for path in image_paths:
+        for tile in _split_tall_image(path):
+            detail = _parse_detail(_ollama_vision(prompt, [tile], model))
+            if detail.text:
+                texts.append(detail.text)
+            for pt in detail.selling_points:
+                if pt and pt not in points:
+                    points.append(pt)
+            for spec in detail.specs:
+                if spec.key not in specs:
+                    specs[spec.key] = spec.value
+    return ProductDetail(
+        text="\n".join(texts),
+        selling_points=points,
+        specs=[ProductSpec(key=k, value=v) for k, v in specs.items()],
     )
 
 
-def extract_product_specs(
-    image_paths: list[str], model: str | None = None, context: str | None = None
-) -> list[ProductSpec]:
-    """이미지형 상세설명 → 구조화 스펙(재질/크기/사용법/주의사항 등).
-
-    context: 상품명/카테고리 등. 모델이 이미지를 오인식하지 않도록 함께 제공한다.
-    긴 이미지는 분할 후 조각별로 추출하고 키 기준으로 병합(앞선 값 우선).
-    """
-    model = model or default_vision_model()
-    prompt = _spec_prompt(context)
-    merged: dict[str, str] = {}
-    for path in image_paths:
-        for tile in _split_tall_image(path):
-            content = _ollama_vision(prompt, [tile], model)
-            for spec in _parse_specs(content):
-                key, value = spec.key.strip(), spec.value.strip()
-                if key and value and key not in merged:
-                    merged[key] = value
-    return [ProductSpec(key=k, value=v) for k, v in merged.items()]
-
-
-def _parse_specs(content: str) -> list[ProductSpec]:
-    """모델의 JSON 응답에서 specs 목록을 안전하게 파싱."""
+def _parse_detail(content: str) -> ProductDetail:
+    """모델 JSON 응답 → ProductDetail(안전 파싱)."""
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
-        return []
-    items = data.get("specs") if isinstance(data, dict) else None
+        return ProductDetail()
+    if not isinstance(data, dict):
+        return ProductDetail()
+    text = data.get("text")
+    points = data.get("selling_points")
+    return ProductDetail(
+        text=str(text).strip() if isinstance(text, str) else "",
+        selling_points=[str(p).strip() for p in points if p] if isinstance(points, list) else [],
+        specs=_parse_specs(data.get("specs")),
+    )
+
+
+def _parse_specs(items) -> list[ProductSpec]:
+    """specs 배열 → ProductSpec 목록(값이 리스트면 콤마로 합침)."""
     if not isinstance(items, list):
         return []
     out: list[ProductSpec] = []
     for it in items:
         if isinstance(it, dict) and it.get("key") and it.get("value"):
             value = it["value"]
-            if isinstance(value, list):  # 모델이 값을 배열로 줄 때가 있음
+            if isinstance(value, list):
                 value = ", ".join(str(v) for v in value)
             out.append(ProductSpec(key=str(it["key"]), value=str(value).strip()))
     return out

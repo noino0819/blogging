@@ -93,8 +93,10 @@ class ProductFacts(BaseModel):
     mall_name: str | None = None
     image: str | None = None  # 대표 이미지 URL
     product_url: str | None = None
-    # 이미지형 상세설명 → Vision LLM 추출 결과
-    specs: list[ProductSpec] = Field(default_factory=list)
+    # 상세설명 — 사용자 제공 이미지(Vision 전사) 또는 텍스트 입력
+    detail_text: str | None = None  # 상세설명 본문(이미지 전사 또는 직접 입력)
+    selling_points: list[str] = Field(default_factory=list)  # 핵심 셀링포인트/특징
+    specs: list[ProductSpec] = Field(default_factory=list)  # 스펙(재질/크기 등, 있을 때)
     detail_images: list[str] = Field(default_factory=list)  # 사용자 제공 상세 이미지 경로
 
 
