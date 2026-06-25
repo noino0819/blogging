@@ -208,10 +208,16 @@ class CyclingPool:
 class EmphasisConfig(BaseModel):
     """강조 배정 규칙 (사용자 입력 가능: config/emphasis.yaml)."""
 
-    cycling_pool: list[int] = Field(default_factory=list)  # 예: [1, 3, 5]
+    cycling_pool: list[int] = Field(default_factory=list)  # 일반·긍정 강조 순환 풀 예: [1, 3, 5]
+    negative_pool: list[int] = Field(default_factory=list)  # 부정·주의 전용 순환 풀 예: [9, 16, 24]
     fixed_map: dict[str, int] = Field(default_factory=dict)  # 예: {"price": 7, "name": 4}
     max_per_paragraph: int | None = None  # (옵션) 문단당 강조 개수 상한
     min_sentence_gap: int | None = None  # (옵션) 강조 간 최소 문장 간격
+
+
+# 부정·주의(단점·웨이팅·아쉬운 점 등) 의미의 role 이름 — negative_pool로 배정.
+# fixed_map에 같은 키가 있으면 그쪽이 우선한다(사용자 명시 오버라이드).
+NEGATIVE_ROLES = frozenset({"neg", "negative", "warn", "caution"})
 
 
 _EMPHASIS_CONFIG_PATH = CONFIG_DIR / "emphasis.yaml"
@@ -228,13 +234,18 @@ def load_emphasis_config(path=None) -> EmphasisConfig:
 
 
 # 초안 강조 마킹: <<role:강조할 텍스트>>  (예: <<price:13,000원>>, <<name:가게명>>, <<cycle:문장>>)
+# 주의: "절제하세요" 같은 약한 표현이면 14b급 모델은 마커를 0개 단다(STRUCTURE_INSTRUCTION과 같은 교훈).
+# → "권장이 아니라 사용 + role 예시 + 개수 지정"으로 강하게 안내해야 실제로 emit된다.
 EMPHASIS_INSTRUCTION = (
-    "[강조 표시]\n"
-    "특별히 강조할 부분만 다음처럼 감싸세요. 일반 문장은 감싸지 마세요.\n"
-    "- 핵심 문장·감상: <<cycle:문장>>\n"
+    "[강조 표시] — 아래 마커로 핵심 어구를 실제로 감싸세요(권장이 아니라 사용).\n"
+    "한 문단에 1~2군데, 글 전체에서 최소 5군데 이상은 감싸야 합니다.\n"
+    "상황에 맞는 role을 골라 쓰세요:\n"
+    "- 좋았던 점·핵심 감상·추천 포인트(긍정/일반): <<cycle:정말 부드러운 식감이었어요>>\n"
+    "- 아쉬웠던 점·단점·주의사항(부정): <<neg:웨이팅이 좀 길었어요>>\n"
     "- 가격: <<price:13,000원>>\n"
     "- 가게명/상품명: <<name:가게이름>>\n"
-    "강조는 문단당 1~2개로 절제하고, 감싼 텍스트는 본문에 그대로 보이게 자연스러운 문장이어야 합니다."
+    "긍정·일반 강조는 <<cycle>>, 부정·주의는 반드시 <<neg>>로 구분하세요(색이 달라집니다).\n"
+    "감싼 텍스트는 본문에 그대로 보이는 자연스러운 어구여야 합니다(마커 기호는 서식으로 바뀌어 화면엔 안 보임)."
 )
 
 # 꺾쇠는 2개(<<role:text>>)가 원형이지만, 외부 챗봇이 1개(<role:text>)로 줄여
@@ -337,13 +348,19 @@ def assign_emphasis(
 ) -> list[StyledSpan]:
     """강조 요청 목록 → 스타일 배정.
 
-    고정 매핑 키는 항상 같은 프리셋, 그 외('cycle')는 순환 풀에서 번갈아.
+    배정 우선순위(역할별):
+    - 고정 매핑 키(price·name 등): 항상 같은 프리셋 → 일관성.
+    - 부정·주의 role(neg 등): negative_pool에서 번갈아(전용 색). 풀이 비면 일반 풀로 폴백.
+    - 그 외('cycle' 포함): 일반 cycling_pool에서 번갈아.
     """
     pool = CyclingPool(config.cycling_pool)
+    neg_pool = CyclingPool(config.negative_pool or config.cycling_pool)
     out: list[StyledSpan] = []
     for req in requests:
         if req.role in config.fixed_map:
             pid = config.fixed_map[req.role]
+        elif req.role in NEGATIVE_ROLES:
+            pid = neg_pool.next()
         else:
             pid = pool.next()
         style = presets.get(pid, EmphasisStyle()) if pid is not None else EmphasisStyle()

@@ -37,17 +37,26 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>블로그 자동작성</title><style>
  /*FONTFACES*/
- :root{--green:#03c75a;--green-d:#02b350;--ink:#1f2329;--sub:#8b95a1;--line:#e8eaed;--bg:#f2f4f6}
+ :root{
+   --green:#03c75a;--green-d:#02b350;--green-soft:#eafaf0;
+   --ink:#1f2329;--sub:#8b95a1;--line:#e8eaed;--bg:#f2f4f6;
+   --red:#e5484d;--ok:#1f9d57;--blue:#3b82c4;
+   --r-sm:8px;--r:12px;--r-lg:16px;--r-pill:999px;
+   --fs-xs:12px;--fs-sm:13px;--fs-md:14px;--fs-lg:16px;--fs-xl:20px}
  *{box-sizing:border-box}
+ svg.ic{width:18px;height:18px;display:inline-block;vertical-align:middle;flex:0 0 auto;stroke:currentColor}
+ .btn .ic,.mx .ic{width:16px;height:16px;margin-right:6px;margin-top:-2px}
  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Pretendard',sans-serif;
    background:var(--bg);color:var(--ink);display:flex;height:100vh;overflow:hidden}
  /* sidebar */
  .side{width:212px;flex:0 0 212px;background:#fff;border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;gap:4px}
- .brand{font-size:15px;font-weight:800;padding:8px 10px 16px;display:flex;align-items:center;gap:8px}
- .nav{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;cursor:pointer;color:#4b5563;font-size:14px;font-weight:600}
+ .brand{font-size:15px;font-weight:800;padding:8px 10px 16px;display:flex;align-items:center;gap:9px}
+ .brand .ic{width:20px;height:20px;color:var(--green-d)}
+ .nav{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:var(--r-sm);cursor:pointer;color:#4b5563;font-size:var(--fs-md);font-weight:600}
  .nav:hover{background:#f6f8fa}
- .nav.on{background:#eafaf0;color:var(--green-d)}
- .nav .ic{font-size:16px;width:20px;text-align:center}
+ .nav.on{background:var(--green-soft);color:var(--green-d)}
+ .nav .ic{width:19px;height:19px;color:#9aa3ad}
+ .nav.on .ic{color:var(--green-d)}
  .side .foot{margin-top:auto;font-size:11px;color:var(--sub);padding:8px 10px;line-height:1.6}
  /* main */
  main{flex:1;overflow:auto;padding:26px 30px}
@@ -56,7 +65,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .desc{color:var(--sub);font-size:13px;margin:0 0 20px}
  /* write layout */
  .grid{display:grid;grid-template-columns:minmax(360px,460px) 1fr;gap:22px;align-items:start}
- .card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px}
+ .card{background:#fff;border:1px solid var(--line);border-radius:var(--r-lg);padding:20px}
  .card h3{font-size:13px;margin:0 0 12px;color:#374151}
  label.f{display:block;font-size:12px;color:#6b7280;margin:14px 0 6px;font-weight:600}
  label.f:first-child{margin-top:0}
@@ -71,7 +80,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .chip.on{background:var(--green);color:#fff;border-color:var(--green)}
  .chip .dot{width:7px;height:7px;border-radius:50%;background:#cbd2d9}
  .chip.on .dot{background:#fff}
- .btn{display:block;width:100%;padding:13px;border:none;border-radius:12px;background:var(--green);color:#fff;font-size:14.5px;font-weight:700;cursor:pointer}
+ .btn{display:block;width:100%;padding:13px;border:none;border-radius:var(--r);background:var(--green);color:#fff;font-size:var(--fs-md);font-weight:700;cursor:pointer}
  .btn:hover{background:var(--green-d)}
  .btn:disabled{opacity:.45;cursor:default}
  .btn.ghost{background:#fff;color:var(--ink);border:1px solid #d6dade;font-weight:600}
@@ -88,7 +97,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  /* 토스트 팝업 — 에러/완료를 화면 중앙 상단에 크게 */
  #toasts{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:9px;align-items:center;pointer-events:none;width:max-content;max-width:90vw}
  .toast{pointer-events:auto;min-width:300px;max-width:560px;padding:14px 18px;border-radius:12px;font-size:14px;font-weight:700;color:#fff;line-height:1.45;box-shadow:0 8px 30px rgba(0,0,0,.22);display:flex;gap:11px;align-items:flex-start;cursor:pointer;animation:tin .22s ease}
- .toast.err{background:#e5484d}.toast.ok{background:#1f9d57}.toast.info{background:#3b82c4}
+ .toast.err{background:var(--red)}.toast.ok{background:var(--ok)}.toast.info{background:var(--blue)}
  .toast .ic{font-size:18px;line-height:1.2}.toast .x{margin-left:10px;opacity:.7;font-weight:400}
  @keyframes tin{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
  /* 프롬프트 내보내기 모달 */
@@ -183,8 +192,18 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .logpre{background:#f6f8fa;border:1px solid var(--line);border-radius:9px;padding:12px;font-size:11.5px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow:auto;font-family:ui-monospace,Menlo,monospace;margin:4px 0 8px}
  .logsum{cursor:pointer;font-size:12px;font-weight:600;padding:6px 0;color:#4b5563}
 </style></head><body><div id=toasts></div>
+<svg width=0 height=0 style="position:absolute" aria-hidden=true><defs>
+ <g id=i-write fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="M13.5 6.5l3 3"/></g>
+ <g id=i-sticker fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=12 cy=12 r=9/><path d="M8.5 14.5a4 4 0 0 0 7 0"/><circle cx=9 cy=10 r=.7 fill=currentColor stroke=none/><circle cx=15 cy=10 r=.7 fill=currentColor stroke=none/></g>
+ <g id=i-format fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.9 1.8-1.9 0-.5-.2-.9-.5-1.2-.3-.3-.4-.6-.4-1 0-1 .8-1.7 1.7-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z"/><circle cx=7.5 cy=11.5 r=.9 fill=currentColor stroke=none/><circle cx=12 cy=7.8 r=.9 fill=currentColor stroke=none/><circle cx=16.4 cy=11.5 r=.9 fill=currentColor stroke=none/></g>
+ <g id=i-prompt fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M6 3h8l4 4v14H6V3Z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 16.5h4"/></g>
+ <g id=i-settings fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=12 cy=12 r=3/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.6 7.6 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.6 7.6 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5Z"/></g>
+ <g id=i-copy fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><rect x=8 y=3 width=8 height=4 rx=1/><path d="M16 5h2v16H6V5h2"/><path d="M9 12h6M9 16h4"/></g>
+ <g id=i-inbox fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 14v5h16v-5"/><path d="M12 4v9m0 0 3.5-3.5M12 13 8.5 9.5"/></g>
+ <g id=i-search fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=11 cy=11 r=6/><path d="m20 20-3.6-3.6"/></g>
+</defs></svg>
 <div id=pmodal class=modal style="display:none"><div class=modalbox>
-  <div class=modalhd><span>📋 다른 챗봇에 붙여넣을 프롬프트</span><button class=mx id=pmclose>✕</button></div>
+  <div class=modalhd><span><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg> 다른 챗봇에 붙여넣을 프롬프트</span><button class=mx id=pmclose>✕</button></div>
   <div id=ploading style="display:none"><div class=genload>
     <div class=genchar id=pchar>🧩</div>
     <div class=genmsg id=pmsg>자료를 모으는 중…</div>
@@ -198,18 +217,18 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   </div>
 </div></div>
 <div id=imodal class=modal style="display:none"><div class=modalbox>
-  <div class=modalhd><span>📥 받아온 글 붙여넣기</span><button class=mx id=imclose>✕</button></div>
+  <div class=modalhd><span><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg> 받아온 글 붙여넣기</span><button class=mx id=imclose>✕</button></div>
   <div class=muted>다른 챗봇에서 받은 글을 붙여넣으세요. 강조 &lt;&lt;…&gt;&gt; · [구분선] · [인용구] · [스티커:상황] 마커가 있으면 그대로 적용돼 미리보기로 보여줍니다. 선택한 사진도 함께 배치돼요.</div>
   <textarea id=itext placeholder="여기에 받아온 글을 붙여넣기"></textarea>
   <div class=modalft><button class=btn id=iapply style="flex:1">이 글로 미리보기</button><button class="btn ghost" id=imclose2 style="flex:0 0 120px">닫기</button></div>
 </div></div>
 <aside class=side>
-  <div class=brand>🖋️ 블로그 자동작성</div>
-  <div class="nav on" data-view=write><span class=ic>✍️</span> 글쓰기</div>
-  <div class=nav data-view=stickers><span class=ic>😊</span> 스티커</div>
-  <div class=nav data-view=format><span class=ic>🎨</span> 서식</div>
-  <div class=nav data-view=prompt><span class=ic>📝</span> 프롬프트</div>
-  <div class=nav data-view=settings><span class=ic>⚙️</span> 설정</div>
+  <div class=brand><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 블로그 자동작성</div>
+  <div class="nav on" data-view=write><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 글쓰기</div>
+  <div class=nav data-view=stickers><svg class=ic viewBox="0 0 24 24"><use href="#i-sticker"/></svg> 스티커</div>
+  <div class=nav data-view=format><svg class=ic viewBox="0 0 24 24"><use href="#i-format"/></svg> 서식</div>
+  <div class=nav data-view=prompt><svg class=ic viewBox="0 0 24 24"><use href="#i-prompt"/></svg> 프롬프트</div>
+  <div class=nav data-view=settings><svg class=ic viewBox="0 0 24 24"><use href="#i-settings"/></svg> 설정</div>
   <div class=foot>로컬에서 동작 · 네이버 임시저장</div>
 </aside>
 <main>
@@ -242,8 +261,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <span class="chip on" data-k=stickers><span class=dot></span>스티커</span>
           </div>
           <div style="margin-top:18px"><button class=btn id=gen>초안 생성</button></div>
-          <div style="margin-top:9px"><button class="btn ghost" id=export>📋 내 프롬프트 합쳐서 복사 <span class=muted>(다른 챗봇에 붙여넣기)</span></button></div>
-          <div style="margin-top:7px"><button class="btn ghost" id=import>📥 받아온 글 붙여넣기 <span class=muted>(다른 챗봇 결과를 미리보기로)</span></button></div>
+          <div style="margin-top:9px"><button class="btn ghost" id=export><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg>내 프롬프트 합쳐서 복사 <span class=muted>(다른 챗봇에 붙여넣기)</span></button></div>
+          <div style="margin-top:7px"><button class="btn ghost" id=import><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg>받아온 글 붙여넣기 <span class=muted>(다른 챗봇 결과를 미리보기로)</span></button></div>
           <div id=status></div>
         </div>
         <div class=card style="margin-top:16px">
@@ -278,7 +297,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
         <button data-f=fav class=on>⭐ 즐겨찾기</button>
         <button data-f=all>전체 둘러보기</button>
       </div>
-      <button class="btn ghost" id=lblbtn style="width:auto;padding:9px 14px">🔍 즐겨찾기 태그 분석</button>
+      <button class="btn ghost" id=lblbtn style="width:auto;padding:9px 14px"><svg class=ic viewBox="0 0 24 24"><use href="#i-search"/></svg>즐겨찾기 태그 분석</button>
       <span class=muted id=lblstat></span>
     </div>
     <div id=stbody><div class=muted>불러오는 중…</div></div>
@@ -287,8 +306,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <section class="view format">
     <h2 class=title>서식</h2>
     <p class=desc>글에 들어갈 강조색·구분선·인용구를 미리 보고 고릅니다.</p>
-    <div class=card><h3>🎨 강조색 <span class=muted style="font-weight:400">— 핵심 문장에 번갈아 적용(파워 단축키 프리셋)</span></h3><div id=emph><div class=muted>불러오는 중…</div></div></div>
-    <div class=card style="margin-top:16px"><h3>➖ 구분선·인용구 종류 <span class=muted style="font-weight:400">— 쓸 종류를 여러 개 고르기</span></h3><div id=variants><div class=muted>불러오는 중…</div></div></div>
+    <div class=card><h3>강조색 <span class=muted style="font-weight:400">— 핵심 문장에 번갈아 적용(파워 단축키 프리셋)</span></h3><div id=emph><div class=muted>불러오는 중…</div></div></div>
+    <div class=card style="margin-top:16px"><h3>구분선·인용구 종류 <span class=muted style="font-weight:400">— 쓸 종류를 여러 개 고르기</span></h3><div id=variants><div class=muted>불러오는 중…</div></div></div>
   </section>
   <!-- 프롬프트 -->
   <section class="view prompt">
@@ -309,7 +328,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <h2 class=title>설정</h2>
     <p class=desc>글쓰기 규칙과 사용할 모델을 관리합니다.</p>
     <div class=card id=rules></div>
-    <div class=card style="margin-top:16px" id=models><h3>🧠 모델</h3><div class=muted>불러오는 중…</div></div>
+    <div class=card style="margin-top:16px" id=models><h3>모델</h3><div class=muted>불러오는 중…</div></div>
   </section>
 </main>
 <script>
@@ -643,10 +662,10 @@ function refreshApiKeyUI(){
 async function loadModels(){try{const m=await (await fetch('/api/models')).json();
   HAS_API_KEY=!!m.has_api_key;
   const opts=m.presets.map(p=>`<option value="${p.key}"${p.key===m.current?' selected':''}>${p.label}</option>`).join('');
-  $('#models').innerHTML=`<h3>🧠 모델 <span class=muted style="font-weight:400">— 내 컴퓨터(GPU)에 맞게</span></h3>
+  $('#models').innerHTML=`<h3>모델 <span class=muted style="font-weight:400">— 내 컴퓨터(GPU)에 맞게</span></h3>
     <div class=setrow><div class=t>프리셋</div><select id=mpreset style="width:auto;min-width:260px;border:1px solid #d6dade;border-radius:8px;padding:8px">${opts}</select></div>
     <div id=minfo></div>
-    <div class=sub-h style="margin-top:20px">🔑 Claude API 키 <span class=muted style="font-weight:400">— (선택) 로컬 모델이 마커를 잘 못 넣으면 정확함</span></div>
+    <div class=sub-h style="margin-top:20px">Claude API 키 <span class=muted style="font-weight:400">— (선택) 로컬 모델이 마커를 잘 못 넣으면 정확함</span></div>
     <div class=muted style="margin-bottom:8px">키를 등록해두고, 위 <b>프리셋</b>에서 "Claude API"를 고르면 초안을 Claude로 생성합니다(토큰당 과금).</div>
     <div style="display:flex;gap:8px">
       <input type=password id=apikey placeholder="sk-ant-..." style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
@@ -1117,6 +1136,8 @@ def _emphasis_preview() -> dict:
     used = {}
     for i in cfg.cycling_pool or []:
         used.setdefault(i, "순환")
+    for i in cfg.negative_pool or []:
+        used.setdefault(i, "부정")
     for k, v in (cfg.fixed_map or {}).items():
         used[v] = k
     all_styles = [{**resolve(i), "use": used.get(i)} for i in sorted(presets)]
@@ -1124,6 +1145,7 @@ def _emphasis_preview() -> dict:
         "source": source,
         "all": all_styles,
         "cycling": list(cfg.cycling_pool or []),
+        "negative": list(cfg.negative_pool or []),
         "fixed": cfg.fixed_map or {},
         "max_per_paragraph": cfg.max_per_paragraph,
         "min_sentence_gap": cfg.min_sentence_gap,

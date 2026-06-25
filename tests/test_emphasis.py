@@ -82,6 +82,29 @@ def test_assign_emphasis_cycle_and_fixed():
     assert price_span.style == DEFAULT_STYLES[7]
 
 
+def test_assign_emphasis_negative_pool_separate():
+    # 부정 role(neg)은 negative_pool에서, 일반(cycle)은 cycling_pool에서 — 풀이 섞이지 않는다
+    config = EmphasisConfig(cycling_pool=[1, 3], negative_pool=[5, 6], fixed_map={"price": 7})
+    reqs = [
+        EmphasisRequest(text="좋았어요", role="cycle"),
+        EmphasisRequest(text="웨이팅 길어요", role="neg"),
+        EmphasisRequest(text="추천", role="cycle"),
+        EmphasisRequest(text="아쉬웠어요", role="neg"),
+        EmphasisRequest(text="13,000원", role="price"),
+    ]
+    ids = [s.preset_id for s in assign_emphasis(reqs, DEFAULT_STYLES, config)]
+    # cycle은 1→3, neg는 5→6, price는 고정 7 — 각 풀이 독립적으로 순환
+    assert ids == [1, 5, 3, 6, 7]
+
+
+def test_assign_emphasis_negative_pool_falls_back_to_cycling():
+    # negative_pool 미설정 시 neg도 일반 풀로 폴백(색은 같이 돌아감)
+    config = EmphasisConfig(cycling_pool=[1, 3])
+    reqs = [EmphasisRequest(text="단점", role="neg"), EmphasisRequest(text="더 큰 단점", role="warn")]
+    ids = [s.preset_id for s in assign_emphasis(reqs, DEFAULT_STYLES, config)]
+    assert ids == [1, 3]
+
+
 def test_nearest_palette_color():
     from autoblog.publish.emphasis import nearest_palette_color
 
