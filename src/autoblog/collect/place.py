@@ -87,26 +87,22 @@ def search_place(query: str) -> PlaceFacts | None:
     )
 
 
-def scrape_place(place_url: str) -> dict:
-    """Playwright로 영업시간/메뉴/가격/평점 스크래핑.
-
-    셀렉터는 collect.selectors.PLACE 한 곳에서 관리(§3.1).
-    TODO: 실제 플레이스 페이지 구조 확인 후 구현.
-    """
-    raise NotImplementedError("플레이스 스크래핑은 셀렉터 확정 후 구현 예정")
-
-
-def collect_place_from_url(url: str) -> FactCard:
+def collect_place_from_url(
+    url: str, with_reviews: bool = True, review_limit: int = 12
+) -> FactCard:
     """사용자가 붙여넣은 플레이스 URL → 상세 사실 카드 (기획서 §3.1, 권장 경로).
 
-    Apollo state 파싱으로 메뉴/가격/평점/좌표/주소를 추출. 추출 실패·IP 차단 시
-    경고와 함께 가능한 정보만으로 fallback.
+    홈 탭(기본정보/메뉴/영업시간) + 리뷰 탭(방문자 경험 키워드/본문)을 수집.
+    Apollo state 파싱으로 추출하며, 실패·IP 차단 시 경고와 함께 가능한 만큼만 채운다.
     """
+    import time
+
     from autoblog.collect.place_detail import (
         extract_apollo_state,
         fetch_place_html,
         is_rate_limited,
         parse_place_detail,
+        parse_visitor_reviews,
         resolve_place_id,
     )
 
@@ -129,12 +125,27 @@ def collect_place_from_url(url: str) -> FactCard:
             card.warnings.append("상세 데이터 추출 실패 (페이지 구조 변경 가능)")
         return card
 
+    if with_reviews:
+        time.sleep(2)  # 폴라이트 딜레이 (연속 요청 차단 방지)
+        review_url = f"https://m.place.naver.com/restaurant/{place_id}/review/visitor"
+        try:
+            _, review_html = fetch_place_html(review_url)
+            if is_rate_limited(review_html):
+                card.warnings.append("리뷰 탭 IP 차단 — 기본 정보만 수집")
+            else:
+                rstate = extract_apollo_state(review_html)
+                facts.review_keywords, facts.reviews = parse_visitor_reviews(
+                    rstate, limit=review_limit
+                )
+        except Exception as exc:  # noqa: BLE001 - 리뷰는 보조라 실패해도 진행
+            card.warnings.append(f"리뷰 수집 실패: {exc}")
+
     card.place = facts
     return card
 
 
 def collect_place(query: str) -> FactCard:
-    """맛집 사실 카드 조립 (검색 API → 스크래핑 → 병합, 실패 시 fallback)."""
+    """검색 API로 가게 식별만 (주소/좌표/전화). 상세는 collect_place_from_url 권장."""
     facts = search_place(query)
     if facts is None:
         return FactCard(
@@ -143,21 +154,4 @@ def collect_place(query: str) -> FactCard:
             is_fallback=True,
             warnings=["네이버 검색 API 키 미설정 또는 검색 결과 없음"],
         )
-
-    card = FactCard(type=CardType.place, sources=[Source.search_api], place=facts)
-
-    if facts.place_url:
-        try:
-            detail = scrape_place(facts.place_url)
-            facts.business_hours = detail.get("business_hours")
-            facts.rating = detail.get("rating")
-            facts.menus = detail.get("menus", [])
-            card.sources.append(Source.scrape)
-        except NotImplementedError:
-            card.is_fallback = True
-            card.warnings.append("스크래핑 미구현 — 검색 API 정보만으로 구성")
-        except Exception as exc:  # noqa: BLE001 - fallback 경로
-            card.is_fallback = True
-            card.warnings.append(f"스크래핑 실패: {exc}")
-
-    return card
+    return FactCard(type=CardType.place, sources=[Source.search_api], place=facts)

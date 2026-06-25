@@ -30,6 +30,22 @@ class MenuItem(BaseModel):
     price: str | None = None
 
 
+class ReviewKeyword(BaseModel):
+    """방문자가 많이 고른 감상 키워드 (예: '음식이 맛있어요')."""
+
+    name: str
+    count: int
+
+
+class ReviewSnippet(BaseModel):
+    """방문자 리뷰 한 건 — 초안의 '경험' 보조 재료."""
+
+    body: str
+    keywords: list[str] = Field(default_factory=list)
+    visited: str | None = None
+    visit_count: int | None = None
+
+
 class PlaceFacts(BaseModel):
     """맛집 — 네이버 플레이스 사실 정보."""
 
@@ -43,6 +59,14 @@ class PlaceFacts(BaseModel):
     business_hours: str | None = None
     rating: float | None = None
     menus: list[MenuItem] = Field(default_factory=list)
+    # 정보 탭 (홈 탭 state에 함께 실림)
+    description: str | None = None  # 사장님 소개글
+    micro_reviews: list[str] = Field(default_factory=list)  # 대표 한줄평
+    conveniences: list[str] = Field(default_factory=list)  # 편의시설
+    payment_info: list[str] = Field(default_factory=list)  # 결제수단
+    # 방문자 리뷰(경험 재료) — 리뷰 탭에서 수집
+    review_keywords: list[ReviewKeyword] = Field(default_factory=list)
+    reviews: list[ReviewSnippet] = Field(default_factory=list)
     place_url: str | None = None
 
 

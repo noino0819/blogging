@@ -13,7 +13,16 @@ from __future__ import annotations
 import json
 import re
 
-from autoblog.collect.fact_card import MenuItem, PlaceFacts
+from collections import Counter
+
+from autoblog.collect.fact_card import (
+    MenuItem,
+    PlaceFacts,
+    ReviewKeyword,
+    ReviewSnippet,
+)
+
+_HANGUL_RE = re.compile(r"[가-힣]")
 
 # m.place.naver.com/restaurant/<id>/... 형태에서 placeId 추출
 _ID_RE = re.compile(r"/(?:restaurant|place|hairshop|hospital|cafe|accommodation)/(\d+)")
@@ -72,6 +81,18 @@ def _find_new_business_hours(state: dict) -> list | None:
         return None
     nbh = next((v for k, v in pd.items() if k.startswith("newBusinessHours")), None)
     return nbh if isinstance(nbh, list) else None
+
+
+def _shop_description(state: dict) -> str | None:
+    """ROOT_QUERY.placeDetail(...).description(...) — 사장님 소개글(shopWindow)."""
+    rq = state.get("ROOT_QUERY")
+    if not isinstance(rq, dict):
+        return None
+    pd = next((v for k, v in rq.items() if k.startswith("placeDetail(")), None)
+    if not isinstance(pd, dict):
+        return None
+    desc = next((v for k, v in pd.items() if k.startswith("description(")), None)
+    return desc.strip() if isinstance(desc, str) and desc.strip() else None
 
 
 def _format_business_hours(state: dict) -> str | None:
@@ -168,6 +189,9 @@ def parse_place_detail(state: dict, place_id: str) -> PlaceFacts | None:
     # 영업시간은 base.openingHours가 종종 null이라 ROOT_QUERY.newBusinessHours에서 조립
     hours = _format_business_hours(state)
 
+    def _str_list(val) -> list[str]:
+        return [s for s in val if isinstance(s, str)] if isinstance(val, list) else []
+
     return PlaceFacts(
         name=base.get("name", ""),
         category=base.get("category"),
@@ -178,9 +202,50 @@ def parse_place_detail(state: dict, place_id: str) -> PlaceFacts | None:
         lng=lng,
         business_hours=hours,
         rating=rating,
+        description=_shop_description(state),
+        micro_reviews=_str_list(base.get("microReviews")),
+        conveniences=_str_list(base.get("conveniences")),
+        payment_info=_str_list(base.get("paymentInfo")),
         menus=menus,
         place_url=f"https://m.place.naver.com/restaurant/{place_id}/home",
     )
+
+
+def parse_visitor_reviews(
+    state: dict, limit: int = 12
+) -> tuple[list[ReviewKeyword], list[ReviewSnippet]]:
+    """리뷰 탭 apollo state → (키워드 집계, 의미있는 리뷰 스니펫).
+
+    - 키워드: 모든 리뷰의 votedKeywords name을 빈도순 집계.
+    - 스니펫: 한글 포함 10자 이상 본문만(이모지/단문 제외), 페이지 순서대로 limit개.
+    """
+    reviews = [v for k, v in state.items() if k.startswith("VisitorReview:")]
+
+    counter: Counter[str] = Counter()
+    for r in reviews:
+        for kw in r.get("votedKeywords") or []:
+            name = kw.get("name")
+            if name:
+                counter[name] += 1
+    keywords = [ReviewKeyword(name=n, count=c) for n, c in counter.most_common()]
+
+    snippets: list[ReviewSnippet] = []
+    for r in reviews:
+        body = (r.get("body") or "").strip()
+        if len(body) < 10 or not _HANGUL_RE.search(body):
+            continue
+        snippets.append(
+            ReviewSnippet(
+                body=body,
+                keywords=[kw["name"] for kw in (r.get("votedKeywords") or []) if kw.get("name")],
+                visited=r.get("visited"),
+                visit_count=r.get("visitCount"),
+            )
+        )
+        if len(snippets) >= limit:
+            break
+
+    return keywords, snippets
 
 
 def fetch_place_html(url: str, timeout_ms: int = 25000) -> tuple[str, str]:
