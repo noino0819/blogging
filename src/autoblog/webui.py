@@ -88,6 +88,15 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  /* preview */
  .doc{background:#fff;border:1px solid var(--line);border-radius:16px;padding:30px 34px;min-height:300px}
  .doc.empty{display:flex;align-items:center;justify-content:center;color:#b0b8c1;font-size:14px;min-height:420px}
+ .genload{text-align:center;padding:40px 20px}
+ .genchar{font-size:60px;display:inline-block;animation:bounce 1s ease-in-out infinite}
+ @keyframes bounce{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-16px) rotate(4deg)}}
+ .genmsg{font-size:16px;color:#374151;margin-top:14px;font-weight:700}
+ .genbar{height:14px;background:#eef1f4;border-radius:99px;overflow:hidden;max-width:340px;margin:20px auto 10px}
+ .genfill{height:100%;width:0;background:linear-gradient(90deg,#03c75a,#5fe0a0);border-radius:99px;transition:width .5s ease}
+ .genpct{font-size:14px;color:var(--green-d);font-weight:800}
+ .gensub{font-size:12px;color:var(--sub);margin-top:6px}
+ .promptarea{width:100%;min-height:420px;border:1px solid #d6dade;border-radius:10px;padding:14px;font-size:13px;font-family:ui-monospace,Menlo,monospace;line-height:1.6;resize:vertical;background:#fbfcfd}
  .doc h1{font-size:23px;margin:0 0 20px;line-height:1.4}
  .doc .tx{font-size:15px;line-height:2;white-space:pre-wrap;margin:0 0 6px}
  .doc hr{border:none;border-top:1px solid #e3e6ea;margin:22px 36px}
@@ -138,11 +147,14 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .promptbox details{border-top:1px solid var(--line);padding:4px 0}.promptbox details:first-child{border:none}
  .promptbox summary{cursor:pointer;font-size:13px;font-weight:600;padding:8px 0}
  .promptbox pre{background:#f6f8fa;border:1px solid var(--line);border-radius:10px;padding:14px;font-size:12px;line-height:1.65;white-space:pre-wrap;max-height:320px;overflow:auto;font-family:ui-monospace,Menlo,monospace;margin:4px 0 10px}
+ .mcmd{background:#1f2329;color:#e8eaed;border-radius:10px;padding:14px 16px;font-size:13px;font-family:ui-monospace,Menlo,monospace;line-height:1.8;white-space:pre-wrap}
 </style></head><body>
 <aside class=side>
   <div class=brand>🖋️ 블로그 자동작성</div>
   <div class="nav on" data-view=write><span class=ic>✍️</span> 글쓰기</div>
   <div class=nav data-view=stickers><span class=ic>😊</span> 스티커</div>
+  <div class=nav data-view=format><span class=ic>🎨</span> 서식</div>
+  <div class=nav data-view=prompt><span class=ic>📝</span> 프롬프트</div>
   <div class=nav data-view=settings><span class=ic>⚙️</span> 설정</div>
   <div class=foot>로컬에서 동작 · 네이버 임시저장</div>
 </aside>
@@ -203,15 +215,33 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     </div>
     <div id=stbody><div class=muted>불러오는 중…</div></div>
   </section>
+  <!-- 서식 -->
+  <section class="view format">
+    <h2 class=title>서식</h2>
+    <p class=desc>글에 들어갈 강조색·구분선·인용구를 미리 보고 고릅니다.</p>
+    <div class=card><h3>🎨 강조색 <span class=muted style="font-weight:400">— 핵심 문장에 번갈아 적용(파워 단축키 프리셋)</span></h3><div id=emph><div class=muted>불러오는 중…</div></div></div>
+    <div class=card style="margin-top:16px"><h3>➖ 구분선·인용구 종류 <span class=muted style="font-weight:400">— 쓸 종류를 여러 개 고르기</span></h3><div id=variants><div class=muted>불러오는 중…</div></div></div>
+  </section>
+  <!-- 프롬프트 -->
+  <section class="view prompt">
+    <h2 class=title>프롬프트</h2>
+    <p class=desc>초안 생성에 쓰이는 베이스 프롬프트를 직접 수정할 수 있어요. 저장하면 다음 생성부터 반영됩니다.</p>
+    <div class=card>
+      <h3>베이스 프롬프트 <span class=muted style="font-weight:400">— config/prompts/default.md</span></h3>
+      <textarea id=promptedit class=promptarea placeholder="불러오는 중…"></textarea>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:12px">
+        <button class=btn id=promptsave style="width:auto;padding:9px 18px">저장</button>
+        <span class=muted id=promptstat></span>
+      </div>
+    </div>
+    <div class=card style="margin-top:16px"><h3>자동 추가 레이어 <span class=muted style="font-weight:400">— 마커 지시문(읽기 전용, 토글 켤 때만)</span></h3><div id=promptlayers><div class=muted>불러오는 중…</div></div></div>
+  </section>
   <!-- 설정 -->
   <section class="view settings">
     <h2 class=title>설정</h2>
-    <p class=desc>글쓰기 규칙을 켜고 끄면 다음 생성부터 반영됩니다.</p>
+    <p class=desc>글쓰기 규칙과 사용할 모델을 관리합니다.</p>
     <div class=card id=rules></div>
-    <div class=card style="margin-top:16px"><h3>🎨 강조색 미리보기 <span class=muted style="font-weight:400">— 핵심 문장에 번갈아 적용</span></h3><div id=emph><div class=muted>불러오는 중…</div></div></div>
-    <div class=card style="margin-top:16px"><h3>➖ 구분선·인용구 종류 <span class=muted style="font-weight:400">— 글에 들어갈 기본 모양</span></h3><div id=variants><div class=muted>불러오는 중…</div></div></div>
-    <div class=card style="margin-top:16px"><h3>📝 초안 생성 프롬프트 <span class=muted style="font-weight:400">— config/prompts/default.md + 마커 레이어</span></h3><div id=prompt><div class=muted>불러오는 중…</div></div></div>
-    <div class=card style="margin-top:16px" id=models><h3>모델</h3><div class=muted>불러오는 중…</div></div>
+    <div class=card style="margin-top:16px" id=models><h3>🧠 모델</h3><div class=muted>불러오는 중…</div></div>
   </section>
 </main>
 <script>
@@ -263,17 +293,38 @@ function toggleP(path,el){const i=SELP.indexOf(path);
   $('#psel').textContent=SELP.length?`${SELP.length}장 선택`:'';
 }
 
+let GENTIMER=null;
+const GENCHARS=['🐥','✍️','🐣','💭','📝'];
+const GENMSGS=[[0,'메모를 읽는 중…'],[18,'글을 쓰는 중…'],[50,'문장을 다듬는 중…'],[78,'강조·서식 입히는 중…'],[92,'거의 다 됐어요!']];
+function genLoading(){
+  $('#preview').classList.add('empty');
+  $('#preview').innerHTML=`<div class=genload><div class=genchar id=genchar>🐥</div>
+    <div class=genmsg id=genmsg>메모를 읽는 중…</div>
+    <div class=genbar><div class=genfill id=genfill></div></div>
+    <div class=genpct id=genpct>0%</div>
+    <div class=gensub>로컬 AI가 직접 글을 써요 · 보통 30~60초</div></div>`;
+  let pct=0, ci=0;
+  GENTIMER=setInterval(()=>{
+    pct+=Math.max(0.4,(96-pct)*0.035); if(pct>96)pct=96;
+    const fl=$('#genfill'); if(!fl){clearInterval(GENTIMER);return;}
+    fl.style.width=pct+'%'; $('#genpct').textContent=Math.floor(pct)+'%';
+    const m=GENMSGS.filter(x=>pct>=x[0]).pop(); if(m)$('#genmsg').textContent=m[1];
+    ci++; $('#genchar').textContent=GENCHARS[ci%GENCHARS.length];
+  },700);
+}
+function genDone(ok){ if(GENTIMER)clearInterval(GENTIMER);
+  if(ok){const fl=$('#genfill'); if(fl){fl.style.width='100%'; $('#genpct').textContent='100%';}} }
 $('#gen').onclick=async()=>{
   if(!$('#memo').value.trim()){st('경험 메모를 입력하세요.');return;}
-  $('#gen').disabled=true;$('#save').disabled=true; st('수집 + 초안 생성 중… (수십 초)',true);
+  $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
     const body={memo:$('#memo').value,src:SRC,srcval:$('#srcval').value,photos:SELP,tone:$('#tone').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,rules:RULES};
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
-    if(!r.ok){st('실패: '+(d.error||''));return;}
-    PLAN=d; renderPreview(d); st('생성 완료. 검토 후 임시저장하세요.'); $('#save').disabled=false;
-  }catch(e){st('오류: '+e);}finally{$('#gen').disabled=false;}
+    if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); return;}
+    genDone(true); PLAN=d; setTimeout(()=>renderPreview(d),350); st('생성 완료. 검토 후 임시저장하세요.'); $('#save').disabled=false;
+  }catch(e){genDone(false); st('오류: '+e);}finally{$('#gen').disabled=false;}
 };
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function renderText(b){let h=esc(b.text);
@@ -364,10 +415,24 @@ function renderRules(){const c=$('#rules'); c.innerHTML='';
     row.querySelector('.sw').onclick=function(){RULES[k]=!RULES[k]; this.classList.toggle('on',RULES[k]);};
     c.appendChild(row);});
 }
+function renderModelInfo(p){if(!p)return;
+  $('#minfo').innerHTML=`<div class=setrow><div><div class=t>텍스트 (초안 작성)</div><div class=d>${p.text}</div></div></div>
+    <div class=setrow><div><div class=t>비전 (사진/상품 분석)</div><div class=d>${p.vision}</div></div></div>
+    ${p.note?`<div class=muted style="margin:8px 0 14px">💡 ${p.note}</div>`:''}
+    <div class=sub-h>설치 방법 — 터미널에 입력</div>
+    <pre class=mcmd>ollama pull ${p.text}\nollama pull ${p.vision}</pre>
+    <div class=muted style="margin-top:8px">Ollama가 없으면 <b>ollama.com</b>에서 먼저 설치 → 위 명령으로 모델 다운로드. 한 번만 받으면 계속 씁니다.</div>`;
+}
 async function loadModels(){try{const m=await (await fetch('/api/models')).json();
-  $('#models').innerHTML=`<h3>모델</h3><div class=setrow><div class=t>텍스트</div><div class=muted>${m.text}</div></div>
-    <div class=setrow><div class=t>비전</div><div class=muted>${m.vision}</div></div>`;
-}catch(e){}}
+  const opts=m.presets.map(p=>`<option value="${p.key}"${p.key===m.current?' selected':''}>${p.label}</option>`).join('');
+  $('#models').innerHTML=`<h3>🧠 모델 <span class=muted style="font-weight:400">— 내 컴퓨터(GPU)에 맞게</span></h3>
+    <div class=setrow><div class=t>프리셋</div><select id=mpreset style="width:auto;min-width:260px;border:1px solid #d6dade;border-radius:8px;padding:8px">${opts}</select></div>
+    <div id=minfo></div>`;
+  $('#mpreset').onchange=async()=>{const k=$('#mpreset').value;
+    await fetch('/api/models',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({preset:k})});
+    renderModelInfo(m.presets.find(p=>p.key===k));};
+  renderModelInfo(m.presets.find(p=>p.key===m.current));
+}catch(e){$('#models').innerHTML='<div class=muted>로드 실패</div>';}}
 
 async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).json();
   const tag=u=>u?`<span style="font-size:10px;background:#eafaf0;color:#02b350;border-radius:4px;padding:1px 5px;margin-left:5px">${u==='순환'?'순환':u}</span>`:'';
@@ -383,10 +448,15 @@ async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).j
   $('#emph').innerHTML=h;
 }catch(e){$('#emph').innerHTML='<div class=muted>로드 실패</div>';}}
 async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json();
-  let h='<div class=promptbox><details open><summary>베이스 프롬프트 (역할·포맷 규칙)</summary><pre>'+esc(p.base)+'</pre></details>';
-  p.layers.forEach(([t,b])=>{h+=`<details><summary>${esc(t)}</summary><pre>${esc(b)}</pre></details>`;});
-  $('#prompt').innerHTML=h+'</div>';
-}catch(e){$('#prompt').innerHTML='<div class=muted>로드 실패</div>';}}
+  $('#promptedit').value=p.base_raw||'';
+  $('#promptlayers').innerHTML='<div class=promptbox>'+p.layers.map(([t,b])=>`<details><summary>${esc(t)}</summary><pre>${esc(b)}</pre></details>`).join('')+'</div>';
+}catch(e){$('#promptlayers').innerHTML='<div class=muted>로드 실패</div>';}}
+$('#promptsave').onclick=async()=>{
+  $('#promptsave').disabled=true; $('#promptstat').textContent='저장 중…';
+  try{const r=await fetch('/api/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({base:$('#promptedit').value})});
+    $('#promptstat').textContent=r.ok?'저장됨 ✓ 다음 생성부터 반영돼요':'저장 실패';
+  }catch(e){$('#promptstat').textContent='오류';}finally{$('#promptsave').disabled=false;}
+};
 async function loadVariants(){try{const f=await (await fetch('/api/format')).json();
   const row=(items,type,qcls)=>{
     if(!items.length)return '<div class=muted>캡쳐된 종류가 없어요</div>';
@@ -488,10 +558,7 @@ def _make_handler(state: dict):
             elif u.path == "/api/label/status":
                 self._send(200, json.dumps(state["label"]).encode())
             elif u.path == "/api/models":
-                from autoblog.config import load_models_config
-
-                m = load_models_config().get()
-                self._send(200, json.dumps({"text": m.text, "vision": m.vision}).encode())
+                self._send(200, json.dumps(_models_info()).encode())
             elif u.path == "/variant-img":
                 typ = Path(q.get("type", [""])[0]).name
                 val = Path(q.get("value", [""])[0]).name
@@ -520,6 +587,12 @@ def _make_handler(state: dict):
                     body = self._json_body()
                     n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
                     self._send(200, json.dumps({"ok": True, "favorites": n}).encode())
+                elif path == "/api/prompt":
+                    _save_prompt(self._json_body().get("base", ""))
+                    self._send(200, b'{"ok":true}')
+                elif path == "/api/models":
+                    _set_model_preset(self._json_body().get("preset", ""))
+                    self._send(200, b'{"ok":true}')
                 elif path == "/api/format":
                     import yaml
 
@@ -712,18 +785,49 @@ def _emphasis_preview() -> dict:
 
 
 def _prompt_preview() -> dict:
-    """초안 생성에 쓰이는 프롬프트(베이스 + 우리가 얹는 마커 지시문 레이어)."""
-    from autoblog.draft.prompts import load_base_prompt
+    """초안 생성에 쓰이는 프롬프트(편집용 raw default.md + 우리가 얹는 마커 지시문 레이어)."""
+    from autoblog.draft.prompts import DEFAULT_PROMPT_PATH
     from autoblog.publish.emphasis import EMPHASIS_INSTRUCTION
     from autoblog.publish.plan import STRUCTURE_INSTRUCTION
 
     return {
-        "base": load_base_prompt(),
+        "base_raw": DEFAULT_PROMPT_PATH.read_text(encoding="utf-8"),
         "layers": [
             ["강조 표시 (강조색 켤 때)", EMPHASIS_INSTRUCTION],
             ["구조 마커 (구분선·인용구 켤 때)", STRUCTURE_INSTRUCTION],
         ],
     }
+
+
+def _save_prompt(text: str) -> None:
+    from autoblog.draft.prompts import DEFAULT_PROMPT_PATH
+
+    DEFAULT_PROMPT_PATH.write_text(text, encoding="utf-8")
+
+
+def _models_info() -> dict:
+    """현재 모델 + 선택 가능한 프리셋 목록(모델 변경용)."""
+    from autoblog.config import load_models_config
+
+    cfg = load_models_config()
+    cur = cfg.get()
+    presets = [
+        {"key": k, "label": p.label, "text": p.text, "vision": p.vision, "note": p.note}
+        for k, p in cfg.presets.items()
+    ]
+    return {"current": cfg.default, "text": cur.text, "vision": cur.vision, "presets": presets}
+
+
+def _set_model_preset(key: str) -> None:
+    import yaml
+
+    from autoblog.config import CONFIG_DIR
+
+    path = CONFIG_DIR / "models.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if key in data.get("presets", {}):
+        data["default"] = key
+        path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
 def _sticker_image(ref: str) -> Path | None:
