@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from autoblog.collect.fact_card import CardType, FactCard
 from autoblog.draft.generate import DraftRequest, DraftResult, generate_draft
+from autoblog.draft.rules import CommonRules
 from autoblog.draft.style import StyleProfile
 from autoblog.publish.plan import PublishPlan, build_publish_plan
 from autoblog.publish.stickers import StickerCatalog, StickerPicker
@@ -55,6 +56,7 @@ def run_pipeline(
     product: str | None = None,
     photos: list[str] | None = None,
     style: StyleProfile | None = None,
+    rules: CommonRules | None = None,
     base_prompt: str | None = None,
     emphasis: bool = False,
     structure: bool = False,
@@ -86,6 +88,7 @@ def run_pipeline(
         experience_memo=memo,
         base_prompt=base_prompt,
         style=style,
+        rules=rules,
         emphasis=emphasis,
         structure=structure,
         sticker_labels=labels,
