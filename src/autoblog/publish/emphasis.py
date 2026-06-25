@@ -211,10 +211,37 @@ class EmphasisConfig(BaseModel):
     cycling_pool: list[int] = Field(default_factory=list)  # 일반·긍정 강조 순환 풀 예: [1, 3, 5]
     negative_pool: list[int] = Field(default_factory=list)  # 부정·주의 전용 순환 풀 예: [9, 16, 24]
     fixed_map: dict[str, int] = Field(default_factory=dict)  # 예: {"price": 7, "name": 4}
-    # role(강조색)별 용도 설명 — UI(서식 탭)에서 편집. EMPHASIS_INSTRUCTION에서 기본값을 덮어쓴다.
+    # role(강조색)별 용도 설명 — (레거시) 역할 기반 모델에서만 사용.
     role_desc: dict[str, str] = Field(default_factory=dict)  # 예: {"price": "가격·할인율", ...}
+    # 프리셋(강조색)마다 태그(용도) — UI(서식 탭)에서 색마다 직접 입력. 이게 있으면 이게 우선.
+    # 같은 태그를 여러 색에 주면 그 색들이 자동 순환(단조로움 방지). LLM은 <<태그:어구>>로 고른다.
+    preset_tags: dict[int, str] = Field(default_factory=dict)  # 예: {7: "좋았던 점", 8: "좋았던 점", 20: "가격"}
     max_per_paragraph: int | None = None  # (옵션) 문단당 강조 개수 상한
     min_sentence_gap: int | None = None  # (옵션) 강조 간 최소 문장 간격
+
+    def tag_pools(self) -> dict[str, list[int]]:
+        """효과적인 '태그 → 프리셋ID 목록'. preset_tags가 있으면 그대로(입력 순서 유지),
+        없으면 레거시(cycling_pool/negative_pool/fixed_map)에서 파생(과거 동작 유지)."""
+        if self.preset_tags:
+            pools: dict[str, list[int]] = {}
+            for pid, tag in self.preset_tags.items():
+                t = (tag or "").strip()
+                if t:
+                    pools.setdefault(t, []).append(int(pid))
+            return pools
+        pools = {}
+        if self.cycling_pool:
+            pools["cycle"] = list(self.cycling_pool)
+        if self.negative_pool:
+            pools["neg"] = list(self.negative_pool)
+        for role, pid in (self.fixed_map or {}).items():
+            pools.setdefault(role, []).append(pid)
+        return pools
+
+    def default_tag(self) -> str | None:
+        """LLM이 목록 밖 태그를 냈을 때 폴백할 기본 태그 — 색이 가장 많은(일반·범용) 태그."""
+        pools = self.tag_pools()
+        return max(pools, key=lambda t: len(pools[t])) if pools else None
 
 
 # 부정·주의(단점·웨이팅·아쉬운 점 등) 의미의 role 이름 — negative_pool로 배정.
@@ -235,48 +262,54 @@ def load_emphasis_config(path=None) -> EmphasisConfig:
     return EmphasisConfig(**data)
 
 
-# 초안 강조 마킹: <<role:강조할 텍스트>>  (예: <<price:13,000원>>, <<name:가게명>>, <<cycle:문장>>)
-# 기본 role 4종과 그 용도 설명/예시. role_desc(emphasis.yaml·서식 탭)로 설명을 덮어쓸 수 있다.
+# 초안 강조 마킹: <<태그:강조할 텍스트>>  (예: <<가격:13,000원>>, <<좋았던 점:정말 좋았어요>>)
+# 레거시(역할 기반) 설정에서 역할 키를 사람이 읽기 좋은 설명으로 보여줄 때 쓰는 라벨.
 DEFAULT_ROLE_DESC: dict[str, str] = {
     "cycle": "좋았던 점·핵심 감상·추천 포인트(긍정/일반)",
     "neg": "아쉬웠던 점·단점·주의사항(부정)",
     "price": "가격",
     "name": "가게명/상품명",
 }
-_ROLE_EXAMPLE: dict[str, str] = {
-    "cycle": "정말 부드러운 식감이었어요",
-    "neg": "웨이팅이 좀 길었어요",
-    "price": "13,000원",
-    "name": "가게이름",
-}
+# 태그 텍스트에 이 키워드가 보이면 더 어울리는 예시 어구를 메뉴에 보여준다.
+_EXAMPLE_HINTS: list[tuple[tuple[str, ...], str]] = [
+    (("가격", "할인", "원", "price"), "13,000원"),
+    (("단점", "주의", "아쉬", "neg", "warn"), "웨이팅이 좀 길었어요"),
+    (("가게", "상품", "이름", "name", "메뉴"), "가게이름"),
+]
+
+
+def _tag_example(tag: str) -> str:
+    low = (tag or "").casefold()
+    for keys, ex in _EXAMPLE_HINTS:
+        if any(k in low for k in keys):
+            return ex
+    return "정말 좋았어요"
 
 
 # 주의: "절제하세요" 같은 약한 표현이면 14b급 모델은 마커를 0개 단다(STRUCTURE_INSTRUCTION과 같은 교훈).
-# → "권장이 아니라 사용 + role 예시 + 개수 지정"으로 강하게 안내해야 실제로 emit된다.
+# → "권장이 아니라 사용 + 태그 메뉴 + 개수 지정"으로 강하게 안내해야 실제로 emit된다.
 def build_emphasis_instruction(config: "EmphasisConfig | None" = None) -> str:
-    """강조 지시문 — 기본 role 4종 + 사용자가 추가한 fixed_map/role_desc role을 나열.
+    """강조 지시문 — 설정된 태그(강조색) 목록을 LLM 메뉴로 나열.
 
-    각 role의 용도 설명은 config.role_desc(서식 탭에서 편집)가 있으면 그걸,
-    없으면 DEFAULT_ROLE_DESC를 쓴다. config가 없으면 기본 4종만 안내(과거 동작 유지).
+    preset_tags(서식 탭에서 색마다 입력)가 있으면 그 태그를, 없으면 레거시 역할
+    (cycle/neg/price/name)을 나열한다. 같은 태그가 여러 색이면 자동 순환된다(여기선 메뉴만).
     """
     config = config or EmphasisConfig()
-    desc = {**DEFAULT_ROLE_DESC, **(config.role_desc or {})}
-    roles = list(DEFAULT_ROLE_DESC)  # cycle, neg, price, name (항상 안내)
-    for k in (config.fixed_map or {}):  # 사용자가 추가한 고정 의미 role
-        if k not in roles:
-            roles.append(k)
-    for k in (config.role_desc or {}):  # 설명만 따로 단 커스텀 role
-        if k not in roles:
-            roles.append(k)
-    menu = "\n".join(
-        f"- {desc.get(r, r)}: <<{r}:{_ROLE_EXAMPLE.get(r, '강조할 어구')}>>" for r in roles
-    )
+    pools = config.tag_pools()
+    label = {**DEFAULT_ROLE_DESC, **(config.role_desc or {})}  # 레거시 역할 키 → 설명
+    if not pools:  # 태그가 하나도 없으면 기본 한 종류만 안내
+        pools = {"강조": []}
+    lines = []
+    for tag in pools:
+        shown = label.get(tag, tag)  # 레거시면 설명으로, 새 태그면 태그 그대로
+        lines.append(f"- {shown}: <<{tag}:{_tag_example(shown)}>>")
+    menu = "\n".join(lines)
     return (
         "[강조 표시] — 아래 마커로 핵심 어구를 실제로 감싸세요(권장이 아니라 사용).\n"
         "한 문단에 1~2군데, 글 전체에서 최소 5군데 이상은 감싸야 합니다.\n"
-        "상황에 맞는 role을 골라 쓰세요:\n"
+        "상황에 맞는 태그를 골라 핵심 어구를 <<태그:어구>> 로 감싸세요(태그는 아래 목록 글자 그대로):\n"
         f"{menu}\n"
-        "긍정·일반 강조는 <<cycle>>, 부정·주의는 반드시 <<neg>>로 구분하세요(색이 달라집니다).\n"
+        "목록에 없는 태그는 쓰지 마세요. 태그마다 색이 다릅니다.\n"
         "감싼 텍스트는 본문에 그대로 보이는 자연스러운 어구여야 합니다(마커 기호는 서식으로 바뀌어 화면엔 안 보임)."
     )
 
@@ -284,9 +317,15 @@ def build_emphasis_instruction(config: "EmphasisConfig | None" = None) -> str:
 # 기본(설정 없음) 지시문 — 단순 임포트용. 실제 생성은 build_emphasis_instruction(load_emphasis_config()) 사용.
 EMPHASIS_INSTRUCTION = build_emphasis_instruction()
 
-# 꺾쇠는 2개(<<role:text>>)가 원형이지만, 외부 챗봇이 1개(<role:text>)로 줄여
-# 출력하는 경우가 잦다. 1~2개를 모두 받아 본문 누수를 막는다(`\w+:` 조건이 오탐 방지).
-_MARKUP_RE = re.compile(r"<{1,2}(\w+):(.*?)>{1,2}", re.DOTALL)
+# 꺾쇠는 2개(<<태그:text>>)가 원형이지만, 외부 챗봇이 1개(<태그:text>)로 줄여
+# 출력하는 경우가 잦다. 1~2개를 모두 받아 본문 누수를 막는다.
+# 태그는 한글·영문·숫자에 더해 공백·중점(·)·슬래시(/)·괄호·하이픈까지 허용(예: "좋았던 점", "가게/상품명").
+_MARKUP_RE = re.compile(r"<{1,2}([\w ·/().\-]{1,40}?):(.*?)>{1,2}", re.DOTALL)
+
+
+def _norm_tag(t: str) -> str:
+    """태그 매칭 정규화 — 공백 제거 + 소문자화. LLM이 띄어쓰기·대소문자를 살짝 다르게 내도 매칭."""
+    return re.sub(r"\s+", "", t or "").casefold()
 
 
 def parse_emphasis_markup(text: str) -> tuple[str, list[EmphasisRequest]]:
@@ -384,21 +423,27 @@ def assign_emphasis(
 ) -> list[StyledSpan]:
     """강조 요청 목록 → 스타일 배정.
 
-    배정 우선순위(역할별):
-    - 고정 매핑 키(price·name 등): 항상 같은 프리셋 → 일관성.
-    - 부정·주의 role(neg 등): negative_pool에서 번갈아(전용 색). 풀이 비면 일반 풀로 폴백.
-    - 그 외('cycle' 포함): 일반 cycling_pool에서 번갈아.
+    각 태그(req.role)는 그 태그가 달린 프리셋 풀에서 번갈아 배정한다.
+    - 같은 태그가 여러 색이면 그 색들을 순환(단조로움 방지).
+    - 태그가 한 색이면 항상 같은 색(일관성).
+    - 목록 밖/오타 태그는 정규화 매칭 후, 그래도 없으면 기본 태그(가장 색 많은 태그) 풀로 폴백.
+    레거시 설정(preset_tags 없음)은 cycle/neg/fixed 역할에서 파생된 풀로 동일하게 동작.
     """
-    pool = CyclingPool(config.cycling_pool)
-    neg_pool = CyclingPool(config.negative_pool or config.cycling_pool)
+    pools_ids = config.tag_pools()
+    pools = {tag: CyclingPool(ids) for tag, ids in pools_ids.items()}
+    by_norm = {_norm_tag(tag): tag for tag in pools}  # 정규화 키 → 실제 태그
+    default = config.default_tag()
+    # 태그가 하나도 없으면 전체 프리셋을 한 풀로(강조 자체는 동작하게)
+    fallback = None if pools else CyclingPool(sorted(presets))
     out: list[StyledSpan] = []
     for req in requests:
-        if req.role in config.fixed_map:
-            pid = config.fixed_map[req.role]
-        elif req.role in NEGATIVE_ROLES:
-            pid = neg_pool.next()
-        else:
-            pid = pool.next()
+        tag = by_norm.get(_norm_tag(req.role))
+        cp = pools.get(tag) if tag else None
+        if cp is None and default:
+            cp = pools.get(default)
+        if cp is None:
+            cp = fallback
+        pid = cp.next() if cp else None
         style = presets.get(pid, EmphasisStyle()) if pid is not None else EmphasisStyle()
         out.append(StyledSpan(text=req.text, preset_id=pid, style=style))
     return out

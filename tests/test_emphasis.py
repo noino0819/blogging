@@ -97,6 +97,25 @@ def test_assign_emphasis_negative_pool_separate():
     assert ids == [1, 5, 3, 6, 7]
 
 
+def test_assign_emphasis_preset_tags_rotate_and_fix():
+    # 같은 태그 여러 색 → 순환 / 한 색 → 고정 / 띄어쓰기 다른 태그도 매칭 / 모르는 태그 → 기본 풀
+    config = EmphasisConfig(preset_tags={1: "좋았던 점", 3: "좋았던 점", 5: "가격"})
+    reqs = [
+        EmphasisRequest(text="a", role="좋았던 점"),
+        EmphasisRequest(text="b", role="좋았던점"),  # 띄어쓰기 다름 → 관용 매칭
+        EmphasisRequest(text="c", role="가격"),
+        EmphasisRequest(text="d", role="없는태그"),  # 폴백 → 기본(색 많은) 태그 풀
+    ]
+    ids = [s.preset_id for s in assign_emphasis(reqs, DEFAULT_STYLES, config)]
+    assert ids == [1, 3, 5, 1]  # 좋았던점 1→3 순환, 가격 5 고정, 없는태그→좋았던점 풀(1)
+
+
+def test_parse_markup_tag_with_space_and_slash():
+    clean, reqs = parse_emphasis_markup("<<가게/상품명:수지골>>에서 <<좋았던 점:국물>>")
+    assert clean == "수지골에서 국물"
+    assert [(r.role, r.text) for r in reqs] == [("가게/상품명", "수지골"), ("좋았던 점", "국물")]
+
+
 def test_assign_emphasis_negative_pool_falls_back_to_cycling():
     # negative_pool 미설정 시 neg도 일반 풀로 폴백(색은 같이 돌아감)
     config = EmphasisConfig(cycling_pool=[1, 3])

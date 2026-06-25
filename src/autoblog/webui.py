@@ -796,34 +796,33 @@ async function saveKey(provider){const v=$('#apikey').value.trim(); if(!v){toast
     else toast('API 키 저장 실패','err');
   }catch(e){toast('API 키 오류: '+e,'err');}finally{const x=$('#apikeysave'); if(x)x.disabled=false;}}
 
-async function loadEmphasis(){try{const e=await (await fetch('/api/emphasis')).json();
-  const tag=u=>u?`<span style="font-size:10px;background:#eafaf0;color:#02b350;border-radius:4px;padding:1px 5px;margin-left:5px">${u==='순환'?'순환':u}</span>`:'';
+function renderEmphasis(e){
+  // 같은 태그가 몇 색에 걸렸는지 — '순환 N색' 배지에 사용
+  const cntOf={}; (e.groups||[]).forEach(g=>{g.ids.forEach(id=>cntOf[id]=g.ids.length);});
   const card=s=>{
     const hasStyle=s.text_color||s.background_color||s.font;
     const stl=hasStyle?((s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'')+(s.font?`font-family:'se-${s.font}';`:'')+(s.size?`font-size:${s.size}px;`:'')):'color:#9aa5b1';
     const meta=[s.font_name,s.size?s.size+'pt':''].filter(Boolean).join(' · ');
-    return `<div class=epcell><div class=epnum>#${s.id}${tag(s.use)}</div>
+    const n=cntOf[s.id]||0;
+    const badge=s.tag?`<span style="font-size:10px;background:#eafaf0;color:#02b350;border-radius:4px;padding:1px 5px;margin-left:5px">${n>1?'순환 '+n+'색':'고정'}</span>`:'';
+    return `<div class=epcell><div class=epnum>#${s.id}${badge}</div>
       <span class="sw-chip" style="${stl}">${hasStyle?'강조 텍스트':'(서식 없음)'}</span>
-      ${meta?`<div class=epmeta>${meta}</div>`:'<div class=epmeta>&nbsp;</div>'}</div>`;};
-  let h=`<div class=muted style="margin-bottom:10px">출처: <b>${e.source}</b> · 순환 풀 [${e.cycling.join(', ')}] · 고정 ${Object.entries(e.fixed).map(([k,v])=>k+'→#'+v).join(', ')||'없음'}</div>`;
-  h+='<div class=epgrid>'+e.all.map(card).join('')+'</div>';
-  // 역할별 용도 설명 — 색마다 언제 쓸지 적으면 LLM 프롬프트로 전달됨
-  const byId={}; (e.all||[]).forEach(s=>byId[s.id]=s);
-  const sw=s=>{if(!s||!s.defined)return '';
-    const st=(s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'');
-    return `<span style="${st}border:1px solid #e3e8ee;border-radius:5px;padding:1px 6px;font-size:11px;margin-left:4px">#${s.id} 강조</span>`;};
-  const rows=(e.roles||[]).map(r=>`<div class=ercell style="padding:9px 0;border-top:1px solid #eef1f5">
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><b style="font-size:13px">${esc(r.label)}</b>
-        <code style="font-size:11px;color:#7a8694">&lt;&lt;${esc(r.role)}&gt;&gt;</code>${r.ids.map(id=>sw(byId[id])).join('')}</div>
-      <input class=erdesc data-role="${esc(r.role)}" value="${esc(r.desc)}" placeholder="이 색을 언제 쓸지 한 줄로 — LLM에 전달됩니다"
-        style="width:100%;margin-top:6px;padding:7px 9px;border:1px solid #e3e8ee;border-radius:7px;font-size:13px;box-sizing:border-box"></div>`).join('');
-  h+=`<div class=sub-h style="margin-top:16px">역할별 용도 설명 <span class=muted style="font-weight:400">— 각 강조색을 언제 쓸지 적으면 글 생성 프롬프트에 그대로 들어갑니다</span></div>${rows}`;
+      ${meta?`<div class=epmeta>${meta}</div>`:'<div class=epmeta>&nbsp;</div>'}
+      <input class=eptag data-id="${s.id}" value="${esc(s.tag||'')}" placeholder="태그(용도)" title="이 색의 용도를 적으세요. 같은 태그를 여러 색에 주면 자동 순환됩니다."
+        style="width:100%;margin-top:6px;padding:5px 7px;border:1px solid #e3e8ee;border-radius:6px;font-size:12px;box-sizing:border-box"></div>`;};
+  let h=`<div class=muted style="margin-bottom:10px">출처: <b>${esc(e.source||'')}</b> · 색마다 <b>태그(용도)</b>를 적으세요. 같은 태그를 여러 색에 주면 글마다 <b>번갈아</b> 쓰여 단조롭지 않아요. 비워두면 그 색은 <b>안 쓰임</b>. LLM은 태그 이름으로 골라 씁니다.</div>`;
+  h+='<div class=epgrid>'+(e.all||[]).map(card).join('')+'</div>';
+  // 가시성 — LLM에게 실제로 들어가는 강조 지시문을 그대로 보여줌
+  h+=`<div class=sub-h style="margin-top:16px">✍️ 생성 시 LLM에게 이렇게 안내됩니다 <span class=muted style="font-weight:400">— 위 태그가 그대로 메뉴가 됩니다</span></div>
+    <pre style="white-space:pre-wrap;background:#f7f9fb;border:1px solid #eef1f5;border-radius:8px;padding:11px 13px;font-size:12px;line-height:1.6;margin-top:8px">${esc(e.instruction||'')}</pre>`;
   $('#emph').innerHTML=h;
+}
+async function loadEmphasis(){try{renderEmphasis(await (await fetch('/api/emphasis')).json());
 }catch(e){$('#emph').innerHTML='<div class=muted>로드 실패</div>';}}
-// 역할별 용도 설명 저장(입력칸에서 포커스 빠지면) — emphasis.yaml의 role_desc에 기록
-$('#emph').addEventListener('change',async e=>{const inp=e.target.closest('.erdesc'); if(!inp)return;
-  try{const r=await fetch('/api/emphasis',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({role:inp.dataset.role,desc:inp.value})});
-    if(r.ok)toast('용도 설명 저장됨 ✓ 다음 생성부터 반영','ok',1800);
+// 태그 저장(입력칸에서 포커스 빠지면) — emphasis.yaml의 preset_tags에 기록 후 미리보기 갱신
+$('#emph').addEventListener('change',async e=>{const inp=e.target.closest('.eptag'); if(!inp)return;
+  try{const r=await fetch('/api/emphasis',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:+inp.dataset.id,tag:inp.value})});
+    if(r.ok){renderEmphasis(await r.json()); toast('태그 저장됨 ✓ 다음 생성부터 반영','ok',1600);}
   }catch(e){}});
 async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json();
   $('#promptedit').value=p.base_raw||'';
