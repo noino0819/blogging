@@ -68,6 +68,49 @@ def place_url(
 
 
 @app.command()
+def draft(
+    memo: str = typer.Argument(..., help="경험 메모(글의 중심/주연)"),
+    place_url: str = typer.Option(None, "--place-url", help="맛집: 플레이스 URL로 사실 카드"),
+    product: str = typer.Option(None, "--product", help="상품: 검색어로 사실 카드"),
+    tone: str = typer.Option(None, "--tone", help="문체 톤 지시 (예: '친근한 반말로')"),
+    prompt_file: str = typer.Option(
+        None, "--prompt-file", help="베이스 프롬프트 파일 경로(기본 config/prompts/default.md)"
+    ),
+):
+    """경험 메모 + 사실 카드 → 경험 중심 블로그 초안 생성."""
+    from autoblog.collect.fact_card import CardType, FactCard
+    from autoblog.draft.generate import DraftRequest, generate_draft
+    from autoblog.draft.prompts import load_base_prompt
+    from autoblog.draft.style import StyleProfile
+
+    if place_url:
+        from autoblog.collect.place import collect_place_from_url
+
+        card = collect_place_from_url(place_url)
+    elif product:
+        from autoblog.collect.product import collect_product
+
+        card = collect_product(product)
+    else:
+        card = FactCard(type=CardType.place)
+        typer.echo("(사실 카드 없이 경험 메모만으로 작성)", err=True)
+
+    req = DraftRequest(
+        fact_card=card,
+        experience_memo=memo,
+        base_prompt=load_base_prompt(prompt_file) if prompt_file else None,
+        style=StyleProfile(tone=tone) if tone else None,
+    )
+    result = generate_draft(req)
+    typer.echo(result.text)
+    if result.checklist:
+        typer.echo("\n--- 가이드라인 체크 ---", err=True)
+        for c in result.checklist:
+            mark = "O" if c.ok else "X"
+            typer.echo(f"[{mark}] {c.item} {c.detail}", err=True)
+
+
+@app.command()
 def doctor():
     """환경 점검 — API 키/Ollama 설정 여부 + 검색 API 라이브 호출."""
     from autoblog.collect.place import ping_search_api
