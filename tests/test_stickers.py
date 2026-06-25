@@ -9,6 +9,25 @@ from autoblog.publish.stickers import (
 )
 
 
+def test_label_catalog_favorites_only(monkeypatch):
+    import autoblog.publish.stickers as st
+
+    monkeypatch.setattr(st, "label_sticker", lambda img, model=None: ["테스트"])
+    cat = StickerCatalog(
+        stickers=[
+            Sticker(pack="ogq_a", index=0, image="a/0.png"),
+            Sticker(pack="ogq_a", index=1, image="a/1.png"),
+            Sticker(pack="ogq_a", index=2, image="a/2.png", tags=["기존"]),  # 이미 태그 → 스킵
+        ],
+        favorites=["ogq_a:0"],
+    )
+    out = st.label_catalog(cat, only_refs={"ogq_a:0"})
+    by = out.by_ref()
+    assert by["ogq_a:0"].tags == ["테스트"]  # 즐겨찾기만 라벨
+    assert by["ogq_a:1"].tags == []  # 즐겨찾기 아님 → 안 함
+    assert by["ogq_a:2"].tags == ["기존"]  # 기존 보존
+
+
 def test_crop_sprite_grid():
     from io import BytesIO
 

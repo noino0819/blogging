@@ -89,7 +89,7 @@ function render(){
        <input class=tags value="${(s.tags||[]).join(', ').replace(/"/g,'&quot;')}" placeholder="상황 태그(쉼표)">`;
      c.querySelector('.star').onclick=()=>{const i=CAT.favorites.indexOf(ref);
        if(i>=0)CAT.favorites.splice(i,1); else CAT.favorites.push(ref);
-       s.reviewed=true; dirty=true; render();};
+       dirty=true; render();};  // 즐겨찾기는 선택일 뿐 — reviewed(태그 검수)는 안 건드림
      c.querySelector('.tags').onchange=e=>{s.tags=e.target.value.split(',').map(t=>t.trim()).filter(Boolean);
        s.reviewed=true; dirty=true; stat();};
      g.appendChild(c);

@@ -314,15 +314,21 @@ def label_catalog(
     on_progress=None,
     save_path: Path | None = None,
     save_every: int = 20,
+    only_refs: set[str] | None = None,
 ) -> StickerCatalog:
     """카탈로그의 스티커들에 비전 태그 자동 부여(새 객체 반환).
 
     only_new=True면 태그가 비었고 검수 안 된 스티커만 라벨링(증분, 검수 보존).
+    only_refs를 주면 그 ref(예: 즐겨찾기)만 라벨링 — 안 쓸 스티커까지 도는 낭비 방지.
     on_progress(done, total, sticker): 진행 콜백(선택) — 342개 등 대량일 때 진행 표시용.
     save_path 주면 save_every개마다 중간 저장(긴 작업 중 끊겨도 진행분 보존).
     """
     working = list(catalog.stickers)
-    targets = [i for i, s in enumerate(working) if _needs_label(s, only_new)]
+    targets = [
+        i
+        for i, s in enumerate(working)
+        if _needs_label(s, only_new) and (only_refs is None or s.ref in only_refs)
+    ]
     total = len(targets)
     for done, i in enumerate(targets, 1):
         s = working[i]

@@ -244,32 +244,51 @@ def stickers_pull(
 
 @stickers_app.command("label")
 def stickers_label(
-    all_again: bool = typer.Option(False, "--all", help="검수/기존태그 무시하고 전부 재라벨"),
+    favorites_only: bool = typer.Option(
+        True, "--favorites-only/--all-stickers", help="즐겨찾기한 것만 라벨(기본). --all-stickers면 전체"
+    ),
+    all_again: bool = typer.Option(False, "--all", help="검수/기존태그 무시하고 재라벨"),
 ):
-    """비전 모델로 스티커에 감정/상황 태그 자동 부여(증분: 새 것만, 검수 보존)."""
+    """비전 모델로 스티커에 감정/상황 태그 자동 부여(증분: 새 것만, 검수 보존).
+
+    기본은 즐겨찾기한 스티커만 — 안 쓸 것까지 도는 낭비를 막는다(전체는 ~6초/개로 느림).
+    먼저 autoblog stickers review 로 ★즐겨찾기를 지정하세요.
+    """
     from autoblog.publish.stickers import (
+        STICKER_CONFIG_PATH,
         label_catalog,
         load_sticker_catalog,
         save_sticker_catalog,
     )
-
-    from autoblog.publish.stickers import STICKER_CONFIG_PATH
 
     cat = load_sticker_catalog()
     if not cat.stickers:
         typer.echo("카탈로그가 비었습니다 — 먼저 autoblog stickers pull")
         raise typer.Exit(1)
 
+    only_refs = None
+    if favorites_only:
+        only_refs = set(cat.favorites)
+        if not only_refs:
+            typer.echo("즐겨찾기한 스티커가 없습니다 — autoblog stickers review 에서 ★를 먼저 지정하세요.")
+            typer.echo("(전체를 라벨하려면 --all-stickers)")
+            raise typer.Exit(1)
+        typer.echo(f"즐겨찾기 {len(only_refs)}개만 라벨링합니다.")
+
     def progress(done, total, s):
         if done == 1 or done % 10 == 0 or done == total:
             typer.echo(f"  [{done}/{total}] {s.ref}: {', '.join(s.tags) or '(태그 없음)'}")
 
     labeled = label_catalog(
-        cat, only_new=not all_again, on_progress=progress, save_path=STICKER_CONFIG_PATH
+        cat,
+        only_new=not all_again,
+        on_progress=progress,
+        save_path=STICKER_CONFIG_PATH,
+        only_refs=only_refs,
     )
     save_sticker_catalog(labeled)
     tagged = sum(1 for s in labeled.stickers if s.tags)
-    typer.echo(f"라벨링 완료: {tagged}/{len(labeled.stickers)}개에 태그. autoblog stickers review 로 검수하세요.")
+    typer.echo(f"라벨링 완료: 태그 {tagged}개. autoblog stickers review 로 검수하세요.")
 
 
 @stickers_app.command("review")
