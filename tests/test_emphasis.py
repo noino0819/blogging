@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from autoblog.publish.emphasis import (
     DEFAULT_STYLES,
     CyclingPool,
@@ -7,6 +10,28 @@ from autoblog.publish.emphasis import (
     load_power_shortcuts,
     parse_style,
 )
+
+FIXTURE = Path(__file__).parent / "fixtures" / "power_shortcuts.json"
+
+
+def test_load_real_power_shortcuts_export():
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    styles = load_power_shortcuts(data)
+
+    # 단축키 1: actions=[textColor,fontFamily,fontSize] → 배경은 미적용
+    s1 = styles[1]
+    assert s1.text_color == "#eb7d7d"
+    assert s1.font_family == "nanumuriddalsongeulssi"
+    assert s1.font_size == "16"
+    assert s1.background_color is None  # 값은 있으나 actions에 없음
+
+    # 단축키 7: actions=[textColor,backgroundColor]
+    assert styles[7].text_color == "#065F46"
+    assert styles[7].background_color == "#D1FAE5"
+    assert styles[7].font_family is None
+
+    # 단축키 6: editorMode=insert(인용 삽입) → 텍스트 강조에서 제외
+    assert 6 not in styles
 
 
 def test_parse_style_lenient_keys():

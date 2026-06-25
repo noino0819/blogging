@@ -56,12 +56,48 @@ def parse_style(entry: dict) -> EmphasisStyle:
     )
 
 
+def _is_flat_export(data) -> bool:
+    """실제 파워 단축키 export(평면 suffix 형식)인지 판별."""
+    return isinstance(data, dict) and any(
+        k in data for k in ("hasInitialized", "textColor1", "actions1", "formatActions1")
+    )
+
+
+def _load_flat(data: dict, slots: int = 24) -> dict[int, EmphasisStyle]:
+    """평면 형식(textColor1, actions1, editorMode1 …) → {번호: EmphasisStyle}.
+
+    각 단축키의 활성 속성은 editorMode에 따라 formatActions/actions로 결정한다.
+    값이 있어도 actions에 없으면 미적용(사용자가 끈 속성). insert 모드(인용/구분선)는 제외.
+    """
+    result: dict[int, EmphasisStyle] = {}
+    for n in range(1, slots + 1):
+        mode = data.get(f"editorMode{n}", "format")
+        if mode == "insert":
+            continue  # 삽입형(인용/구분선)은 텍스트 강조가 아님
+        actions = set(data.get(f"formatActions{n}") or data.get(f"actions{n}") or [])
+        size = data.get(f"fontSize{n}")
+        style = EmphasisStyle(
+            text_color=data.get(f"textColor{n}") if "textColor" in actions else None,
+            background_color=(data.get(f"backgroundColor{n}") or None)
+            if "backgroundColor" in actions
+            else None,
+            font_family=data.get(f"fontFamily{n}") if "fontFamily" in actions else None,
+            font_size=str(size) if "fontSize" in actions and size else None,
+        )
+        if not style.is_empty():
+            result[n] = style
+    return result
+
+
 def load_power_shortcuts(data) -> dict[int, EmphasisStyle]:
     """파워 단축키 JSON(export) → {단축키번호: EmphasisStyle}.
 
-    list( [{...}, ...] ) 또는 dict( {"1": {...}} / {"shortcuts": [...]} ) 모두 수용.
-    실제 export 형식이 확정되면 이 함수만 맞추면 된다.
+    실제 export는 평면 suffix 형식(textColor1, actions1, editorMode1 …).
+    호환을 위해 list([{...}]) / dict({"1": {...}} / {"shortcuts": [...]}) 형식도 수용.
     """
+    if _is_flat_export(data):
+        return _load_flat(data)
+
     items: dict[int, dict] = {}
     if isinstance(data, dict) and "shortcuts" in data:
         data = data["shortcuts"]
