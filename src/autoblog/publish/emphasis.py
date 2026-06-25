@@ -286,31 +286,46 @@ def _tag_example(tag: str) -> str:
     return "정말 좋았어요"
 
 
-# 주의: "절제하세요" 같은 약한 표현이면 14b급 모델은 마커를 0개 단다(STRUCTURE_INSTRUCTION과 같은 교훈).
-# → "권장이 아니라 사용 + 태그 메뉴 + 개수 지정"으로 강하게 안내해야 실제로 emit된다.
+# 프롬프트 엔지니어링 노트(태그 모델):
+# - 14b급 모델은 "절제하세요" 같은 약한 표현이면 마커를 0개 단다 → "반드시 사용 + 개수 지정 + 예시".
+# - 태그가 유저 자유 입력(한글·공백)이라 LLM이 살짝 바꿔 적는 게 최대 리스크 → "글자 그대로 복사"를 최우선 규칙으로.
+# - 같은 태그를 여러 번 써도 색이 자동 순환되므로, "반복 회피하지 말라"를 명시(순환 기능을 살림).
 def build_emphasis_instruction(config: "EmphasisConfig | None" = None) -> str:
-    """강조 지시문 — 설정된 태그(강조색) 목록을 LLM 메뉴로 나열.
+    """강조 지시문 — 설정된 태그(강조색) 목록을 LLM 메뉴 + 본문 예시 + 규칙으로 안내.
 
     preset_tags(서식 탭에서 색마다 입력)가 있으면 그 태그를, 없으면 레거시 역할
-    (cycle/neg/price/name)을 나열한다. 같은 태그가 여러 색이면 자동 순환된다(여기선 메뉴만).
+    (cycle/neg/price/name)을 나열한다. 같은 태그가 여러 색이면 색이 자동 순환된다.
     """
     config = config or EmphasisConfig()
     pools = config.tag_pools()
     label = {**DEFAULT_ROLE_DESC, **(config.role_desc or {})}  # 레거시 역할 키 → 설명
     if not pools:  # 태그가 하나도 없으면 기본 한 종류만 안내
         pools = {"강조": []}
-    lines = []
-    for tag in pools:
-        shown = label.get(tag, tag)  # 레거시면 설명으로, 새 태그면 태그 그대로
-        lines.append(f"- {shown}: <<{tag}:{_tag_example(shown)}>>")
-    menu = "\n".join(lines)
+    tags = list(pools)
+
+    def menu_line(t: str) -> str:
+        desc = label.get(t, t)  # 레거시면 설명, 새 태그면 태그 자신
+        marker = f"<<{t}:{_tag_example(desc)}>>"
+        return f"  · {marker}" if desc == t else f"  · {marker}  ({desc})"
+
+    menu = "\n".join(menu_line(t) for t in tags)
+    # 본문에 어떻게 박는지 인라인 예시(최대 3개 태그) — 마커 형식과 '태그 그대로'를 동시에 시연
+    demo = ", ".join(f"<<{t}:{_tag_example(label.get(t, t))}>>" for t in tags[:3])
+    max_p = config.max_per_paragraph or 2
     return (
-        "[강조 표시] — 아래 마커로 핵심 어구를 실제로 감싸세요(권장이 아니라 사용).\n"
-        "한 문단에 1~2군데, 글 전체에서 최소 5군데 이상은 감싸야 합니다.\n"
-        "상황에 맞는 태그를 골라 핵심 어구를 <<태그:어구>> 로 감싸세요(태그는 아래 목록 글자 그대로):\n"
+        "[강조 표시] 핵심 어구를 마커로 감싸 색을 입힙니다 — 권장이 아니라 반드시 사용하세요.\n"
+        f"분량: 한 문단에 최대 {max_p}군데, 글 전체에서 5군데 이상.\n"
+        "방법: 강조할 짧은 어구(문장 전체 말고 핵심만)를 골라 << >> 로 감싸고, "
+        "콜론 앞에 아래 목록의 태그를 그대로 적습니다 → <<태그:어구>>\n"
+        "쓸 수 있는 태그(상황에 맞는 것만 고르기):\n"
         f"{menu}\n"
-        "목록에 없는 태그는 쓰지 마세요. 태그마다 색이 다릅니다.\n"
-        "감싼 텍스트는 본문에 그대로 보이는 자연스러운 어구여야 합니다(마커 기호는 서식으로 바뀌어 화면엔 안 보임)."
+        f"본문 적용 예: {demo}\n"
+        "규칙:\n"
+        "- 태그는 위 목록에 있는 것만, 한 글자도 바꾸지 말고 그대로 복사(띄어쓰기까지 동일).\n"
+        "- 감싼 어구는 본문에 자연스럽게 읽히는 실제 표현이어야 합니다(마커 << >>는 화면엔 안 보이고 색으로 바뀜).\n"
+        "- 같은 태그를 여러 번 써도 됩니다 — 색은 알아서 번갈아 입혀지니 반복을 피하지 마세요.\n"
+        "- 마커를 겹치거나 중첩하지 말고, 한 마커엔 핵심 어구 하나만.\n"
+        "- 딱 맞는 태그가 없으면 그 부분은 강조하지 않아도 됩니다(억지로 만들지 않기)."
     )
 
 

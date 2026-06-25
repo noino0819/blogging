@@ -1393,14 +1393,19 @@ def _prompt_preview() -> dict:
     from autoblog.draft.prompts import DEFAULT_PROMPT_PATH
     from autoblog.publish.emphasis import build_emphasis_instruction, load_emphasis_config
     from autoblog.publish.plan import build_structure_instruction
+    from autoblog.publish.stickers import build_sticker_instruction, load_sticker_catalog
 
     dkeys, qkeys = _enabled_variant_keys()  # 미리보기도 현재 고른 종류만 반영
+    layers = [
+        ["강조 표시 (강조색 켤 때)", build_emphasis_instruction(load_emphasis_config())],
+        ["구조 마커 (구분선·인용구 켤 때)", build_structure_instruction(dkeys, qkeys)],
+    ]
+    sticker_instr = build_sticker_instruction(load_sticker_catalog().labels())
+    if sticker_instr:  # 보유 스티커 라벨이 있을 때만(감정·구분선 스티커 안내)
+        layers.append(["스티커 (스티커 켤 때)", sticker_instr])
     return {
         "base_raw": DEFAULT_PROMPT_PATH.read_text(encoding="utf-8"),
-        "layers": [
-            ["강조 표시 (강조색 켤 때)", build_emphasis_instruction(load_emphasis_config())],
-            ["구조 마커 (구분선·인용구 켤 때)", build_structure_instruction(dkeys, qkeys)],
-        ],
+        "layers": layers,
     }
 
 

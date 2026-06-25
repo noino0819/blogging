@@ -224,21 +224,48 @@ def crop_sprite(sprite_png: bytes, cols: int, count: int, index: int, scale: int
 
 
 # --- 초안 지시문 (LLM이 [스티커:상황] 마커 emit) ---
-def build_sticker_instruction(labels: list[str]) -> str | None:
-    """보유 스티커 상황 라벨 목록 → 초안 지시문(EMPHASIS_INSTRUCTION 패턴).
+def _is_divider_label(label: str) -> bool:
+    """구분선 성격의 스티커 라벨인지 — 태그에 '구분선/구분/divider'가 들어가면 구분선용으로 본다."""
+    low = label.replace(" ", "").casefold()
+    return "구분선" in low or "구분" in low or "divider" in low
 
-    LLM이 없는 상황을 지어내지 않도록 실제 보유 라벨만 노출한다. 라벨 없으면 None.
+
+def build_sticker_instruction(labels: list[str]) -> str | None:
+    """보유 스티커 상황 라벨 목록 → 초안 지시문(강조/구조 지시문과 같은 엔지니어링 패턴).
+
+    감정 스티커(문단 끝)와 구분선 스티커(화제 전환 사이)를 나눠 안내한다 —
+    '구분선'이 태그에 든 스티커는 구역 나누개로 쓰게 한다. 보유 라벨만 노출(환각 방지).
+    14b급은 "절제" 안내면 0개 → "반드시 사용 + 개수 + 실제 라벨 예시"로 강하게 안내.
     """
     labels = [str(label).strip() for label in labels if str(label).strip()]
     if not labels:
         return None
-    shown = ", ".join(labels[:40])
-    # "절제" 안내면 14b가 0개 → "최소 1번 + 예시"로 바꾸니 안정적으로 emit(라이브 측정).
-    return (
-        "[스티커] — 감정이 드러나는 문단 끝에 [스티커:상황] 을 그 줄에 단독으로 최소 1번, 최대 3번 넣으세요.\n"
-        f"- 사용 가능한 상황(이 중에서만): {shown}\n"
-        "예: 정말 맛있었어요.\n[스티커:행복]\n목록에 없는 상황은 쓰지 마세요."
+    divider_labels = [label for label in labels if _is_divider_label(label)]
+    mood_labels = [label for label in labels if not _is_divider_label(label)]
+
+    parts = ["[스티커] 어울리는 자리에 [스티커:상황] 을 그 줄에 혼자 넣어 스티커를 답니다(권장이 아니라 사용)."]
+    if mood_labels:
+        mex = mood_labels[0]
+        parts.append(
+            "1) 감정 스티커 — 감정·반응이 드러나는 문단 끝 줄에 단독으로, 글 전체 1~3번.\n"
+            f"   쓸 수 있는 상황(이 중에서만, 글자 그대로): {', '.join(mood_labels[:40])}\n"
+            f"   예) 정말 맛있었어요.\n   [스티커:{mex}]"
+        )
+    if divider_labels:
+        dex = divider_labels[0]
+        parts.append(
+            "2) 구분선 스티커 — 화제가 바뀌는 문단 사이에 단독으로 넣어 구역을 나눕니다"
+            "(감정과 무관, 글 전체 0~2번).\n"
+            f"   쓸 수 있는 상황(이 중에서만, 글자 그대로): {', '.join(divider_labels[:20])}\n"
+            f"   예) …메뉴 이야기 끝.\n   [스티커:{dex}]\n   이제 분위기 이야기…"
+        )
+    parts.append(
+        "규칙:\n"
+        "- 상황 이름은 위 목록에 있는 것만, 한 글자도 바꾸지 말고 그대로(띄어쓰기까지 동일).\n"
+        "- [스티커:…] 는 반드시 그 줄에 혼자(앞뒤에 다른 글자 X).\n"
+        "- 목록에 없는 상황은 절대 쓰지 마세요(없으면 그 자리엔 안 넣어도 됨)."
     )
+    return "\n".join(parts)
 
 
 # --- YAML IO (유저 검수 파일) ---
