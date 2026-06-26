@@ -73,6 +73,7 @@ def build_export_prompt(
     structure: bool = False,
     stickers: bool = False,
     sticker_catalog: StickerCatalog | None = None,
+    sticker_favorites_only: bool = True,
     divider_variants: list[str] | None = None,
     quote_variants: list[str] | None = None,
 ) -> str:
@@ -94,7 +95,7 @@ def build_export_prompt(
             from autoblog.publish.stickers import load_sticker_catalog
 
             sticker_catalog = load_sticker_catalog()
-        labels = sticker_catalog.labels()
+        labels = sticker_catalog.labels(favorites_only=sticker_favorites_only)
     req = DraftRequest(
         fact_card=card,
         experience_memo=memo,
@@ -151,7 +152,7 @@ def plan_from_text(
 
             sticker_catalog = load_sticker_catalog()
         catalog = sticker_catalog
-        labels = catalog.labels()
+        labels = catalog.labels(favorites_only=sticker_favorites_only)
     card = FactCard(type=CardType.place)
     if photos:
         from autoblog.collect.photos import classify_photos_into
@@ -220,7 +221,7 @@ def run_pipeline(
 
             sticker_catalog = load_sticker_catalog()
         catalog = sticker_catalog
-        labels = catalog.labels()
+        labels = catalog.labels(favorites_only=sticker_favorites_only)
 
     place_on, place_query, place_address = _place_info(card)
 

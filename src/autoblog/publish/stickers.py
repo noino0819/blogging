@@ -56,14 +56,26 @@ class StickerCatalog(BaseModel):
     def by_ref(self) -> dict[str, Sticker]:
         return {s.ref: s for s in self.stickers}
 
-    def labels(self) -> list[str]:
-        """유효(비stale) 스티커의 모든 태그 distinct — 초안 지시문에 노출."""
+    def labels(self, favorites_only: bool = True) -> list[str]:
+        """유효(비stale) 스티커의 태그 distinct — 초안 지시문에 노출.
+
+        favorites_only=True(기본): 즐겨찾기한 스티커의 태그만 — UI 약속("즐겨찾기한 것만
+        쓰임")과 picker(find)의 동작에 맞춤. 그래야 프롬프트에 보이는 상황 목록과 실제로
+        붙는 스티커가 일치한다(전체를 노출하면 즐겨찾기에 없는 라벨을 LLM이 써버린다).
+        '.'·영문으로 시작하는 비정상 자동 라벨은 제외한다.
+        """
+        favset = set(self.favorites)
         seen: list[str] = []
         for s in self.stickers:
             if s.stale:
                 continue
+            if favorites_only and s.ref not in favset:
+                continue
             for t in s.tags:
-                if t and t not in seen:
+                t = str(t).strip()
+                if not t or t[0] == "." or t[0].isascii() and t[0].isalpha():
+                    continue  # '.lazy' 같은 비전 오라벨 차단(한글 상황 라벨만)
+                if t not in seen:
                     seen.append(t)
         return seen
 
