@@ -173,7 +173,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .vcell .vdesc{font-size:11.5px;color:var(--sub);margin-top:2px;line-height:1.4}
  .vcell img{width:100%;height:auto;max-height:38px;object-fit:contain;object-position:left}
  .vcell.q img{max-height:140px;object-position:center}
- .epgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+ .epgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+ .eprow{display:flex;align-items:center;gap:5px;margin-top:6px;font-size:11px;color:var(--sub)}
+ .eprow label{display:flex;align-items:center;gap:3px;cursor:pointer}
+ .eprow input[type=color]{width:26px;height:22px;padding:0;border:1px solid #d6dade;border-radius:5px;background:#fff;cursor:pointer}
+ .eprow select{padding:3px 4px;border:1px solid #d6dade;border-radius:6px;font-size:11px;background:#fff;cursor:pointer;min-width:0}
+ .epsel-font{flex:1 1 auto;max-width:100%}
+ .epclr-off{opacity:.35}
  .epcell{border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fff}
  .epnum{font-size:11px;color:var(--sub);font-weight:600;margin-bottom:6px;display:flex;align-items:center}
  .epcell .sw-chip{display:inline-block;font-size:14px}
@@ -332,7 +338,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <section class="view format">
     <h2 class=title>서식</h2>
     <p class=desc>글에 들어갈 강조색·구분선·인용구를 미리 보고 고릅니다.</p>
-    <div class=card><h3>강조색 <span class=muted style="font-weight:400">— 핵심 문장에 번갈아 적용(파워 단축키 프리셋)</span></h3><div id=emph><div class=muted>불러오는 중…</div></div></div>
+    <div class=card><h3>강조색 <span class=muted style="font-weight:400">— 색마다 글자색·배경·폰트·크기를 직접 설정</span></h3><div id=emph><div class=muted>불러오는 중…</div></div></div>
     <div class=card style="margin-top:16px"><h3>구분선·인용구 종류 <span class=muted style="font-weight:400">— 쓸 종류를 여러 개 고르기</span></h3><div id=variants><div class=muted>불러오는 중…</div></div></div>
   </section>
   <!-- 프롬프트 -->
@@ -826,23 +832,33 @@ async function saveKey(provider){const v=$('#apikey').value.trim(); if(!v){toast
   }catch(e){toast('API 키 오류: '+e,'err');}finally{const x=$('#apikeysave'); if(x)x.disabled=false;}}
 
 function renderEmphasis(e){
-  // 색을 클릭해 갈래를 순환: 안 씀('') → 강조 → 주의 → 안 씀.
+  // 색마다 글자색·배경·폰트·크기를 직접 편집 + 드롭다운으로 갈래 선택(안 씀 / 강조 / 주의 …).
+  const lanes=(e.lanes&&e.lanes.length?e.lanes:[{name:'강조'},{name:'주의'},{name:'부정'}]);
+  const fonts=e.fonts||[{value:'',name:'기본'}], sizes=e.sizes||[];
   const card=s=>{
-    const hasStyle=s.text_color||s.background_color||s.font;
-    const stl=hasStyle?((s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'')+(s.font?`font-family:'se-${s.font}';`:'')+(s.size?`font-size:${s.size}px;`:'')):'color:#9aa5b1';
-    const lane=s.tag||'';  // '강조' | '주의' | ''
-    const box=lane==='주의'?'border-color:#dc2626;background:#fff5f5'
-             :lane==='강조'?'border-color:var(--green);background:#f3fbf6'
-             :'border-color:#e3e8ee;background:#fff;opacity:.55';
-    const badge=lane==='주의'?'<span style="font-size:10.5px;font-weight:800;color:#dc2626">주의 ●</span>'
-               :lane==='강조'?'<span style="font-size:10.5px;font-weight:800;color:#02b350">강조 ●</span>'
-               :'<span style="font-size:10.5px;color:#9aa5b1">안 씀</span>';
-    return `<div class=epcell data-id="${s.id}" data-lane="${esc(lane)}" title="클릭: 안 씀 → 강조 → 주의"
-        style="cursor:pointer;border:1.5px solid;border-radius:11px;padding:9px;text-align:center;${box}">
-      <div class=epnum>#${s.id}</div>
-      <span class="sw-chip" style="${stl}">${hasStyle?'강조 텍스트':'(서식 없음)'}</span>
-      <div style="margin-top:7px">${badge}</div></div>`;};
-  let h=`<div class=muted style="margin-bottom:10px">출처: <b>${esc(e.source||'')}</b> · 색을 <b>클릭</b>해 켜세요 — <b>안 씀 → 강조 → 주의</b> 순환. <b>강조</b>로 켠 색들은 본문 핵심에 번갈아 쓰이고, <b>주의</b>는 단점·경고에 쓰입니다(빨강 권장). 끈 색은 안 쓰여요.</div>`;
+    const tc=s.text_color||'', bg=s.background_color||'';
+    const hasStyle=tc||bg||s.font||s.size||s.bold;
+    const stl=hasStyle?((tc?`color:${tc};`:'')+(bg?`background:${bg};`:'')+(s.bold?'font-weight:800;':'')+(s.font?`font-family:'se-${s.font}';`:'')+(s.size?`font-size:${s.size}px;`:'')):'color:#9aa5b1';
+    const lane=s.tag||'';
+    const box=lane?'border-color:var(--green);background:#f3fbf6':'border-color:#e3e8ee;background:#fff';
+    const laneOpts='<option value="">안 씀</option>'+lanes.map(L=>`<option value="${esc(L.name)}"${L.name===lane?' selected':''}>${esc(L.name)}</option>`).join('');
+    const fontOpts=fonts.map(f=>`<option value="${esc(f.value)}"${(f.value||'')===(s.font||'')?' selected':''}>${esc(f.name)}</option>`).join('');
+    const sizeOpts='<option value="">크기</option>'+sizes.map(z=>`<option value="${z}"${String(z)===String(s.size||'')?' selected':''}>${z}</option>`).join('');
+    return `<div class=epcell data-id="${s.id}" style="border:1.5px solid;border-radius:11px;padding:9px;${box}">
+      <div class=epnum>#${s.id}${s.edited?' <span style="color:var(--green)">· 내가 설정함</span>':''}</div>
+      <div style="text-align:center"><span class="sw-chip" style="${stl}">${hasStyle?'강조 텍스트':'(서식 없음)'}</span></div>
+      <div class=eprow>
+        <label><input type=checkbox class=epclr-on data-clr=text ${tc?'checked':''}>글자</label>
+        <input type=color class="epclr${tc?'':' epclr-off'}" data-clr=text value="${tc||'#e53935'}">
+        <label><input type=checkbox class=epclr-on data-clr=bg ${bg?'checked':''}>배경</label>
+        <input type=color class="epclr${bg?'':' epclr-off'}" data-clr=bg value="${bg||'#fff59d'}"></div>
+      <div class=eprow>
+        <select class=epstyle data-key=font title=폰트>${fontOpts}</select>
+        <select class=epstyle data-key=size title=글씨크기>${sizeOpts}</select>
+        <label><input type=checkbox class=epstyle data-key=bold ${s.bold?'checked':''}>굵게</label></div>
+      <select class=eplane data-id="${s.id}" style="width:100%;margin-top:7px;padding:5px 7px;border:1px solid #d6dade;border-radius:7px;font-size:12px;background:#fff;cursor:pointer">${laneOpts}</select></div>`;};
+  const laneHelp=lanes.map(L=>`<b>${esc(L.name)}</b>`).join(' · ');
+  let h=`<div class=muted style="margin-bottom:10px">색마다 <b>글자색·배경·폰트·크기</b>를 직접 정하고, <b>갈래</b>를 고르세요 — ${laneHelp}. 같은 갈래에 여러 색을 주면 글에서 <b>번갈아</b> 쓰입니다. <b>안 씀</b>이면 그 색은 사용 안 함. (현재: <b>${esc(e.source||'')}</b>)</div>`;
   h+='<div class=epgrid>'+(e.all||[]).map(card).join('')+'</div>';
   const cfg = e.config || {};
   h += `<div style="margin-top:18px;padding:14px;border:1px solid #e7edf3;border-radius:14px;background:#fcfdff">
@@ -860,26 +876,42 @@ function renderEmphasis(e){
 }
 async function loadEmphasis(){try{renderEmphasis(await (await fetch('/api/emphasis')).json());
 }catch(e){$('#emph').innerHTML='<div class=muted>로드 실패</div>';}}
-// 태그 저장(입력칸에서 포커스 빠지면) — emphasis.yaml의 preset_tags에 기록 후 미리보기 갱신
-$('#emph').addEventListener('change',async e=>{const inp=e.target.closest('.eptag'); if(!inp)return;
-  try{const r=await fetch('/api/emphasis',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:+inp.dataset.id,tag:inp.value})});
-    if(r.ok){renderEmphasis(await r.json()); toast('태그 저장됨 ✓ 다음 생성부터 반영','ok',1600);}
-  }catch(e){}});
+// 색 칸의 글자색·배경·폰트·크기·굵게 → emphasis.yaml styles에 저장
+function collectStyle(cell){
+  const on=c=>cell.querySelector(`.epclr-on[data-clr=${c}]`).checked;
+  const v=sel=>cell.querySelector(sel).value;
+  return {
+    text_color: on('text')?v('.epclr[data-clr=text]'):'',
+    background_color: on('bg')?v('.epclr[data-clr=bg]'):'',
+    font: v('[data-key=font]'),
+    size: v('[data-key=size]'),
+    bold: cell.querySelector('[data-key=bold]').checked,
+  };}
+$('#emph').addEventListener('change',async e=>{
+  // 갈래(태그) 선택
+  const sel=e.target.closest('.eplane');
+  if(sel){try{const r=await fetch('/api/emphasis',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:+sel.dataset.id,tag:sel.value})});
+    if(r.ok){renderEmphasis(await r.json());}}catch(e){} return;}
+  // 색·폰트·크기·굵게 편집
+  const st=e.target.closest('.epclr,.epclr-on,.epstyle');
+  if(st){const cell=st.closest('.epcell'); if(!cell)return;
+    // 색을 직접 고르면 그 색을 켠 것으로 간주(체크 자동 ON)
+    if(st.classList.contains('epclr')){const cb=cell.querySelector(`.epclr-on[data-clr=${st.dataset.clr}]`); if(cb)cb.checked=true;}
+    try{const r=await fetch('/api/emphasis',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:+cell.dataset.id,style:collectStyle(cell)})});
+      if(r.ok){renderEmphasis(await r.json()); toast('저장됨 ✓ 다음 생성부터 반영','ok',1200);}else{toast('저장 실패','err');}}
+    catch(e){toast('저장 오류','err');}}
+});
+// 강조 밀도 저장
 $('#emph').addEventListener('click',async e=>{const btn=e.target.closest('[data-action="save-emphasis-config"]'); if(!btn)return;
   const root=$('#emph');
-  const parseList=v=>String(v||'').split(',').map(x=>x.trim()).filter(x=>x).map(x=>Number(x)).filter(x=>Number.isInteger(x));
-  const parseMap=t=>String(t||'').split('\n').map(line=>line.trim()).filter(line=>line.includes(':')).reduce((acc,line)=>{const [k,v]=line.split(':').map(x=>x.trim()); if(k&&v&&!Number.isNaN(Number(v))){acc[k]=Number(v);}return acc;},{});
   const cfg={
-    cycling_pool: parseList(root.querySelector('[data-key="cycling_pool"]').value),
-    negative_pool: parseList(root.querySelector('[data-key="negative_pool"]').value),
-    fixed_map: parseMap(root.querySelector('[data-key="fixed_map"]').value),
     max_per_paragraph: root.querySelector('[data-key="max_per_paragraph"]').value.trim() || null,
     min_sentence_gap: root.querySelector('[data-key="min_sentence_gap"]').value.trim() || null,
   };
   btn.disabled=true;
   try{const r=await fetch('/api/emphasis',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({config:cfg})});
-    if(r.ok){renderEmphasis(await r.json()); toast('강조 설정 저장됨 ✓ 다음 생성부터 반영','ok',1600);}else{toast('강조 설정 저장 실패','err');}}
-  catch(e){toast('강조 설정 저장 오류','err');}
+    if(r.ok){renderEmphasis(await r.json()); toast('강조 밀도 저장됨 ✓ 다음 생성부터 반영','ok',1600);}else{toast('저장 실패','err');}}
+  catch(e){toast('저장 오류','err');}
   finally{btn.disabled=false;}
 });
 async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json();
@@ -1108,6 +1140,8 @@ def _make_handler(state: dict):
                     body = self._json_body()
                     if body.get("config") is not None:
                         _save_emphasis_config(body.get("config"))
+                    elif body.get("style") is not None:
+                        _save_emphasis_style(body.get("id"), body.get("style"))
                     elif body.get("id") is not None:
                         _save_emphasis_preset_tag(body.get("id"), body.get("tag", ""))
                     self._send(200, json.dumps(_emphasis_preview()).encode())
@@ -1416,6 +1450,17 @@ def _editor_options() -> dict:
         return {}
 
 
+# 스마트에디터 글자 크기 옵션(fs<N>) — 본문 기본은 15.
+_EDITOR_FONT_SIZES = [11, 13, 15, 16, 19, 24, 28, 30, 34, 38]
+
+
+def _size_num(size) -> str | None:
+    """'16px'/'16'/16 → '16'. 빈 값이면 None."""
+    if size in (None, ""):
+        return None
+    return str(size).strip().lower().replace("px", "") or None
+
+
 def _emphasis_preview() -> dict:
     """현재 강조 설정으로 실제 적용될 색을 해석(미리보기).
 
@@ -1429,9 +1474,13 @@ def _emphasis_preview() -> dict:
     )
 
     cfg = load_emphasis_config()
-    presets = load_default_power_shortcuts() or DEFAULT_STYLES
-    source = "파워 단축키 프리셋" if load_default_power_shortcuts() else "내장 기본"
-    fonts = {f.get("value"): f.get("name", "").split("\n")[0] for f in _editor_options().get("fonts", [])}
+    # 색(번호)별 기본 시드 — 있으면 파워 단축키 프리셋, 없으면 내장 기본. 그 위에 사용자가
+    # 서식 탭에서 직접 편집한 styles를 덮어쓴다(색·폰트·크기는 사용자 편집이 최우선).
+    presets = dict(load_default_power_shortcuts() or DEFAULT_STYLES)
+    presets.update(cfg.styles)
+    source = "내 설정" if cfg.styles else "기본값(편집 가능)"
+    font_opts = _editor_options().get("fonts", [])
+    fonts = {f.get("value"): f.get("name", "").split("\n")[0] for f in font_opts}
 
     # 프리셋ID → 태그(용도). preset_tags가 있으면 그대로, 없으면 레거시에서 파생해 보여준다.
     pools = cfg.tag_pools()
@@ -1439,21 +1488,34 @@ def _emphasis_preview() -> dict:
 
     def resolve(pid):
         st = presets.get(pid)
-        base = {"id": pid, "tag": tag_of.get(pid, "")}
+        base = {"id": pid, "tag": tag_of.get(pid, ""), "edited": pid in cfg.styles}
         if not st:
             return {**base, "defined": False}
         return {**base, "defined": True, "text_color": st.text_color,
                 "background_color": st.background_color, "bold": st.bold,
                 "font": st.font_family, "font_name": fonts.get(st.font_family),
-                "size": st.font_size}
+                "size": _size_num(st.font_size)}
 
     all_styles = [resolve(i) for i in sorted(presets)]
     # 같은 태그가 몇 색에 걸렸는지(순환 여부 표시용)
     groups = [{"tag": t, "ids": ids} for t, ids in pools.items()]
+    # 드롭다운에 보여줄 갈래 = 기본(강조/주의/부정) + 사용자가 이미 쓴 갈래(중복 제거, 순서 유지)
+    from autoblog.publish.emphasis import DEFAULT_LANES, LANE_DESC
+
+    lane_names = list(dict.fromkeys([*DEFAULT_LANES, *pools.keys()]))
+    lanes = [{"name": t, "desc": LANE_DESC.get(t, t)} for t in lane_names]
+    # 색마다 직접 고를 폰트·크기 후보(에디터 실제 옵션). 폰트는 value 있는 것만, 맨 앞에 '기본'.
+    font_choices = [{"value": "", "name": "기본"}] + [
+        {"value": f["value"], "name": f.get("name", "").split("\n")[0]}
+        for f in font_opts if f.get("value")
+    ]
     return {
         "source": source,
         "all": all_styles,
         "groups": groups,
+        "lanes": lanes,
+        "fonts": font_choices,
+        "sizes": _EDITOR_FONT_SIZES,
         "config": {
             "cycling_pool": cfg.cycling_pool,
             "negative_pool": cfg.negative_pool,
@@ -1518,6 +1580,58 @@ def _save_emphasis_config(data: dict) -> None:
             "\n# 강조 배정 설정 (서식 탭에서 편집) — 순환 풀, 고정 매핑, 밀도 규칙\n"
             + yaml.safe_dump(body, allow_unicode=True, sort_keys=False)
         )
+    path.write_text(raw.rstrip("\n") + "\n" + block, encoding="utf-8")
+
+
+def _save_emphasis_style(preset_id, style: dict) -> None:
+    """색(프리셋ID)의 글자색·배경·굵게·폰트·크기를 config/emphasis.yaml의 styles에 저장.
+
+    서식 탭에서 색마다 직접 편집한 값. 모든 속성이 비면 해당 색의 사용자 설정을 제거(= 기본으로 복귀).
+    기존 주석·내용은 보존하고 styles 블록만 교체한다.
+    """
+    import re
+
+    import yaml
+
+    from autoblog.publish.emphasis import (
+        _EMPHASIS_CONFIG_PATH,
+        EmphasisStyle,
+        load_emphasis_config,
+    )
+
+    try:
+        pid = int(preset_id)
+    except (TypeError, ValueError):
+        return
+
+    style = style or {}
+    tc = (style.get("text_color") or "").strip() or None
+    bg = (style.get("background_color") or "").strip() or None
+    font = (style.get("font") or "").strip() or None
+    size = _size_num(style.get("size"))
+    bold = bool(style.get("bold"))
+    st = EmphasisStyle(text_color=tc, background_color=bg, font_family=font,
+                       font_size=size, bold=bold)
+
+    styles = {int(k): v for k, v in (load_emphasis_config().styles or {}).items()}
+    if st.is_empty():
+        styles.pop(pid, None)
+    else:
+        styles[pid] = st
+
+    path = _EMPHASIS_CONFIG_PATH
+    raw = path.read_text(encoding="utf-8") if path.exists() else ""
+    raw = re.sub(r"\n*# 색\(강조\)별 글자색[^\n]*\n", "\n", raw)
+    raw = re.sub(r"(?ms)^styles:\n(?:[ \t]+.*\n?)*", "", raw)
+    block = ""
+    if styles:
+        # 빈 속성은 빼고 깔끔히 덤프(색마다 설정한 값만).
+        dump = {
+            sid: {k: v for k, v in s.model_dump().items() if v not in (None, False)}
+            for sid, s in sorted(styles.items())
+        }
+        body = yaml.safe_dump({"styles": dump}, allow_unicode=True, sort_keys=False)
+        block = ("\n# 색(강조)별 글자색·배경·굵게·폰트·크기 (서식 탭에서 직접 편집)\n" + body)
     path.write_text(raw.rstrip("\n") + "\n" + block, encoding="utf-8")
 
 

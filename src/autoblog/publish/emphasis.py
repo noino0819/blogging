@@ -216,6 +216,8 @@ class EmphasisConfig(BaseModel):
     # 프리셋(강조색)마다 태그(용도) — UI(서식 탭)에서 색마다 직접 입력. 이게 있으면 이게 우선.
     # 같은 태그를 여러 색에 주면 그 색들이 자동 순환(단조로움 방지). LLM은 <<태그:어구>>로 고른다.
     preset_tags: dict[int, str] = Field(default_factory=dict)  # 예: {7: "좋았던 점", 8: "좋았던 점", 20: "가격"}
+    # 색(프리셋ID)마다 글자색·배경·굵게·폰트·크기를 UI(서식 탭)에서 직접 편집. 있으면 파워 단축키/내장보다 우선.
+    styles: dict[int, EmphasisStyle] = Field(default_factory=dict)
     max_per_paragraph: int | None = None  # (옵션) 문단당 강조 개수 상한
     min_sentence_gap: int | None = None  # (옵션) 강조 간 최소 문장 간격
 
