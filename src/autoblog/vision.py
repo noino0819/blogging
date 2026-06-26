@@ -60,14 +60,18 @@ def _split_tall_image(path: str, max_aspect: float = 2.0) -> list[bytes]:
     return tiles
 
 
-def _ollama_vision(prompt: str, images: list[bytes], model: str) -> str:
-    """Ollama chat API에 이미지+프롬프트 → 응답 텍스트(JSON 강제)."""
+def _ollama_vision(prompt: str, images: list[bytes], model: str, num_ctx: int = 8192) -> str:
+    """Ollama chat API에 이미지+프롬프트 → 응답 텍스트(JSON 강제).
+
+    이미지는 비전 토큰을 많이 먹어 기본 컨텍스트(4096)를 쉽게 넘긴다(라이브: 사진 1장
+    4132토큰 → 400 exceed_context_size). num_ctx를 키워 한 장이 통째로 들어가게 한다.
+    """
     env = load_env()
     payload = {
         "model": model,
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0},
+        "options": {"temperature": 0, "num_ctx": num_ctx},
         "messages": [
             {
                 "role": "user",
@@ -172,6 +176,23 @@ def _parse_specs(items) -> list[ProductSpec]:
     return out
 
 
+def _downscale_image(path: str, max_dim: int = 1024) -> bytes:
+    """분류용 축소본 PNG bytes — 긴 변을 max_dim으로 줄여 비전 토큰을 줄인다.
+
+    분류는 '무슨 사진인지'만 알면 되므로 풀해상도가 필요 없다. 큰 사진을 그대로 넣으면
+    컨텍스트를 초과(400)하므로 한 장으로 축소해 보낸다(긴 메뉴판도 한 장으로 충분).
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.open(path).convert("RGB")
+    img.thumbnail((max_dim, max_dim))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def classify_photos(
     image_paths: list[str], model: str | None = None
 ) -> dict[str, str]:
@@ -187,7 +208,7 @@ def classify_photos(
     )
     result: dict[str, str] = {}
     for path in image_paths:
-        content = _ollama_vision(prompt, _split_tall_image(path), model)
+        content = _ollama_vision(prompt, [_downscale_image(path)], model)
         try:
             label = json.loads(content).get("label", "기타")
         except json.JSONDecodeError:
