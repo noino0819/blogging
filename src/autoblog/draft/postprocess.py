@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import re
 
-_HEADER_RE = re.compile(r"^[ \t]*#{1,6}[ \t]*", re.MULTILINE)
+# 마크다운 헤더(# 뒤 공백 필수)만 제거. '#혜화맛집'처럼 # 뒤에 바로 글자가
+# 오는 해시태그는 건드리지 않는다(헤더의 태그 묶음 보존).
+_HEADER_RE = re.compile(r"^[ \t]*#{1,6}[ \t]+", re.MULTILINE)
 _BULLET_RE = re.compile(r"^[ \t]*[•*▶→✓✅][ \t]+", re.MULTILINE)
 _DASH_BULLET_RE = re.compile(r"^[ \t]*-[ \t]+", re.MULTILINE)
 # 베이스 프롬프트가 금지한 흔한 감정형/장식 이모지(허용 목록 밖)
@@ -81,6 +83,8 @@ def wrap_long_lines(text: str, max_len: int = 30) -> str:
     for line in text.split("\n"):
         if not line.strip():
             out.append("")
+        elif sum(1 for t in line.split() if t.startswith("#")) >= 2:
+            out.append(line)  # 해시태그 줄(2개 이상)은 쪼개지 않는다 — 헤더 태그 묶음
         else:
             out.extend(_wrap_line(line, max_len))
     return "\n".join(out)

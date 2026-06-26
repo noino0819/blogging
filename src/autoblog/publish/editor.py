@@ -28,17 +28,24 @@ STATE_PATH = REPO_ROOT / "data" / "naver_state.json"
 # SE는 프로그램적 Range 선택을 색상 적용에 반영하지 않으므로, 좌표를 받아
 # 실제 마우스 드래그로 선택해야 SE가 선택을 인식한다.
 _RANGE_RECT_JS = """(t) => {
-  const root = document.querySelector('.se-component.se-text');
-  if (!root) return null;
-  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let n;
-  while (n = w.nextNode()) {
-    const i = n.textContent.indexOf(t);
-    if (i !== -1) {
-      const r = document.createRange();
-      r.setStart(n, i); r.setEnd(n, i + t.length);
-      const b = r.getBoundingClientRect();
-      return {x: b.x, y: b.y, w: b.width, h: b.height};
+  // 본문 텍스트 컴포넌트를 '전부' 순회한다(첫 컴포넌트만 보면 뒤쪽 문단의
+  // 강조 문구를 못 찾아 강조가 통째로 빠진다). 찾은 텍스트는 화면 안으로
+  // 스크롤한 뒤 좌표를 재측정한다 — 타이핑 후 스크롤이 끝에 가 있어 위쪽
+  // 텍스트가 viewport 밖이면 마우스 드래그 선택이 빗나가기 때문.
+  const roots = document.querySelectorAll('.se-component.se-text');
+  for (const root of roots) {
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n;
+    while (n = w.nextNode()) {
+      const i = n.textContent.indexOf(t);
+      if (i !== -1) {
+        const r = document.createRange();
+        r.setStart(n, i); r.setEnd(n, i + t.length);
+        const el = n.parentElement;
+        if (el && el.scrollIntoView) el.scrollIntoView({block: 'center'});
+        const b = r.getBoundingClientRect();
+        return {x: b.x, y: b.y, w: b.width, h: b.height};
+      }
     }
   }
   return null;
@@ -356,19 +363,17 @@ class BlogPublisher:
         page.wait_for_timeout(350)
 
     def _insert_divider(self, variant: int = 1):
-        """구분선 삽입. variant>1이면 종류 선택 드롭다운에서 N번째 선택."""
-        if variant and variant > 1:
-            self._pick_insert_variant("horizontal-line", variant)
-        else:
-            self._page.click(SMART_EDITOR["divider_button"])
+        """구분선 삽입. 항상 종류 드롭다운에서 variant번째를 고른다(variant=1=기본선).
+
+        기본 빠른버튼(...-default-toolbar-button)을 쓰지 않는 이유: 드롭다운으로 한 번
+        다른 종류를 고르면 SE-ONE이 그 종류를 기억해 빠른버튼 클래스가 바뀌어 사라진다.
+        그래서 변형>1 다음 변형1을 넣을 때 기본 버튼을 못 찾는다 → 경로를 드롭다운으로 통일."""
+        self._pick_insert_variant("horizontal-line", max(variant, 1))
         self._page.wait_for_timeout(500)
 
     def _insert_quote(self, text: str, variant: int = 1):
-        """인용구 삽입 후 본문 텍스트 입력. variant>1이면 종류 선택."""
-        if variant and variant > 1:
-            self._pick_insert_variant("quotation", variant)
-        else:
-            self._page.click(SMART_EDITOR["quote_button"])
+        """인용구 삽입 후 본문 텍스트 입력. 구분선과 같은 이유로 드롭다운 경로로 통일."""
+        self._pick_insert_variant("quotation", max(variant, 1))
         self._page.wait_for_timeout(500)
         self._page.keyboard.type(text, delay=4)
         self._page.wait_for_timeout(200)
