@@ -269,9 +269,34 @@ def post(
 def ui(
     port: int = typer.Option(8770, help="글쓰기 UI 포트"),
     open_browser: bool = typer.Option(True, help="브라우저 자동 열기"),
+    reload: bool = typer.Option(
+        False, "--reload", help="코드 변경 시 서버 자동 재시작(개발용)"
+    ),
 ):
     """글쓰기 유저 화면(로컬 웹) — 메모→생성→미리보기→임시저장. 명령 한 줄로 브라우저 열림."""
     import webbrowser
+
+    if reload:
+        # 개발용: src 변경 감지 → 자식 `autoblog ui`를 죽이고 다시 띄움.
+        # 자식은 포트 고정 + 브라우저/재귀 reload 끔(브라우저는 부모가 한 번만 연다).
+        from watchfiles import run_process
+
+        from autoblog.config import REPO_ROOT
+
+        src = str(REPO_ROOT / "src")
+        url = f"http://127.0.0.1:{port}/"
+        typer.echo(f"[reload] {src} 감시 — 변경 시 자동 재시작 → {url}  (종료: Ctrl+C)")
+        if open_browser:
+            webbrowser.open(url)
+        try:
+            run_process(
+                src,
+                target=f"autoblog ui --port {port} --no-open-browser",
+                target_type="command",
+            )
+        except KeyboardInterrupt:
+            typer.echo("\n종료.")
+        return
 
     from autoblog.webui import serve_ui
 

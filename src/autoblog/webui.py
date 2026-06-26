@@ -235,6 +235,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <textarea id=itext placeholder="여기에 받아온 글을 붙여넣기"></textarea>
   <div class=modalft><button class=btn id=iapply style="flex:1">이 글로 미리보기</button><button class="btn ghost" id=imclose2 style="flex:0 0 120px">닫기</button></div>
 </div></div>
+<div id=tmodal class=modal style="display:none"><div class=modalbox>
+  <div class=modalhd><span><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 저장된 양식으로 채우기</span><button class=mx id=tmclose>✕</button></div>
+  <div class=muted>저장된 임시 글 양식(제목/사진 마커/본문 구조)을 붙여넣으면, 같은 형식에 맞춰 내용을 채운 초안을 생성합니다.</div>
+  <textarea id=ttext placeholder="저장된 양식 텍스트를 붙여넣기"></textarea>
+  <div class=modalft><button class=btn id=tapply style="flex:1">이 양식으로 채우기</button><button class="btn ghost" id=tmclose2 style="flex:0 0 120px">닫기</button></div>
+</div></div>
 <aside class=side>
   <div class=brand><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 블로그 자동작성</div>
   <div class="nav on" data-view=write><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 글쓰기</div>
@@ -274,11 +280,14 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <span class="chip on" data-k=structure><span class=dot></span>구분선·인용구</span>
             <span class="chip on" data-k=stickers><span class=dot></span>스티커</span>
             <span class="chip" data-k=stickerAll><span class=dot></span>스티커 전체 사용 <span class=muted>(끄면 즐겨찾기만)</span></span>
-            <span class="chip" data-k=sponsored><span class=dot></span>협찬 <span class=muted>(켜면 with.필명 표기)</span></span>
+            <span class="chip" data-k=sponsored><span class=dot></span>협찬 <span class=muted>(켜면 쿠팡파트너스 고지 스티커 맨 위)</span></span>
           </div>
+          <label class=f>쿠팡파트너스 링크 <span class=muted>(선택) — 한 줄에 하나, 본문 중간중간 카드로 분산</span></label>
+          <textarea id=links placeholder="쿠팡파트너스 링크를 한 줄에 하나씩 붙여넣기 (보통 3개)"></textarea>
           <div style="margin-top:18px"><button class=btn id=gen>초안 생성</button></div>
           <div style="margin-top:9px"><button class="btn ghost" id=export><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg>내 프롬프트 합쳐서 복사 <span class=muted>(다른 챗봇에 붙여넣기)</span></button></div>
           <div style="margin-top:7px"><button class="btn ghost" id=import><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg>받아온 글 붙여넣기 <span class=muted>(다른 챗봇 결과를 미리보기로)</span></button></div>
+          <div style="margin-top:7px"><button class="btn ghost" id=loadTemplate><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg>저장된 양식 불러오기 <span class=muted>(템플릿으로 내용 채우기)</span></button></div>
           <div id=status></div>
         </div>
         <div class=card style="margin-top:16px">
@@ -380,6 +389,7 @@ function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
     ?('<b>'+(k==='place'?'맛집':'상품')+'</b>으로 수집합니다 (직접 선택).')
     :('입력을 보고 <b>'+(k==='place'?'맛집':'상품')+'</b>으로 자동 인식했어요. 직접 골라도 돼요.');}
 const FMT={emphasis:true,structure:true,stickers:true,stickerAll:false,sponsored:false,hideDefault:true};
+const LINKS=()=>($('#links').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
 const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:false,emoji:false};
 const RULE_META=[
  ['mobile_friendly','모바일 친화','문단을 2~3줄로 짧게, 여백 넉넉히(네이버 트래픽 대부분 모바일)'],
@@ -466,7 +476,7 @@ $('#gen').onclick=async()=>{
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
-      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,rules:RULES};
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS(),rules:RULES};
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); toast('초안 생성 실패: '+(d.error||'알 수 없는 오류'),'err'); return;}
@@ -494,7 +504,7 @@ $('#export').onclick=async()=>{
   $('#export').disabled=true; expLoading(true);
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
-      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,rules:RULES};
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS(),rules:RULES};
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){closePM(); toast('프롬프트 생성 실패: '+(d.error||''),'err');return;}
@@ -517,13 +527,31 @@ $('#iapply').onclick=async()=>{
   if(!text){toast('붙여넣은 글이 비어 있어요.','info');return;}
   $('#iapply').disabled=true;
   try{
-    const body={text,photos:SELP,emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll};
+    const body={text,photos:SELP,emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS()};
     const r=await fetch('/api/import-draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){toast('가져오기 실패: '+(d.error||''),'err');return;}
     closeIM(); PLAN=d; renderPreview(d); st('받아온 글을 미리보기에 반영했어요. 검토 후 임시저장하세요.'); toast('받아온 글을 가져왔어요! 검토 후 임시저장하세요.','ok'); $('#save').disabled=false;
     if(d.debug)showLog(d.debug);
   }catch(e){toast('가져오기 오류: '+e,'err');}finally{$('#iapply').disabled=false;}
+};
+function closeTM(){$('#tmodal').style.display='none';}
+$('#loadTemplate').onclick=()=>{$('#tmodal').style.display='flex'; $('#ttext').focus();};
+$('#tmclose').onclick=closeTM; $('#tmclose2').onclick=closeTM;
+$('#tmodal').onclick=e=>{if(e.target===$('#tmodal'))closeTM();};
+$('#tapply').onclick=async()=>{
+  const text=$('#ttext').value.trim();
+  if(!text){toast('붙여넣은 양식이 비어 있어요.','info');return;}
+  $('#tapply').disabled=true;
+  try{
+    const body={memo:$('#memo').value,template:text,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS(),rules:RULES};
+    const r=await fetch('/api/fill-template',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){toast('템플릿 채우기 실패: '+(d.error||''),'err');return;}
+    closeTM(); PLAN=d; renderPreview(d); st('불러온 템플릿으로 미리보기 생성 완료. 검토 후 임시저장하세요.'); toast('템플릿 글을 불러왔어요! 내용을 확인하세요.','ok'); $('#save').disabled=false;
+    if(d.debug)showLog(d.debug);
+  }catch(e){toast('템플릿 불러오기 오류: '+e,'err');}finally{$('#tapply').disabled=false;}
 };
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function renderText(b){let h=esc(b.text);
@@ -538,6 +566,7 @@ function renderPreview(d){
     else if(b.kind==='quote')h+=`<div class=q>${esc(b.text)}</div>`;
     else if(b.kind==='sticker')h+=`<img class=st src="/img?ref=${encodeURIComponent(b.sticker_ref)}">`;
     else if(b.kind==='image')h+=`<div class=ph>🖼 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
+    else if(b.kind==='link')h+=`<div class=ph>🔗 링크 카드 <small>${esc(b.link_url)}</small></div>`;
   }
   const p=$('#preview'); p.classList.remove('empty'); p.innerHTML=h;
 }
@@ -797,23 +826,35 @@ async function saveKey(provider){const v=$('#apikey').value.trim(); if(!v){toast
   }catch(e){toast('API 키 오류: '+e,'err');}finally{const x=$('#apikeysave'); if(x)x.disabled=false;}}
 
 function renderEmphasis(e){
-  // 같은 태그가 몇 색에 걸렸는지 — '순환 N색' 배지에 사용
-  const cntOf={}; (e.groups||[]).forEach(g=>{g.ids.forEach(id=>cntOf[id]=g.ids.length);});
+  // 색을 클릭해 갈래를 순환: 안 씀('') → 강조 → 주의 → 안 씀.
   const card=s=>{
     const hasStyle=s.text_color||s.background_color||s.font;
     const stl=hasStyle?((s.text_color?`color:${s.text_color};`:'')+(s.background_color?`background:${s.background_color};`:'')+(s.bold?'font-weight:800;':'')+(s.font?`font-family:'se-${s.font}';`:'')+(s.size?`font-size:${s.size}px;`:'')):'color:#9aa5b1';
-    const meta=[s.font_name,s.size?s.size+'pt':''].filter(Boolean).join(' · ');
-    const n=cntOf[s.id]||0;
-    const badge=s.tag?`<span style="font-size:10px;background:#eafaf0;color:#02b350;border-radius:4px;padding:1px 5px;margin-left:5px">${n>1?'순환 '+n+'색':'고정'}</span>`:'';
-    return `<div class=epcell><div class=epnum>#${s.id}${badge}</div>
+    const lane=s.tag||'';  // '강조' | '주의' | ''
+    const box=lane==='주의'?'border-color:#dc2626;background:#fff5f5'
+             :lane==='강조'?'border-color:var(--green);background:#f3fbf6'
+             :'border-color:#e3e8ee;background:#fff;opacity:.55';
+    const badge=lane==='주의'?'<span style="font-size:10.5px;font-weight:800;color:#dc2626">주의 ●</span>'
+               :lane==='강조'?'<span style="font-size:10.5px;font-weight:800;color:#02b350">강조 ●</span>'
+               :'<span style="font-size:10.5px;color:#9aa5b1">안 씀</span>';
+    return `<div class=epcell data-id="${s.id}" data-lane="${esc(lane)}" title="클릭: 안 씀 → 강조 → 주의"
+        style="cursor:pointer;border:1.5px solid;border-radius:11px;padding:9px;text-align:center;${box}">
+      <div class=epnum>#${s.id}</div>
       <span class="sw-chip" style="${stl}">${hasStyle?'강조 텍스트':'(서식 없음)'}</span>
-      ${meta?`<div class=epmeta>${meta}</div>`:'<div class=epmeta>&nbsp;</div>'}
-      <input class=eptag data-id="${s.id}" value="${esc(s.tag||'')}" placeholder="태그(용도)" title="이 색의 용도를 적으세요. 같은 태그를 여러 색에 주면 자동 순환됩니다."
-        style="width:100%;margin-top:6px;padding:5px 7px;border:1px solid #e3e8ee;border-radius:6px;font-size:12px;box-sizing:border-box"></div>`;};
-  let h=`<div class=muted style="margin-bottom:10px">출처: <b>${esc(e.source||'')}</b> · 색마다 <b>태그(용도)</b>를 적으세요. 같은 태그를 여러 색에 주면 글마다 <b>번갈아</b> 쓰여 단조롭지 않아요. 비워두면 그 색은 <b>안 쓰임</b>. LLM은 태그 이름으로 골라 씁니다.</div>`;
+      <div style="margin-top:7px">${badge}</div></div>`;};
+  let h=`<div class=muted style="margin-bottom:10px">출처: <b>${esc(e.source||'')}</b> · 색을 <b>클릭</b>해 켜세요 — <b>안 씀 → 강조 → 주의</b> 순환. <b>강조</b>로 켠 색들은 본문 핵심에 번갈아 쓰이고, <b>주의</b>는 단점·경고에 쓰입니다(빨강 권장). 끈 색은 안 쓰여요.</div>`;
   h+='<div class=epgrid>'+(e.all||[]).map(card).join('')+'</div>';
-  // 가시성 — LLM에게 실제로 들어가는 강조 지시문을 그대로 보여줌
-  h+=`<div class=sub-h style="margin-top:16px">✍️ 생성 시 LLM에게 이렇게 안내됩니다 <span class=muted style="font-weight:400">— 위 태그가 그대로 메뉴가 됩니다</span></div>
+  const cfg = e.config || {};
+  h += `<div style="margin-top:18px;padding:14px;border:1px solid #e7edf3;border-radius:14px;background:#fcfdff">
+    <div class=sub-h style="margin-bottom:10px">강조 밀도</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><div style="font-weight:700;margin-bottom:4px;font-size:13px">문단당 최대 강조</div><input class=epconf data-key="max_per_paragraph" value="${esc(cfg.max_per_paragraph||'')}" placeholder="2" style="width:100%;padding:9px 11px;border:1px solid #d6dade;border-radius:10px;background:#fff"></div>
+      <div><div style="font-weight:700;margin-bottom:4px;font-size:13px">최소 문장 간격</div><input class=epconf data-key="min_sentence_gap" value="${esc(cfg.min_sentence_gap||'')}" placeholder="1" style="width:100%;padding:9px 11px;border:1px solid #d6dade;border-radius:10px;background:#fff"></div>
+    </div>
+    <div style="margin-top:12px"><button class=btn data-action="save-emphasis-config" style="width:auto;padding:9px 16px">저장</button></div>
+  </div>`;
+  // 가시성 — LLM에게 실제로 들어가는 강조 지시문(어떻게 쓰이는지 그대로 보여줌)
+  h+=`<div class=sub-h style="margin-top:16px">✍️ 생성 시 LLM에게 이렇게 안내됩니다</div>
     <pre style="white-space:pre-wrap;background:#f7f9fb;border:1px solid #eef1f5;border-radius:8px;padding:11px 13px;font-size:12px;line-height:1.6;margin-top:8px">${esc(e.instruction||'')}</pre>`;
   $('#emph').innerHTML=h;
 }
@@ -824,6 +865,23 @@ $('#emph').addEventListener('change',async e=>{const inp=e.target.closest('.epta
   try{const r=await fetch('/api/emphasis',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:+inp.dataset.id,tag:inp.value})});
     if(r.ok){renderEmphasis(await r.json()); toast('태그 저장됨 ✓ 다음 생성부터 반영','ok',1600);}
   }catch(e){}});
+$('#emph').addEventListener('click',async e=>{const btn=e.target.closest('[data-action="save-emphasis-config"]'); if(!btn)return;
+  const root=$('#emph');
+  const parseList=v=>String(v||'').split(',').map(x=>x.trim()).filter(x=>x).map(x=>Number(x)).filter(x=>Number.isInteger(x));
+  const parseMap=t=>String(t||'').split('\n').map(line=>line.trim()).filter(line=>line.includes(':')).reduce((acc,line)=>{const [k,v]=line.split(':').map(x=>x.trim()); if(k&&v&&!Number.isNaN(Number(v))){acc[k]=Number(v);}return acc;},{});
+  const cfg={
+    cycling_pool: parseList(root.querySelector('[data-key="cycling_pool"]').value),
+    negative_pool: parseList(root.querySelector('[data-key="negative_pool"]').value),
+    fixed_map: parseMap(root.querySelector('[data-key="fixed_map"]').value),
+    max_per_paragraph: root.querySelector('[data-key="max_per_paragraph"]').value.trim() || null,
+    min_sentence_gap: root.querySelector('[data-key="min_sentence_gap"]').value.trim() || null,
+  };
+  btn.disabled=true;
+  try{const r=await fetch('/api/emphasis',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({config:cfg})});
+    if(r.ok){renderEmphasis(await r.json()); toast('강조 설정 저장됨 ✓ 다음 생성부터 반영','ok',1600);}else{toast('강조 설정 저장 실패','err');}}
+  catch(e){toast('강조 설정 저장 오류','err');}
+  finally{btn.disabled=false;}
+});
 async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json();
   $('#promptedit').value=p.base_raw||'';
   $('#promptlayers').innerHTML='<div class=promptbox>'+p.layers.map(([t,b])=>`<details><summary>${esc(t)}</summary><pre>${esc(b)}</pre></details>`).join('')+'</div>';
@@ -992,6 +1050,8 @@ def _make_handler(state: dict):
                     self._export_prompt(self._json_body())
                 elif path == "/api/import-draft":
                     self._import_draft(self._json_body())
+                elif path == "/api/fill-template":
+                    self._fill_template(self._json_body())
                 elif path == "/api/publish":
                     self._publish(self._json_body())
                 elif path == "/api/favorite":
@@ -1046,7 +1106,10 @@ def _make_handler(state: dict):
                     self._send(200, json.dumps({"ok": True, "enabled": cfg[key]}).encode())
                 elif path == "/api/emphasis":
                     body = self._json_body()
-                    _save_emphasis_preset_tag(body.get("id"), body.get("tag", ""))
+                    if body.get("config") is not None:
+                        _save_emphasis_config(body.get("config"))
+                    elif body.get("id") is not None:
+                        _save_emphasis_preset_tag(body.get("id"), body.get("tag", ""))
                     self._send(200, json.dumps(_emphasis_preview()).encode())
                 elif path == "/api/label":
                     lab = state["label"]
@@ -1107,7 +1170,6 @@ def _make_handler(state: dict):
                 emphasis=bool(body.get("emphasis")),
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
-                sponsored=bool(body.get("sponsored")),
                 divider_variants=dkeys,
                 quote_variants=qkeys,
             )
@@ -1135,11 +1197,12 @@ def _make_handler(state: dict):
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
                 sticker_favorites_only=not bool(body.get("stickerAll")),
-                sponsored=bool(body.get("sponsored")),
                 divider_variant=dv[0],
                 quote_variant=qv[0],
                 divider_variants=dkeys,
                 quote_variants=qkeys,
+                sponsored=bool(body.get("sponsored")),
+                sponsor_links=_links(body),
             )
             self._send_plan(result)
 
@@ -1162,6 +1225,45 @@ def _make_handler(state: dict):
                 sticker_favorites_only=not bool(body.get("stickerAll")),
                 divider_variant=dv[0],
                 quote_variant=qv[0],
+                sponsored=bool(body.get("sponsored")),
+                sponsor_links=_links(body),
+            )
+            self._send_plan(result)
+
+        def _fill_template(self, body):
+            """저장된 양식/템플릿을 가져와 같은 구조로 글 내용을 채워 생성."""
+            from autoblog.draft.rules import CommonRules
+            from autoblog.draft.style import StyleProfile
+            from autoblog.pipeline import run_pipeline
+
+            template = (body.get("template") or "").strip()
+            if not template:
+                self._send(400, json.dumps({"error": "붙여넣은 양식이 비어 있어요"}).encode())
+                return
+            srcval, src = self._resolve_src(body)
+            photos = [p for p in (body.get("photos") or []) if p]
+            tone = (body.get("tone") or "").strip() or None
+            rules = CommonRules(**body["rules"]) if body.get("rules") else None
+            dv, qv = _enabled_variants()
+            dkeys, qkeys = _enabled_variant_keys()
+            result = run_pipeline(
+                (body.get("memo") or "").strip(),
+                place_url=srcval if src == "place" else None,
+                product=srcval if src == "product" else None,
+                photos=photos or None,
+                style=StyleProfile(tone=tone) if tone else None,
+                rules=rules,
+                template_text=template,
+                emphasis=bool(body.get("emphasis")),
+                structure=bool(body.get("structure")),
+                stickers=bool(body.get("stickers")),
+                sticker_favorites_only=not bool(body.get("stickerAll")),
+                divider_variant=dv[0],
+                quote_variant=qv[0],
+                divider_variants=dkeys,
+                quote_variants=qkeys,
+                sponsored=bool(body.get("sponsored")),
+                sponsor_links=_links(body),
             )
             self._send_plan(result)
 
@@ -1176,6 +1278,8 @@ def _make_handler(state: dict):
                 elif b.kind == "image":
                     blk["image_path"] = b.image_path
                     blk["image_label"] = b.image_label
+                elif b.kind == "link":
+                    blk["link_url"] = b.link_url
                 elif b.kind == "text":
                     blk["emphases"] = [
                         {"text": e.text, "text_color": e.style.text_color,
@@ -1278,6 +1382,11 @@ def _format_summary() -> dict:
     return {"dividers": build(DIVIDER_META, den), "quotes": build(QUOTE_META, qen)}
 
 
+def _links(body: dict) -> list[str]:
+    """요청 바디의 links(쿠팡파트너스 링크 줄목록) → 공백 제거한 URL 리스트."""
+    return [u.strip() for u in (body.get("links") or []) if isinstance(u, str) and u.strip()]
+
+
 def _enabled_variant_keys() -> tuple[list[str], list[str]]:
     """현재 활성화된 구분선/인용구 종류 키 목록(프롬프트 안내에 사용)."""
     from autoblog.publish.plan import DIVIDER_META, QUOTE_META
@@ -1345,11 +1454,71 @@ def _emphasis_preview() -> dict:
         "source": source,
         "all": all_styles,
         "groups": groups,
+        "config": {
+            "cycling_pool": cfg.cycling_pool,
+            "negative_pool": cfg.negative_pool,
+            "fixed_map": cfg.fixed_map,
+            "max_per_paragraph": cfg.max_per_paragraph,
+            "min_sentence_gap": cfg.min_sentence_gap,
+        },
         # LLM에게 실제로 들어가는 강조 지시문(가시성 — 어떻게 쓰이는지 그대로 보여줌)
         "instruction": build_emphasis_instruction(cfg),
         "max_per_paragraph": cfg.max_per_paragraph,
         "min_sentence_gap": cfg.min_sentence_gap,
     }
+
+
+def _save_emphasis_config(data: dict) -> None:
+    """config/emphasis.yaml에서 순환 풀·고정 매핑·밀도 설정을 저장."""
+    import re
+
+    import yaml
+
+    from autoblog.publish.emphasis import _EMPHASIS_CONFIG_PATH, load_emphasis_config
+
+    cfg = load_emphasis_config()
+    if "cycling_pool" in data:
+        cfg.cycling_pool = [int(x) for x in (data.get("cycling_pool") or []) if isinstance(x, int) or (isinstance(x, str) and x.isdigit())]
+    if "negative_pool" in data:
+        cfg.negative_pool = [int(x) for x in (data.get("negative_pool") or []) if isinstance(x, int) or (isinstance(x, str) and x.isdigit())]
+    if "fixed_map" in data:
+        fixed = {}
+        for k, v in (data.get("fixed_map") or {}).items():
+            try:
+                fixed[str(k)] = int(v)
+            except (TypeError, ValueError):
+                continue
+        cfg.fixed_map = fixed
+    if "max_per_paragraph" in data:
+        cfg.max_per_paragraph = int(data["max_per_paragraph"]) if data.get("max_per_paragraph") not in (None, "") else None
+    if "min_sentence_gap" in data:
+        cfg.min_sentence_gap = int(data["min_sentence_gap"]) if data.get("min_sentence_gap") not in (None, "") else None
+
+    path = _EMPHASIS_CONFIG_PATH
+    raw = path.read_text(encoding="utf-8") if path.exists() else ""
+    raw = re.sub(r"(?ms)^cycling_pool:\n(?:[ \t]+.*\n?)*", "", raw)
+    raw = re.sub(r"(?ms)^negative_pool:\n(?:[ \t]+.*\n?)*", "", raw)
+    raw = re.sub(r"(?ms)^fixed_map:\n(?:[ \t]+.*\n?)*", "", raw)
+    raw = re.sub(r"(?ms)^max_per_paragraph:.*\n?", "", raw)
+    raw = re.sub(r"(?ms)^min_sentence_gap:.*\n?", "", raw)
+    body = {}
+    if cfg.cycling_pool:
+        body["cycling_pool"] = cfg.cycling_pool
+    if cfg.negative_pool:
+        body["negative_pool"] = cfg.negative_pool
+    if cfg.fixed_map:
+        body["fixed_map"] = cfg.fixed_map
+    if cfg.max_per_paragraph is not None:
+        body["max_per_paragraph"] = cfg.max_per_paragraph
+    if cfg.min_sentence_gap is not None:
+        body["min_sentence_gap"] = cfg.min_sentence_gap
+    block = ""
+    if body:
+        block = (
+            "\n# 강조 배정 설정 (서식 탭에서 편집) — 순환 풀, 고정 매핑, 밀도 규칙\n"
+            + yaml.safe_dump(body, allow_unicode=True, sort_keys=False)
+        )
+    path.write_text(raw.rstrip("\n") + "\n" + block, encoding="utf-8")
 
 
 def _save_emphasis_preset_tag(preset_id, tag: str) -> None:

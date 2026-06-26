@@ -168,6 +168,8 @@ class BlogPublisher:
                 self._insert_sticker(block.sticker_pack, block.sticker_index or 0)
             elif block.kind == "place" and block.text:
                 self._insert_place(block.text, address=block.place_address)
+            elif block.kind == "link" and block.link_url:
+                self._insert_link(block.link_url)
         # 본문 입력을 모두 마친 뒤 강조 서식 적용(커서 간섭 방지)
         for span in emphases:
             try:
@@ -340,6 +342,30 @@ class BlogPublisher:
         )
         page.wait_for_timeout(1500)
         return True
+
+    def _insert_link(self, url: str) -> bool:
+        """SE 네이티브 '링크' 카드(oglink) 삽입: 링크 버튼 → URL 입력 → 검색/확인.
+
+        커서 위치에 썸네일+제목 링크 카드가 삽입된다. 쿠팡파트너스 링크 등에 사용.
+        NOTE: 아래 셀렉터는 장소 카드(_insert_place) 패턴을 본떠 작성. 실제 에디터
+        세션에서 한 번 검증/보정 필요(SE 버전에 따라 클래스명이 다를 수 있음)."""
+        page = self._page
+        page.click("button.se-link-toolbar-button")
+        page.wait_for_timeout(1200)
+        # 링크 팝업의 URL 입력칸에 주소 입력 → Enter로 미리보기(oglink) 생성
+        page.fill("input.se-popup-oglink-input", url)
+        page.wait_for_timeout(300)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(2500)  # 카드 미리보기 fetch 대기
+        confirm = page.query_selector("button.se-popup-button-confirm")
+        if confirm:
+            confirm.click()
+            page.wait_for_timeout(1200)
+            return True
+        close = page.query_selector("button.se-popup-close-button")
+        if close:
+            close.click()
+        return False
 
     # 시/도 풀네임 → 약칭(수집 주소는 '서울', SE 결과는 '서울특별시'라 통일)
     _SIDO = {

@@ -127,12 +127,11 @@ def build_place_instruction() -> str:
 
 
 # --- 구조별 서식 템플릿 (config/structure_styles.yaml) ---
-# 대제목·소제목·with.필명·해시태그 줄을 패턴으로 인식해 서체/크기/색을 자동 배정한다.
+# 대제목·소제목·해시태그 줄을 패턴으로 인식해 서체/크기/색을 자동 배정한다.
 # 마커가 아니라 패턴 인식이라, 외부 챗봇에서 받아온 글에도 동일하게 먹는다.
 _STRUCTURE_STYLES_PATH = CONFIG_DIR / "structure_styles.yaml"
 
-# with. 필명 / "1. 가게명 후기" 소제목 / 해시태그 줄 인식
-_BYLINE_RE = re.compile(r"(?i)^with\.\s*\S")
+# "1. 가게명 후기" 소제목 / 해시태그 줄 인식
 _SUBHEADING_RE = re.compile(r"^\d+\.\s+\S")
 
 
@@ -156,11 +155,18 @@ class HashtagStyle(RoleStyle):
 
 
 class StructureStyles(BaseModel):
-    pen_name: str = ""
     big_title: RoleStyle = Field(default_factory=RoleStyle)
     subheading: RoleStyle = Field(default_factory=RoleStyle)
-    byline: RoleStyle = Field(default_factory=RoleStyle)
     hashtags: HashtagStyle = Field(default_factory=HashtagStyle)
+    # 협찬 토글 ON 시 본문 맨 위에 고정 삽입할 고지 스티커 "팩코드:인덱스" (예: ogq_a:3). 비우면 안 넣음.
+    sponsor_sticker: str = ""
+
+    def sponsor_ref(self) -> tuple[str, int] | None:
+        """sponsor_sticker("팩:인덱스") → (pack, index). 형식이 어긋나면 None."""
+        pack, _, idx = self.sponsor_sticker.partition(":")
+        if pack and idx.isdigit():
+            return pack, int(idx)
+        return None
 
 
 def load_structure_styles(path=None) -> StructureStyles:
@@ -179,8 +185,9 @@ def _is_hashtag_line(s: str) -> bool:
 
 
 class PublishBlock(BaseModel):
-    kind: str  # "text" | "image" | "divider" | "quote" | "sticker"
+    kind: str  # "text" | "image" | "divider" | "quote" | "sticker" | "place" | "link"
     text: str = ""
+    link_url: str = ""  # 링크 카드(oglink) URL — 쿠팡파트너스 등
     emphases: list[StyledSpan] = Field(default_factory=list)
     image_path: str | None = None
     image_label: str = ""
@@ -205,6 +212,8 @@ def build_publish_plan(
     structure_styles: StructureStyles | None = None,
     place_query: str | None = None,
     place_address: str | None = None,
+    sponsor: bool = False,
+    sponsor_links: list[str] | None = None,
 ) -> PublishPlan:
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
 
@@ -214,6 +223,10 @@ def build_publish_plan(
     - [인용구]…[/인용구] → 인용 블록
     - [스티커:상황] → picker가 (팩,인덱스)로 해석한 스티커(picker 없거나 미해석이면 무시)
     그 외 줄은 텍스트 문단으로 누적. 강조 span은 해당 텍스트 블록에 배분.
+
+    sponsor=True면 structure_styles.sponsor_sticker(쿠팡파트너스 고지 스티커)를
+    본문 맨 위 블록으로 고정 삽입한다(ref 형식이 어긋나면 조용히 건너뜀).
+    sponsor_links를 주면 그 URL들을 링크 카드로 본문 텍스트 사이 고른 위치에 분산 삽입한다.
     """
     photos = list(photos or [])
     lines = draft.text.split("\n")
@@ -259,8 +272,6 @@ def build_publish_plan(
         """구조별 서식이 켜져 있을 때, 이 줄이 어떤 구조 요소인지 판정(없으면 None)."""
         if structure_styles is None:
             return None
-        if _BYLINE_RE.match(s):
-            return "byline"
         if _is_hashtag_line(s):
             return "hashtags"
         if _SUBHEADING_RE.match(s):
@@ -286,7 +297,7 @@ def build_publish_plan(
             if div and div in DIVIDER_META:
                 blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0], align="center"))
             return
-        role_style = {"byline": ss.byline, "subheading": ss.subheading, "big_title": ss.big_title}[role]
+        role_style = {"subheading": ss.subheading, "big_title": ss.big_title}[role]
         span = StyledSpan(text=s, preset_id=None, style=role_style.to_style())
         blocks.append(PublishBlock(kind="text", text=s, emphases=[span], align=role_style.align))
 
@@ -379,5 +390,33 @@ def build_publish_plan(
                         PublishBlock(kind="image", image_path=ph.path, image_label=ph.label)
                     )
             blocks = spread
+
+    # 협찬 링크 카드 — 글 끝에 몰지 않고 본문 텍스트 사이 고른 '중간중간' 위치에 분산.
+    # 텍스트 블록이 t개일 때 링크 i는 (i+1)/(n+1) 지점 텍스트 뒤에 — 맨 앞/맨 끝을 피해 가운데로.
+    links = [u.strip() for u in (sponsor_links or []) if u.strip()]
+    if links:
+        text_pos = [i for i, b in enumerate(blocks) if b.kind == "text"]
+        if not text_pos:  # 본문 텍스트가 없으면 그대로 끝에
+            for url in links:
+                blocks.append(PublishBlock(kind="link", link_url=url))
+        else:
+            t = len(text_pos)
+            last = t - 2 if t >= 3 else t - 1  # 텍스트 블록이 3개 이상이면 마지막 문단 뒤는 피함
+            after: dict[int, list[str]] = {}
+            for k, url in enumerate(links):
+                anchor = text_pos[min(last, ((k + 1) * t) // (len(links) + 1))]
+                after.setdefault(anchor, []).append(url)
+            spread: list[PublishBlock] = []
+            for i, b in enumerate(blocks):
+                spread.append(b)
+                for url in after.get(i, []):
+                    spread.append(PublishBlock(kind="link", link_url=url))
+            blocks = spread
+
+    # 협찬 고지 스티커 — 본문 맨 위에 고정 삽입(제목 칸과 별개로 본문 첫 블록).
+    if sponsor and structure_styles is not None:
+        ref = structure_styles.sponsor_ref()
+        if ref:
+            blocks.insert(0, PublishBlock(kind="sticker", sticker_pack=ref[0], sticker_index=ref[1]))
 
     return PublishPlan(title=title, blocks=blocks)

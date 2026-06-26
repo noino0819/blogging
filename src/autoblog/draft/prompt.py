@@ -91,7 +91,7 @@ def build_system_prompt(
     return "\n\n".join(blocks)
 
 
-def build_user_prompt(card: FactCard, experience_memo: str) -> str:
+def build_user_prompt(card: FactCard, experience_memo: str, template_text: str | None = None) -> str:
     """재료(경험 메모=주연, 사실 카드=조연) → 사용자 프롬프트.
 
     재료 구분용 머리말은 모델이 본문에 인용하지 않도록 명시한다(라벨 누수 방지).
@@ -118,6 +118,14 @@ def build_user_prompt(card: FactCard, experience_memo: str) -> str:
             f"(라벨은 보유 사진의 분류명: {', '.join(labels)}).\n"
             "예: 음식 묘사 문단 뒤엔 [사진:음식], 가게 첫인상 문단 뒤엔 [사진:외관]. "
             "라벨을 모르겠으면 그냥 [사진] 으로 두면 됩니다. 같은 라벨 사진이 여러 장이면 그만큼 마커를 반복하세요."
+        )
+    if template_text and template_text.strip():
+        parts.append(
+            "# 사용 템플릿\n"
+            "다음 템플릿은 최종 글의 구조입니다. 템플릿의 사진 마커와 제목 위치를 유지하며, "
+            "실제 블로그 제목과 본문 내용으로 자연스럽게 채워주세요. 템플릿의 레이블은 그대로 복사하지 말고 "
+            "실제 글 제목/본문으로 바꾸세요.\n"
+            + template_text.strip()
         )
     parts.append("위 경험을 중심으로 네이버 블로그 후기 글을 제목과 본문으로 작성하세요.")
     return "\n\n".join(parts)

@@ -103,16 +103,16 @@ def test_merge_adds_new_preserves_old_marks_stale():
 
 def test_find_prioritizes_favorites_and_skips_stale():
     cat = _cat()
-    hits = cat.find("기쁨")
+    hits = cat.find("기쁨", favorites_only=False)  # 전체 후보, 즐겨쓰기 우선 정렬
     assert [s.ref for s in hits][0] == "ogq_b:0"  # 즐겨쓰기 우선
     assert {s.ref for s in hits} == {"ogq_a:0", "ogq_a:1", "ogq_b:0"}
     # stale 제외
     cat.stickers[0].stale = True
-    assert "ogq_a:0" not in {s.ref for s in cat.find("기쁨")}
+    assert "ogq_a:0" not in {s.ref for s in cat.find("기쁨", favorites_only=False)}
 
 
 def test_picker_dedup_and_no_match():
-    picker = StickerPicker(_cat())
+    picker = StickerPicker(_cat(), favorites_only=False)  # 다중 후보 → 중복 회피 검증
     a = picker.pick("기쁨")
     b = picker.pick("기쁨")
     assert a.ref != b.ref  # 같은 라벨 반복 시 다른 스티커
@@ -120,7 +120,7 @@ def test_picker_dedup_and_no_match():
 
 
 def test_picker_consistency_locks_pack():
-    picker = StickerPicker(_cat(), consistent=True)
+    picker = StickerPicker(_cat(), consistent=True, favorites_only=False)
     first = picker.pick("기쁨")  # 즐겨쓰기 우선 → ogq_b:0
     assert first.pack == "ogq_b"
     # 통일성: 이후 같은 팩으로 고정. '감사'도 ogq_b에 있음

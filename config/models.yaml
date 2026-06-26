@@ -65,5 +65,5 @@ presets:
     concurrent_load: true
 default: apple_18gb
 selection:
-  text: qwen2.5:14b
+  text: claude-opus-4-8
   vision: qwen2.5vl:7b

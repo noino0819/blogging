@@ -18,7 +18,9 @@ def test_run_pipeline_wires_stickers(monkeypatch):
         return "초밥 후기\n\n정말 맛있었어요.\n[스티커:맛있음]\n또 갈래요."
 
     monkeypatch.setattr(gen, "chat", fake_chat)
-    cat = StickerCatalog(stickers=[Sticker(pack="ogq_a", index=3, tags=["맛있음"])])
+    cat = StickerCatalog(
+        stickers=[Sticker(pack="ogq_a", index=3, tags=["맛있음"])], favorites=["ogq_a:3"]
+    )
 
     result = run_pipeline(
         "비 오는 날 들렀어요", card=_card(), stickers=True, sticker_catalog=cat, structure=True

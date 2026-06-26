@@ -95,8 +95,10 @@ def test_build_plan_divider_variant():
 def test_build_plan_sticker_marker_resolved():
     from autoblog.publish.stickers import Sticker, StickerCatalog, StickerPicker
 
-    cat = StickerCatalog(stickers=[Sticker(pack="ogq_a", index=3, tags=["맛있음"])])
-    picker = StickerPicker(cat)
+    cat = StickerCatalog(
+        stickers=[Sticker(pack="ogq_a", index=3, tags=["맛있음"])], favorites=["ogq_a:3"]
+    )
+    picker = StickerPicker(cat)  # 즐겨찾기-온리 기본 → 즐겨찾기한 스티커만 게시에 쓰임
     draft = DraftResult(text="제목\n\n정말 맛있었어요.\n[스티커:맛있음]\n또 갈래요.")
     plan = build_publish_plan(draft, picker=picker)
     sticker = next(b for b in plan.blocks if b.kind == "sticker")
@@ -118,7 +120,6 @@ def _structure_styles():
     return StructureStyles(
         big_title=RoleStyle(font="nanummaruburi", size=30, color="#395D73"),
         subheading=RoleStyle(font="nanumuriddalsongeulssi", size=19, color="#EB7D7D"),
-        byline=RoleStyle(font="nanumdasisijaghae", size=15, color="#607D8E"),
         hashtags=HashtagStyle(font="system", size=11, color="#4383BF", per_line=2, divider="line3"),
     )
 
@@ -128,7 +129,6 @@ def test_structure_styles_header_and_subheading():
         text=(
             "혜화 치즈철판카츠 메종아카이\n"
             "친구랑 주말 대학로 데이트 코스\n"
-            "with. 노이노\n"
             "혜화맛집 #대학로맛집 #혜화내돈내산 #메종아카이\n\n"
             "인트로 한 줄.\n\n"
             "1. 치즈철판카츠 후기\n"
@@ -143,10 +143,6 @@ def test_structure_styles_header_and_subheading():
     assert big.emphases[0].style.font_family == "nanummaruburi"
     assert big.emphases[0].style.font_size == "30"
     assert big.emphases[0].style.text_color == "#395D73"
-
-    # with. 줄은 다시시작해15
-    byline = next(b for b in plan.blocks if b.text == "with. 노이노")
-    assert byline.emphases[0].style.font_family == "nanumdasisijaghae"
 
     # 해시태그는 2개씩 줄바꿈 + 줄마다 span, 바로 뒤에 가운데 꺾인 선(variant 4)
     tag_block = next(b for b in plan.blocks if "#대학로맛집" in b.text)
@@ -166,6 +162,43 @@ def test_structure_styles_off_by_default():
     draft = DraftResult(text="제목\n\n짧은 첫 줄\n다음 줄")
     plan = build_publish_plan(draft)
     assert all(not b.emphases for b in plan.blocks if b.kind == "text")
+
+
+def test_sponsor_sticker_prepended_at_top():
+    draft = DraftResult(text="제목\n\n본문 첫 줄.\n본문 둘째 줄.")
+    ss = StructureStyles(sponsor_sticker="ogq_cp:7")
+
+    # 토글 OFF면 안 들어감
+    off = build_publish_plan(draft, structure_styles=ss, sponsor=False)
+    assert all(b.kind != "sticker" for b in off.blocks)
+
+    # 토글 ON이면 본문 맨 위 블록이 그 스티커
+    on = build_publish_plan(draft, structure_styles=ss, sponsor=True)
+    assert on.blocks[0].kind == "sticker"
+    assert on.blocks[0].sticker_pack == "ogq_cp"
+    assert on.blocks[0].sticker_index == 7
+
+    # ref 형식이 어긋나거나 비면 토글 ON이어도 안 들어감
+    bad = build_publish_plan(draft, structure_styles=StructureStyles(sponsor_sticker="없음"), sponsor=True)
+    assert all(b.kind != "sticker" for b in bad.blocks)
+
+
+def test_sponsor_links_spread_in_middle():
+    # 문단 사이 구분선이 있어야 텍스트 블록이 여러 개로 나뉜다(실제 글 구조)
+    draft = DraftResult(text="제목\n\n첫째.\n[구분선]\n둘째.\n[구분선]\n셋째.\n[구분선]\n넷째.\n[구분선]\n다섯째.")
+    links = ["https://coupa.ng/a", "https://coupa.ng/b", "https://coupa.ng/c"]
+    plan = build_publish_plan(draft, sponsor_links=links)
+
+    link_blocks = [b for b in plan.blocks if b.kind == "link"]
+    assert [b.link_url for b in link_blocks] == links  # 순서·개수 보존
+
+    # 중간중간: 첫 블록·마지막 블록은 본문(링크가 맨 위/맨 끝에 몰리지 않음)
+    kinds = [b.kind for b in plan.blocks]
+    assert kinds[0] == "text" and kinds[-1] == "text"
+
+    # 공백/빈 줄은 무시
+    p2 = build_publish_plan(draft, sponsor_links=["  ", "https://coupa.ng/x", ""])
+    assert [b.link_url for b in p2.blocks if b.kind == "link"] == ["https://coupa.ng/x"]
 
 
 def test_selectors_ready():

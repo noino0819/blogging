@@ -71,7 +71,6 @@ def build_export_prompt(
     base_prompt: str | None = None,
     emphasis: bool = False,
     structure: bool = False,
-    sponsored: bool = False,
     stickers: bool = False,
     sticker_catalog: StickerCatalog | None = None,
     divider_variants: list[str] | None = None,
@@ -107,7 +106,6 @@ def build_export_prompt(
         divider_variants=divider_variants or [],
         quote_variants=quote_variants or [],
         sticker_labels=labels,
-        sponsored=sponsored,
         place=_place_info(card)[0],
     )
     system, user = build_prompt(req)
@@ -136,6 +134,8 @@ def plan_from_text(
     quote_variant: int = 1,
     place_query: str | None = None,
     place_address: str | None = None,
+    sponsored: bool = False,
+    sponsor_links: list[str] | None = None,
 ) -> PipelineResult:
     """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱·후처리 → 게시 플랜.
 
@@ -174,7 +174,7 @@ def plan_from_text(
         draft, photos=card.photos, picker=picker,
         divider_variant=divider_variant, quote_variant_default=quote_variant,
         structure_styles=load_structure_styles(), place_query=place_query,
-        place_address=place_address,
+        place_address=place_address, sponsor=sponsored, sponsor_links=sponsor_links,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
 
@@ -192,7 +192,6 @@ def run_pipeline(
     template_text: str | None = None,
     emphasis: bool = False,
     structure: bool = False,
-    sponsored: bool = False,
     stickers: bool = False,
     sticker_catalog: StickerCatalog | None = None,
     consistent_pack: bool = False,
@@ -201,6 +200,8 @@ def run_pipeline(
     quote_variant: int = 1,
     divider_variants: list[str] | None = None,
     quote_variants: list[str] | None = None,
+    sponsored: bool = False,
+    sponsor_links: list[str] | None = None,
     model: str | None = None,
 ) -> PipelineResult:
     """수집→초안(강조/구조/스티커 마커 자동)→게시 플랜까지 한 번에 조립.
@@ -235,7 +236,6 @@ def run_pipeline(
         divider_variants=divider_variants or [],
         quote_variants=quote_variants or [],
         sticker_labels=labels,
-        sponsored=sponsored,
         place=place_on,
     )
     draft = generate_draft(req, model=model)
@@ -249,6 +249,6 @@ def run_pipeline(
         draft, photos=card.photos, picker=picker,
         divider_variant=divider_variant, quote_variant_default=quote_variant,
         structure_styles=load_structure_styles(), place_query=place_query,
-        place_address=place_address,
+        place_address=place_address, sponsor=sponsored, sponsor_links=sponsor_links,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
