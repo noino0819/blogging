@@ -188,6 +188,7 @@ class PublishBlock(BaseModel):
     sticker_pack: str | None = None  # 스티커 팩 코드(picker 해석 결과)
     sticker_index: int | None = None  # 스티커 data-index
     align: str | None = None  # 단락 정렬: center/right/justify (None=기본 왼쪽)
+    place_address: str | None = None  # 장소 카드: 수집 도로명 주소(검색 결과 매칭용)
 
 
 class PublishPlan(BaseModel):
@@ -203,6 +204,7 @@ def build_publish_plan(
     quote_variant_default: int = 1,
     structure_styles: StructureStyles | None = None,
     place_query: str | None = None,
+    place_address: str | None = None,
 ) -> PublishPlan:
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
 
@@ -309,7 +311,7 @@ def build_publish_plan(
             flush_text()
             q = (place_m.group(1) or place_query or "").strip()
             if q:  # 가게명(마커 인자 우선, 없으면 수집된 이름)으로 장소 카드
-                blocks.append(PublishBlock(kind="place", text=q))
+                blocks.append(PublishBlock(kind="place", text=q, place_address=place_address))
         elif div_m:
             flush_text()
             blocks.append(

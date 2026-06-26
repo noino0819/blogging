@@ -25,11 +25,15 @@ class PipelineResult(BaseModel):
     plan: PublishPlan
 
 
-def _place_info(card: FactCard | None) -> tuple[bool, str | None]:
-    """맛집(장소) 카드면 (지도 마커 켜기, 검색용 가게명) 반환. 아니면 (False, None)."""
+def _place_info(card: FactCard | None) -> tuple[bool, str | None, str | None]:
+    """맛집(장소) 카드면 (지도 마커 켜기, 검색용 가게명, 매칭용 도로명 주소) 반환.
+
+    주소는 도로명(road_address) 우선 — SE 장소 검색 결과 주소가 도로명 기준이라
+    동명 가게가 여럿일 때 정확한 결과를 고르는 데 쓴다. 없으면 지번(address)."""
     if card and card.type == CardType.place and card.place and card.place.name:
-        return True, card.place.name
-    return False, None
+        p = card.place
+        return True, p.name, (p.road_address or p.address)
+    return False, None, None
 
 
 def collect_card(
@@ -131,11 +135,13 @@ def plan_from_text(
     divider_variant: int = 1,
     quote_variant: int = 1,
     place_query: str | None = None,
+    place_address: str | None = None,
 ) -> PipelineResult:
     """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱·후처리 → 게시 플랜.
 
     수집·LLM 호출 없이 run_pipeline의 후반부(초안→플랜)만 재현한다. 선택한 사진은
-    플랜에 이미지 블록으로 배치된다. place_query를 주면 [지도] 마커를 그 가게명으로 해석한다.
+    플랜에 이미지 블록으로 배치된다. place_query를 주면 [지도] 마커를 그 가게명으로
+    해석하고, place_address(도로명)를 주면 검색 결과를 그 주소로 매칭한다.
     """
     catalog = None
     labels: list[str] = []
@@ -168,6 +174,7 @@ def plan_from_text(
         draft, photos=card.photos, picker=picker,
         divider_variant=divider_variant, quote_variant_default=quote_variant,
         structure_styles=load_structure_styles(), place_query=place_query,
+        place_address=place_address,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
 
@@ -214,7 +221,7 @@ def run_pipeline(
         catalog = sticker_catalog
         labels = catalog.labels()
 
-    place_on, place_query = _place_info(card)
+    place_on, place_query, place_address = _place_info(card)
 
     req = DraftRequest(
         fact_card=card,
@@ -242,5 +249,6 @@ def run_pipeline(
         draft, photos=card.photos, picker=picker,
         divider_variant=divider_variant, quote_variant_default=quote_variant,
         structure_styles=load_structure_styles(), place_query=place_query,
+        place_address=place_address,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
