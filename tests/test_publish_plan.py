@@ -151,10 +151,12 @@ def test_structure_styles_header_and_subheading():
     idx = plan.blocks.index(tag_block)
     assert plan.blocks[idx + 1].kind == "divider" and plan.blocks[idx + 1].variant == 4
 
-    # 소제목 우리딸손글씨19
+    # 소제목("1. ...")은 인용구 밑줄형 블록으로 렌더(텍스트 "1. " 자동 번호목록 누수 회피)
+    from autoblog.publish.plan import QUOTE_META
+
     sub = next(b for b in plan.blocks if b.text == "1. 치즈철판카츠 후기")
-    assert sub.emphases[0].style.font_family == "nanumuriddalsongeulssi"
-    assert sub.emphases[0].style.font_size == "19"
+    assert sub.kind == "quote"
+    assert sub.variant == QUOTE_META["quotation_underline"][0]
 
 
 def test_structure_styles_off_by_default():

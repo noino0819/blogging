@@ -39,7 +39,11 @@ _RANGE_RECT_JS = """(t) => {
     const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let n;
     while (n = w.nextNode()) {
-      const i = n.textContent.indexOf(t);
+      const tc = n.textContent;
+      let i = tc.indexOf(t);
+      // 해시태그(#로 시작하는 토큰) 안의 매치는 건너뛴다 — 본문 강조 문구가
+      // '#가게명' 같은 해시태그 속 같은 글자에 잘못 입혀지는 충돌을 막는다.
+      while (i > 0 && /[#＃]/.test(tc[i - 1])) i = tc.indexOf(t, i + 1);
       if (i !== -1) {
         const r = document.createRange();
         r.setStart(n, i); r.setEnd(n, i + t.length);
@@ -161,9 +165,9 @@ class BlogPublisher:
             elif block.kind == "image" and block.image_path:
                 self._insert_image(block.image_path)
             elif block.kind == "divider":
-                self._insert_divider(block.variant)
+                self._insert_divider(block.variant, align=block.align)
             elif block.kind == "quote":
-                self._insert_quote(block.text, block.variant)
+                self._insert_quote(block.text, block.variant, align=block.align)
             elif block.kind == "sticker" and block.sticker_pack is not None:
                 self._insert_sticker(block.sticker_pack, block.sticker_index or 0)
             elif block.kind == "place" and block.text:
@@ -295,15 +299,12 @@ class BlogPublisher:
     def _type_text_block(self, block: PublishBlock):
         """본문 한 블록 입력. \\n은 Enter(문단), 블록 끝에 빈 줄 하나.
 
-        block.align(center 등)이 있으면 타이핑 전에 현재 단락에 정렬을 걸어 두면
-        뒤따르는 새 단락이 정렬을 상속한다. 블록이 끝나면 다음 본문이 다시 왼쪽이
-        되도록 정렬을 left로 되돌린다(SE는 정렬을 다음 단락으로 이어받기 때문)."""
+        block.align(center 등)이 있으면 타이핑 전에 현재 단락에 걸어 둔다 — SE는 정렬을
+        다음 단락으로 이어받으므로 글 전체가 center면 그대로 유지된다(left로 되돌리지 않음)."""
         if block.align and block.align != "left":
             self._apply_align(block.align)
         self._page.keyboard.type(block.text, delay=4)
         self._page.keyboard.press("Enter")
-        if block.align and block.align != "left":
-            self._apply_align("left")  # 다음 단락 정렬 오염 방지
 
     def _insert_place(self, query: str, address: str | None = None) -> bool:
         """SE 네이티브 '장소' 카드 삽입: 가게명 검색 → 수집 주소와 가장 잘 맞는 결과 '추가' → '확인'.
@@ -344,28 +345,65 @@ class BlogPublisher:
         return True
 
     def _insert_link(self, url: str) -> bool:
-        """SE 네이티브 '링크' 카드(oglink) 삽입: 링크 버튼 → URL 입력 → 검색/확인.
+        """SE 링크 카드(oglink) 삽입 — 본문에 URL을 합성 paste 이벤트로 붙여넣어 카드 생성.
 
-        커서 위치에 썸네일+제목 링크 카드가 삽입된다. 쿠팡파트너스 링크 등에 사용.
-        NOTE: 아래 셀렉터는 장소 카드(_insert_place) 패턴을 본떠 작성. 실제 에디터
-        세션에서 한 번 검증/보정 필요(SE 버전에 따라 클래스명이 다를 수 있음)."""
+        툴바 '링크'(글감검색) 버튼은 외부 URL을 "글감을 가져올 수 없습니다"로 거부하므로 못 쓴다.
+        대신 contenteditable에 DataTransfer 기반 paste 이벤트를 디스패치하면(시스템 클립보드 불필요
+        → 권한 팝업 없음) 네이버가 OG 메타데이터를 받아 se-oglink 카드를 만든다. 붙여넣기는 URL을
+        '일반 텍스트 줄'로도 남기므로, 카드 생성 뒤 그 텍스트 줄을 찾아 삭제한다(SEO상 맨 URL 방지).
+        라이브 검증: 쿠팡파트너스 링크 → 'Coupang Partners' 카드 1개, 텍스트 잔여 없음."""
         page = self._page
-        page.click("button.se-link-toolbar-button")
-        page.wait_for_timeout(1200)
-        # 링크 팝업의 URL 입력칸에 주소 입력 → Enter로 미리보기(oglink) 생성
-        page.fill("input.se-popup-oglink-input", url)
+        page.click(SMART_EDITOR["content_component"])
         page.wait_for_timeout(300)
-        page.keyboard.press("Enter")
-        page.wait_for_timeout(2500)  # 카드 미리보기 fetch 대기
-        confirm = page.query_selector("button.se-popup-button-confirm")
-        if confirm:
-            confirm.click()
-            page.wait_for_timeout(1200)
-            return True
-        close = page.query_selector("button.se-popup-close-button")
-        if close:
-            close.click()
-        return False
+        page.keyboard.press("End")
+        page.keyboard.press("Enter")  # 직전 문단과 안 섞이게 새 줄에서
+        page.wait_for_timeout(200)
+
+        before = page.evaluate("()=>document.querySelectorAll('.se-component.se-oglink').length")
+        dispatched = page.evaluate(
+            """(url)=>{
+              const el=(document.activeElement&&document.activeElement.isContentEditable)
+                ? document.activeElement : document.querySelector('[contenteditable=true]');
+              if(!el) return false;
+              el.focus(); const dt=new DataTransfer(); dt.setData('text/plain', url);
+              el.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));
+              return true;
+            }""",
+            url,
+        )
+        if not dispatched:
+            return False
+        # OG 카드 변환 대기(최대 ~7초). 첨부 확인 팝업이 뜨면 확인 클릭.
+        created = False
+        for _ in range(14):
+            page.wait_for_timeout(500)
+            confirm = page.query_selector("button.se-popup-button-confirm")
+            if confirm:
+                confirm.click()
+                page.wait_for_timeout(600)
+            if page.evaluate("()=>document.querySelectorAll('.se-component.se-oglink').length") > before:
+                created = True
+                break
+        if not created:
+            return False
+        # 붙여넣기가 남긴 '일반 URL 텍스트 줄' 제거(트리플클릭으로 줄 선택 → 삭제)
+        box = page.evaluate(
+            """(url)=>{
+              const t=[...document.querySelectorAll('.se-component.se-text')]
+                .find(c=>(c.textContent||'').trim()===url);
+              if(!t) return null; const r=t.getBoundingClientRect();
+              return {x:r.x+r.width/2, y:r.y+r.height/2};
+            }""",
+            url,
+        )
+        if box:
+            page.mouse.click(box["x"], box["y"], click_count=3)
+            page.wait_for_timeout(200)
+            page.keyboard.press("Delete")
+            page.wait_for_timeout(150)
+            page.keyboard.press("Backspace")  # 남은 빈 줄 제거
+            page.wait_for_timeout(300)
+        return True
 
     # 시/도 풀네임 → 약칭(수집 주소는 '서울', SE 결과는 '서울특별시'라 통일)
     _SIDO = {
@@ -487,7 +525,7 @@ class BlogPublisher:
         page.click(SMART_EDITOR["color_apply_button"])
         page.wait_for_timeout(350)
 
-    def _insert_divider(self, variant: int = 1):
+    def _insert_divider(self, variant: int = 1, align: str | None = None):
         """구분선 삽입. 항상 종류 드롭다운에서 variant번째를 고른다(variant=1=기본선).
 
         기본 빠른버튼(...-default-toolbar-button)을 쓰지 않는 이유: 드롭다운으로 한 번
@@ -495,13 +533,22 @@ class BlogPublisher:
         그래서 변형>1 다음 변형1을 넣을 때 기본 버튼을 못 찾는다 → 경로를 드롭다운으로 통일."""
         self._pick_insert_variant("horizontal-line", max(variant, 1))
         self._page.wait_for_timeout(500)
+        if align and align != "left":
+            self._apply_align(align)
 
-    def _insert_quote(self, text: str, variant: int = 1):
-        """인용구 삽입 후 본문 텍스트 입력. 구분선과 같은 이유로 드롭다운 경로로 통일."""
+    def _insert_quote(self, text: str, variant: int = 1, align: str | None = None):
+        """인용구 삽입 후 본문 텍스트 입력. 구분선과 같은 이유로 드롭다운 경로로 통일.
+
+        text의 \\n은 인용구 안에서 줄바꿈(Enter)으로 넣어 한마디를 여러 줄로 보여준다."""
         self._pick_insert_variant("quotation", max(variant, 1))
         self._page.wait_for_timeout(500)
-        self._page.keyboard.type(text, delay=4)
+        for i, line in enumerate(text.split("\n")):
+            if i:
+                self._page.keyboard.press("Enter")
+            self._page.keyboard.type(line, delay=4)
         self._page.wait_for_timeout(200)
+        if align and align != "left":
+            self._apply_align(align)  # 내용 입력 후(커서가 인용구 안에 있을 때) 정렬 적용
         # 인용 블록 탈출: '본문 추가'로 블록 뒤에 새 문단을 만들고 거기로 포커스
         try:
             self._page.click(SMART_EDITOR["canvas_bottom_button"])

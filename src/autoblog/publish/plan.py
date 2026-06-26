@@ -102,10 +102,11 @@ def build_structure_instruction(
         "[구조 마커] — 아래 마커를 본문에 실제로 넣어 글을 읽기 좋게 나누세요(권장이 아니라 사용).\n"
         f"{divider_line}"
         f"{quote_line}"
+        "  인용구 안의 한마디도 한 줄에 짧은 절 하나씩 2~3줄로 끊어 쓰세요(본문 줄바꿈 규칙 동일).\n"
         "  음식·분위기를 묘사하는 짧은 카피성 문구(예: '겉은 바삭 속은 촉촉')는 인용구로 만들지 말고, "
         '강조하려면 본문 안에서 큰따옴표(" ")로 감싸 쓰세요.\n'
         f"예시:\n오늘 다녀온 첫 소감 문단.\n\n{d_open}\n\n"
-        f"{q_open}\n여기는 두 번 세 번 와도 안 질릴 곳\n[/인용구]\n\n다음 문단.\n"
+        f"{q_open}\n겉은 바삭 속은 촉촉\n두 번 세 번 와도 안 질릴 곳\n[/인용구]\n\n다음 문단.\n"
         "마커는 화면에 글자로 안 보이고 서식으로 바뀝니다. 문장 안에 섞지 말고 줄 단독으로 두세요."
     )
 
@@ -266,7 +267,7 @@ def build_publish_plan(
         text_buf.clear()
         if text:
             spans = [e for e in draft.emphases if e.text and e.text in text]
-            blocks.append(PublishBlock(kind="text", text=text, emphases=spans))
+            blocks.append(PublishBlock(kind="text", text=text, emphases=spans, align="center"))
 
     def classify_role(s: str) -> str | None:
         """구조별 서식이 켜져 있을 때, 이 줄이 어떤 구조 요소인지 판정(없으면 None)."""
@@ -297,9 +298,20 @@ def build_publish_plan(
             if div and div in DIVIDER_META:
                 blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0], align="center"))
             return
-        role_style = {"subheading": ss.subheading, "big_title": ss.big_title}[role]
+        if role == "subheading":
+            # 소제목("1. ...")은 인용구 '밑줄형'으로 렌더한다. 텍스트로 "1. "을 본문에 치면
+            # 에디터가 자동 번호목록을 켜서 뒤 문단까지 번호가 번지는데, 별도 인용구 블록으로
+            # 빼면 그 누수가 사라지고 소제목도 또렷하게 강조된다(variant=밑줄형).
+            # 밑줄형은 왼쪽정렬이 기본·고정이라 align은 따로 주지 않는다(중앙정렬 불가).
+            blocks.append(
+                PublishBlock(kind="quote", text=s, variant=QUOTE_META["quotation_underline"][0])
+            )
+            return
+        role_style = ss.big_title
         span = StyledSpan(text=s, preset_id=None, style=role_style.to_style())
-        blocks.append(PublishBlock(kind="text", text=s, emphases=[span], align=role_style.align))
+        blocks.append(
+            PublishBlock(kind="text", text=s, emphases=[span], align=role_style.align or "center")
+        )
 
     for line in body_lines:
         s = line.strip()
@@ -309,7 +321,9 @@ def build_publish_plan(
                 qtext = "\n".join(quote_buf).strip()
                 quote_buf.clear()
                 if qtext:
-                    blocks.append(PublishBlock(kind="quote", text=qtext, variant=quote_variant))
+                    blocks.append(
+                        PublishBlock(kind="quote", text=qtext, variant=quote_variant, align="center")
+                    )
             else:
                 quote_buf.append(line)
             continue
