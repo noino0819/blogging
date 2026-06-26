@@ -280,21 +280,23 @@ class BlogPublisher:
         self._page.keyboard.type(title, delay=8)
 
     def _reset_text_toggles(self):
-        """남아있는 토글 서식(취소선/굵게/기울임/밑줄, se-is-selected)을 해제.
+        """본문 진입 시, 직전 세션에서 켜진 채 남은 토글 서식(취소선/굵게/기울임/밑줄)이
+        활성(se-is-selected)이면 한 번 눌러 끈다. 활성이 아니면 건드리지 않는다.
 
-        SE는 마지막 서식 상태를 유지해, 직전에 켜진 취소선 등이 새 글에 묻어난다.
-        커서가 본문에 자리잡은 뒤(대기) 활성 토글을 JS로 끈다.
+        커서가 본문에 자리잡고 툴바가 실제 상태를 반영할 시간을 준 뒤(대기) 판정한다 —
+        포커스 직후엔 직전 상태가 잠깐 남아 오판할 수 있어 충분히 기다린다.
         """
-        self._page.wait_for_timeout(300)
-        self._page.evaluate("""() => {
+        page = self._page
+        page.wait_for_timeout(500)  # 툴바가 현재 커서 서식을 반영하도록 충분히 대기
+        page.evaluate("""() => {
           const names = ['se-strikethrough-toolbar-button','se-bold-toolbar-button',
                          'se-italic-toolbar-button','se-underline-toolbar-button'];
           for (const name of names) {
             const b = document.querySelector('button.' + name);
-            if (b && /se-is-selected/.test(b.className)) b.click();
+            if (b && /se-is-selected/.test(b.className)) b.click();  // 활성일 때만 끈다
           }
         }""")
-        self._page.wait_for_timeout(300)
+        page.wait_for_timeout(300)
 
     def _type_text_block(self, block: PublishBlock):
         """본문 한 블록 입력. \\n은 Enter(문단), 블록 끝에 빈 줄 하나.
