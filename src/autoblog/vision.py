@@ -60,32 +60,65 @@ def _split_tall_image(path: str, max_aspect: float = 2.0) -> list[bytes]:
     return tiles
 
 
+def _downscale_bytes(data: bytes, max_dim: int) -> bytes:
+    """이미지 bytes를 긴 변 max_dim으로 축소한 PNG bytes(재시도용). 이미 작으면 그대로."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.open(BytesIO(data)).convert("RGB")
+    img.thumbnail((max_dim, max_dim))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _is_context_error(resp) -> bool:
+    """Ollama 400 응답이 '컨텍스트 초과' 류인지(이미지가 커서 토큰이 넘친 경우)."""
+    if resp.status_code != 400:
+        return False
+    body = resp.text or ""
+    return "exceed_context_size" in body or "context size" in body or "context length" in body
+
+
+# 컨텍스트 초과 시 이미지를 점점 줄여 재시도할 긴 변(px) 단계. None=원본 그대로 먼저.
+_VISION_DOWNSCALE_STEPS = (None, 1280, 1024, 768, 512)
+
+
 def _ollama_vision(prompt: str, images: list[bytes], model: str, num_ctx: int = 8192) -> str:
     """Ollama chat API에 이미지+프롬프트 → 응답 텍스트(JSON 강제).
 
     이미지는 비전 토큰을 많이 먹어 기본 컨텍스트(4096)를 쉽게 넘긴다(라이브: 사진 1장
-    4132토큰 → 400 exceed_context_size). num_ctx를 키워 한 장이 통째로 들어가게 한다.
+    4132토큰 → 400 exceed_context_size). 1차로 num_ctx를 키워 보내고, 그래도 용량
+    초과(400)가 나면 이미지를 단계적으로 축소해 자동 재시도한다(다 줄여도 실패 시 마지막
+    400을 그대로 raise → 상위에서 '기타' 처리).
     """
     env = load_env()
-    payload = {
-        "model": model,
-        "stream": False,
-        "format": "json",
-        "options": {"temperature": 0, "num_ctx": num_ctx},
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt,
-                "images": [_encode_image(b) for b in images],
-            }
-        ],
-    }
-    try:
-        resp = requests.post(f"{env.ollama_host}/api/chat", json=payload, timeout=300)
-    except requests.RequestException as exc:
-        raise VisionUnavailable(f"Ollama 연결 실패({env.ollama_host}): {exc}") from exc
-    if resp.status_code == 404:
-        raise VisionUnavailable(f"모델 미설치: {model} (ollama pull {model})")
+
+    def _post(imgs: list[bytes]):
+        payload = {
+            "model": model,
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": 0, "num_ctx": num_ctx},
+            "messages": [
+                {"role": "user", "content": prompt, "images": [_encode_image(b) for b in imgs]}
+            ],
+        }
+        try:
+            return requests.post(f"{env.ollama_host}/api/chat", json=payload, timeout=300)
+        except requests.RequestException as exc:
+            raise VisionUnavailable(f"Ollama 연결 실패({env.ollama_host}): {exc}") from exc
+
+    resp = None
+    for max_dim in _VISION_DOWNSCALE_STEPS:
+        imgs = images if max_dim is None else [_downscale_bytes(b, max_dim) for b in images]
+        resp = _post(imgs)
+        if resp.status_code == 404:
+            raise VisionUnavailable(f"모델 미설치: {model} (ollama pull {model})")
+        if _is_context_error(resp):
+            continue  # 용량 초과 → 더 작게 재시도
+        break
     resp.raise_for_status()
     return resp.json().get("message", {}).get("content", "")
 
