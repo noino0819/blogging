@@ -164,6 +164,8 @@ class BlogPublisher:
                 self._insert_quote(block.text, block.variant)
             elif block.kind == "sticker" and block.sticker_pack is not None:
                 self._insert_sticker(block.sticker_pack, block.sticker_index or 0)
+            elif block.kind == "place" and block.text:
+                self._insert_place(block.text)
         # 본문 입력을 모두 마친 뒤 강조 서식 적용(커서 간섭 방지)
         for span in emphases:
             try:
@@ -287,9 +289,59 @@ class BlogPublisher:
         self._page.wait_for_timeout(300)
 
     def _type_text_block(self, block: PublishBlock):
-        """본문 한 블록 입력. \\n은 Enter(문단), 블록 끝에 빈 줄 하나."""
+        """본문 한 블록 입력. \\n은 Enter(문단), 블록 끝에 빈 줄 하나.
+
+        block.align(center 등)이 있으면 타이핑 전에 현재 단락에 정렬을 걸어 두면
+        뒤따르는 새 단락이 정렬을 상속한다. 블록이 끝나면 다음 본문이 다시 왼쪽이
+        되도록 정렬을 left로 되돌린다(SE는 정렬을 다음 단락으로 이어받기 때문)."""
+        if block.align and block.align != "left":
+            self._apply_align(block.align)
         self._page.keyboard.type(block.text, delay=4)
         self._page.keyboard.press("Enter")
+        if block.align and block.align != "left":
+            self._apply_align("left")  # 다음 단락 정렬 오염 방지
+
+    def _insert_place(self, query: str) -> bool:
+        """SE 네이티브 '장소' 카드 삽입: 가게명 검색 → 첫 결과 '추가' → '확인'.
+
+        결과가 없으면 팝업만 닫고 False(본문은 그대로 유지). 커서 위치에 지도 카드가 삽입된다."""
+        page = self._page
+        page.click("button.se-map-toolbar-button")
+        page.wait_for_timeout(1500)
+        page.fill("input.react-autosuggest__input", query)
+        page.wait_for_timeout(400)
+        page.click("button.se-place-search-button")
+        page.wait_for_timeout(2800)
+        # 첫 결과의 '추가' 버튼 — 결과 리스트가 스크롤 영역이라 Playwright 가시성 검사에
+        # 안 걸릴 때가 있어 DOM .click()으로 호출(가시성 우회).
+        added = page.evaluate(
+            "()=>{const b=document.querySelector("
+            "'.se-place-map-search-result-item .se-place-add-button');"
+            "if(b){b.click();return true;}return false;}"
+        )
+        if not added:
+            close = page.query_selector("button.se-popup-close-button")
+            if close:
+                close.click()
+            return False
+        page.wait_for_timeout(800)
+        page.evaluate(
+            "()=>{const b=document.querySelector('button.se-popup-button-confirm');if(b)b.click();}"
+        )
+        page.wait_for_timeout(1500)
+        return True
+
+    def _apply_align(self, value: str):
+        """현재 단락 정렬(left/center/right/justify). 선택 없이 커서 위치 단락에 적용."""
+        page = self._page
+        page.evaluate("()=>{const b=document.querySelector('li.se-toolbar-item-align button');if(b)b.click();}")
+        page.wait_for_timeout(300)
+        page.evaluate(
+            "(v)=>{const o=document.querySelector("
+            "'button[data-name=\"align-drop-down-with-justify\"][data-value=\"'+v+'\"]');if(o)o.click();}",
+            value,
+        )
+        page.wait_for_timeout(250)
 
     def _apply_emphasis(self, text: str, style: EmphasisStyle):
         """본문에서 text를 선택 → 글자색/배경색을 커스텀 hex로 정확히 적용.

@@ -25,6 +25,13 @@ class PipelineResult(BaseModel):
     plan: PublishPlan
 
 
+def _place_info(card: FactCard | None) -> tuple[bool, str | None]:
+    """맛집(장소) 카드면 (지도 마커 켜기, 검색용 가게명) 반환. 아니면 (False, None)."""
+    if card and card.type == CardType.place and card.place and card.place.name:
+        return True, card.place.name
+    return False, None
+
+
 def collect_card(
     place_url: str | None = None,
     product: str | None = None,
@@ -97,6 +104,7 @@ def build_export_prompt(
         quote_variants=quote_variants or [],
         sticker_labels=labels,
         sponsored=sponsored,
+        place=_place_info(card)[0],
     )
     system, user = build_prompt(req)
     return (
@@ -122,11 +130,12 @@ def plan_from_text(
     sticker_favorites_only: bool = True,
     divider_variant: int = 1,
     quote_variant: int = 1,
+    place_query: str | None = None,
 ) -> PipelineResult:
     """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱·후처리 → 게시 플랜.
 
     수집·LLM 호출 없이 run_pipeline의 후반부(초안→플랜)만 재현한다. 선택한 사진은
-    플랜에 이미지 블록으로 배치된다.
+    플랜에 이미지 블록으로 배치된다. place_query를 주면 [지도] 마커를 그 가게명으로 해석한다.
     """
     catalog = None
     labels: list[str] = []
@@ -158,7 +167,7 @@ def plan_from_text(
     plan = build_publish_plan(
         draft, photos=card.photos, picker=picker,
         divider_variant=divider_variant, quote_variant_default=quote_variant,
-        structure_styles=load_structure_styles(),
+        structure_styles=load_structure_styles(), place_query=place_query,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
 
@@ -173,6 +182,7 @@ def run_pipeline(
     style: StyleProfile | None = None,
     rules: CommonRules | None = None,
     base_prompt: str | None = None,
+    template_text: str | None = None,
     emphasis: bool = False,
     structure: bool = False,
     sponsored: bool = False,
@@ -204,10 +214,13 @@ def run_pipeline(
         catalog = sticker_catalog
         labels = catalog.labels()
 
+    place_on, place_query = _place_info(card)
+
     req = DraftRequest(
         fact_card=card,
         experience_memo=memo,
         base_prompt=base_prompt,
+        template_text=template_text,
         style=style,
         rules=rules,
         emphasis=emphasis,
@@ -216,6 +229,7 @@ def run_pipeline(
         quote_variants=quote_variants or [],
         sticker_labels=labels,
         sponsored=sponsored,
+        place=place_on,
     )
     draft = generate_draft(req, model=model)
 
@@ -227,6 +241,6 @@ def run_pipeline(
     plan = build_publish_plan(
         draft, photos=card.photos, picker=picker,
         divider_variant=divider_variant, quote_variant_default=quote_variant,
-        structure_styles=load_structure_styles(),
+        structure_styles=load_structure_styles(), place_query=place_query,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)

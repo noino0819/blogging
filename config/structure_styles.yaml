@@ -11,6 +11,7 @@ big_title:                 # 본문 맨 위 대제목(콘셉트 한 줄)
   font: nanummaruburi
   size: 30
   color: "#395D73"
+  align: center            # 가운데 정렬
 
 subheading:                # 소제목 (예: "1. 치즈철판카츠 후기")
   font: nanumuriddalsongeulssi
@@ -26,5 +27,6 @@ hashtags:                  # 해시태그 줄
   font: system
   size: 11
   color: "#4383BF"
+  align: center            # 가운데 정렬
   per_line: 2              # 한 줄에 태그 N개씩 보기 좋게 줄바꿈
   divider: line3           # 해시태그 뒤 구분선 종류(line3=가운데 꺾인 선). 비우면 안 넣음

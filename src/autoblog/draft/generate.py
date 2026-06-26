@@ -45,6 +45,9 @@ class DraftRequest(BaseModel):
     sticker_labels: list[str] = Field(default_factory=list)
     # 협찬·제공받은 글 — 켜면 헤더에 "with. 필명" 한 줄을 넣게 안내(아니면 넣지 않음)
     sponsored: bool = False
+    # 장소(지도) — 맛집 글에서 켜면 위치 안내 자리에 [지도] 마커를 넣게 안내(plan에서 장소 카드로)
+    place: bool = False
+    template_text: str | None = None
     emphasis_config: EmphasisConfig | None = None  # None이면 config/emphasis.yaml
     power_shortcuts: dict[int, EmphasisStyle] | None = None  # None이면 내장 기본 스타일
 
@@ -81,6 +84,10 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
         instr = build_sticker_instruction(req.sticker_labels)
         if instr:
             system = f"{system}\n\n{instr}"
+    if req.place:
+        from autoblog.publish.plan import build_place_instruction  # 지연 임포트(순환 회피)
+
+        system = f"{system}\n\n{build_place_instruction()}"
     if req.sponsored:
         from autoblog.publish.plan import load_structure_styles  # 지연 임포트(순환 회피)
 
@@ -89,7 +96,7 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
             f"{system}\n\n[협찬 표기] 이 글은 협찬·제공받은 글이야. "
             f'헤더의 대제목 바로 아래 줄에 "with. {pen}" 한 줄을 넣어.'
         )
-    user = build_user_prompt(req.fact_card, req.experience_memo)
+    user = build_user_prompt(req.fact_card, req.experience_memo, req.template_text)
     return system, user
 
 

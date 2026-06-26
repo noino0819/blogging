@@ -27,6 +27,9 @@ _DIVIDER_RE = re.compile(r"^\[구분선(?::(\d+))?\]$")
 _QUOTE_OPEN_RE = re.compile(r"^\[인용구(?::(\d+))?\]$")
 # [스티커] / [스티커:상황] — picker가 라벨을 (팩,인덱스)로 해석
 _STICKER_RE = re.compile(r"^\[스티커(?::(.+?))?\]$")
+# [지도] / [지도:가게명] — SE 네이티브 '장소' 카드(주소·지도 미리보기)로 삽입.
+# 이름 생략 시 build_publish_plan(place_query=)로 받은 수집된 가게명을 쓴다.
+_PLACE_RE = re.compile(r"^\[지도(?::\s*(.+?))?\]$")
 
 # 구분선/인용구 종류 메타 — value(에디터 data-value) → (variant 인덱스, 이름, 어느 상황에 쓰면 좋은지)
 # 라이브 캡쳐한 모양을 보고 작성. UI에 이름·용도 노출, 초안 LLM에 상황 안내, 마커 [구분선:이름] 해석에 사용.
@@ -111,6 +114,18 @@ def build_structure_instruction(
 STRUCTURE_INSTRUCTION = build_structure_instruction()
 
 
+def build_place_instruction() -> str:
+    """장소(지도) 마커 지시문 — 맛집 글에서 위치 안내 자리에 지도 카드를 넣게 안내."""
+    return (
+        "[지도] 가게 위치를 안내하는 자리(보통 '상세 정보 및 위치' 섹션)에 [지도] 를 그 줄에 "
+        "혼자 한 번 넣으세요(권장이 아니라 사용). 시스템이 네이버 '장소'를 검색해 지도 카드"
+        "(주소·지도 미리보기)로 바꿉니다.\n"
+        "- [지도] 는 한 글에 한 번만, 위치를 설명한 문장 바로 아래 줄에 단독으로.\n"
+        "- 가게명은 시스템이 알아서 넣으니 [지도] 만 쓰면 됩니다(이름을 직접 적지 마세요).\n"
+        "- 마커는 화면에 글자로 안 보이고 지도 카드로 바뀝니다. 문장 안에 섞지 마세요."
+    )
+
+
 # --- 구조별 서식 템플릿 (config/structure_styles.yaml) ---
 # 대제목·소제목·with.필명·해시태그 줄을 패턴으로 인식해 서체/크기/색을 자동 배정한다.
 # 마커가 아니라 패턴 인식이라, 외부 챗봇에서 받아온 글에도 동일하게 먹는다.
@@ -125,6 +140,7 @@ class RoleStyle(BaseModel):
     font: str | None = None
     size: int | None = None
     color: str | None = None
+    align: str | None = None  # 단락 정렬: left/center/right/justify (None=기본 왼쪽)
 
     def to_style(self) -> EmphasisStyle:
         return EmphasisStyle(
@@ -171,6 +187,7 @@ class PublishBlock(BaseModel):
     variant: int = 1  # 구분선/인용구 종류(1=기본)
     sticker_pack: str | None = None  # 스티커 팩 코드(picker 해석 결과)
     sticker_index: int | None = None  # 스티커 data-index
+    align: str | None = None  # 단락 정렬: center/right/justify (None=기본 왼쪽)
 
 
 class PublishPlan(BaseModel):
@@ -185,6 +202,7 @@ def build_publish_plan(
     divider_variant: int = 1,
     quote_variant_default: int = 1,
     structure_styles: StructureStyles | None = None,
+    place_query: str | None = None,
 ) -> PublishPlan:
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
 
@@ -257,14 +275,18 @@ def build_publish_plan(
             per = max(1, ss.hashtags.per_line)
             rows = [" ".join(toks[i : i + per]) for i in range(0, len(toks), per)]
             spans = [StyledSpan(text=r, preset_id=None, style=ss.hashtags.to_style()) for r in rows]
-            blocks.append(PublishBlock(kind="text", text="\n".join(rows), emphases=spans))
+            blocks.append(
+                PublishBlock(
+                    kind="text", text="\n".join(rows), emphases=spans, align=ss.hashtags.align
+                )
+            )
             div = ss.hashtags.divider
             if div and div in DIVIDER_META:
-                blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0]))
+                blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0], align="center"))
             return
         role_style = {"byline": ss.byline, "subheading": ss.subheading, "big_title": ss.big_title}[role]
         span = StyledSpan(text=s, preset_id=None, style=role_style.to_style())
-        blocks.append(PublishBlock(kind="text", text=s, emphases=[span]))
+        blocks.append(PublishBlock(kind="text", text=s, emphases=[span], align=role_style.align))
 
     for line in body_lines:
         s = line.strip()
@@ -282,9 +304,19 @@ def build_publish_plan(
         quote_m = _QUOTE_OPEN_RE.match(s)
         sticker_m = _STICKER_RE.match(s)
         photo_m = _PHOTO_RE.match(s)
-        if div_m:
+        place_m = _PLACE_RE.match(s)
+        if place_m:
             flush_text()
-            blocks.append(PublishBlock(kind="divider", variant=int(div_m.group(1) or divider_variant)))
+            q = (place_m.group(1) or place_query or "").strip()
+            if q:  # 가게명(마커 인자 우선, 없으면 수집된 이름)으로 장소 카드
+                blocks.append(PublishBlock(kind="place", text=q))
+        elif div_m:
+            flush_text()
+            blocks.append(
+                PublishBlock(
+                    kind="divider", variant=int(div_m.group(1) or divider_variant), align="center"
+                )
+            )
         elif sticker_m:
             flush_text()
             chosen = picker.pick(sticker_m.group(1) or "") if picker else None
