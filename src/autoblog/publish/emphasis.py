@@ -290,42 +290,47 @@ def _tag_example(tag: str) -> str:
 # - 14b급 모델은 "절제하세요" 같은 약한 표현이면 마커를 0개 단다 → "반드시 사용 + 개수 지정 + 예시".
 # - 태그가 유저 자유 입력(한글·공백)이라 LLM이 살짝 바꿔 적는 게 최대 리스크 → "글자 그대로 복사"를 최우선 규칙으로.
 # - 같은 태그를 여러 번 써도 색이 자동 순환되므로, "반복 회피하지 말라"를 명시(순환 기능을 살림).
-def build_emphasis_instruction(config: "EmphasisConfig | None" = None) -> str:
-    """강조 지시문 — 설정된 태그(강조색) 목록을 LLM 메뉴 + 본문 예시 + 규칙으로 안내.
+def _norm_tag(t: str) -> str:
+    """태그 매칭 정규화 — 공백 제거 + 소문자화. LLM이 띄어쓰기·대소문자를 살짝 다르게 내도 매칭."""
+    return re.sub(r"\s+", "", t or "").casefold()
 
-    preset_tags(서식 탭에서 색마다 입력)가 있으면 그 태그를, 없으면 레거시 역할
-    (cycle/neg/price/name)을 나열한다. 같은 태그가 여러 색이면 색이 자동 순환된다.
+
+def _has_warning_pool(config: "EmphasisConfig") -> bool:
+    """'주의'(단점·경고) 색풀이 설정돼 있는지 — 있으면 지시문에 주의 마커를 안내한다."""
+    keys = {_norm_tag(t) for t in config.tag_pools()}
+    return bool(keys & {_norm_tag(k) for k in ("주의", *NEGATIVE_ROLES)})
+
+
+def build_emphasis_instruction(config: "EmphasisConfig | None" = None) -> str:
+    """강조 지시문 — '판단형'. 역할(가게명·가격) 분류 대신, 문단마다 강조할 핵심을
+    LLM이 직접 판단해 <<강조:어구>>로 감싸게 한다. 단점·주의는 <<주의:어구>>(빨강).
+
+    색은 서식 탭에서 고른 색들로 자동 순환(같은 마커를 여러 번 써도 색이 번갈아 입혀짐).
+    마커 이름은 항상 강조/주의 둘로 고정 — 색 종류는 config가 그 풀로 매핑한다.
     """
     config = config or EmphasisConfig()
-    pools = config.tag_pools()
-    label = {**DEFAULT_ROLE_DESC, **(config.role_desc or {})}  # 레거시 역할 키 → 설명
-    if not pools:  # 태그가 하나도 없으면 기본 한 종류만 안내
-        pools = {"강조": []}
-    tags = list(pools)
-
-    def menu_line(t: str) -> str:
-        desc = label.get(t, t)  # 레거시면 설명, 새 태그면 태그 자신
-        marker = f"<<{t}:{_tag_example(desc)}>>"
-        return f"  · {marker}" if desc == t else f"  · {marker}  ({desc})"
-
-    menu = "\n".join(menu_line(t) for t in tags)
-    # 본문에 어떻게 박는지 인라인 예시(최대 3개 태그) — 마커 형식과 '태그 그대로'를 동시에 시연
-    demo = ", ".join(f"<<{t}:{_tag_example(label.get(t, t))}>>" for t in tags[:3])
     max_p = config.max_per_paragraph or 2
+    warn = (
+        "단점·아쉬운 점·주의사항(웨이팅·가격대·호불호처럼 미리 알면 좋은 것)은 "
+        "<<주의:어구>> 로 감싸면 빨간 계열로 구분됩니다. 예) <<주의:웨이팅이 좀 길어요>>\n"
+        if _has_warning_pool(config)
+        else ""
+    )
     return (
-        "[강조 표시] 핵심 어구를 마커로 감싸 색을 입힙니다 — 권장이 아니라 반드시 사용하세요.\n"
-        f"분량: 한 문단에 최대 {max_p}군데, 글 전체에서 5군데 이상.\n"
-        "방법: 강조할 짧은 어구(문장 전체 말고 핵심만)를 골라 << >> 로 감싸고, "
-        "콜론 앞에 아래 목록의 태그를 그대로 적습니다 → <<태그:어구>>\n"
-        "쓸 수 있는 태그(상황에 맞는 것만 고르기):\n"
-        f"{menu}\n"
-        f"본문 적용 예: {demo}\n"
+        "[강조 표시] 각 문단에서 독자가 주목했으면 하는 가장 핵심적인 어구를 "
+        "네가 직접 판단해 색을 입힙니다 — 권장이 아니라 반드시 사용하세요.\n"
+        f"분량: 한 문단에 최대 {max_p}군데(강조가 없는 문단도 있을 수 있음), 글 전체에서 5군데 이상.\n"
+        "방법: 그 문단에서 가장 인상적이거나 중요한 짧은 어구(문장 전체 말고 핵심 한두 단어~한 구절)를 "
+        "골라 <<강조:어구>> 로 감쌉니다.\n"
+        "  예) <<강조:겉은 바삭 속은 촉촉>>, <<강조:두 번 세 번 와도 안 질려요>>\n"
+        f"{warn}"
         "규칙:\n"
-        "- 태그는 위 목록에 있는 것만, 한 글자도 바꾸지 말고 그대로 복사(띄어쓰기까지 동일).\n"
+        "- 무엇을 강조할지는 네가 판단해. 가게명·가격 같은 '종류'를 따지지 말고, 그 문단에서 가장 "
+        "눈에 띄어야 할 부분을 골라. 정보 나열보다 감상·포인트·결정적 한마디를 우선.\n"
+        "- 마커 이름은 <<강조:…>>" + ("/<<주의:…>>" if warn else "") + " 만 쓰고, 다른 태그 이름은 절대 쓰지 마.\n"
         "- 감싼 어구는 본문에 자연스럽게 읽히는 실제 표현이어야 합니다(마커 << >>는 화면엔 안 보이고 색으로 바뀜).\n"
-        "- 같은 태그를 여러 번 써도 됩니다 — 색은 알아서 번갈아 입혀지니 반복을 피하지 마세요.\n"
-        "- 마커를 겹치거나 중첩하지 말고, 한 마커엔 핵심 어구 하나만.\n"
-        "- 딱 맞는 태그가 없으면 그 부분은 강조하지 않아도 됩니다(억지로 만들지 않기)."
+        "- 색은 알아서 번갈아 입혀지니 같은 마커를 여러 번 써도 됩니다(반복을 일부러 피하지 마세요).\n"
+        "- 마커를 겹치거나 중첩하지 말고, 한 마커엔 핵심 어구 하나만."
     )
 
 
@@ -336,11 +341,6 @@ EMPHASIS_INSTRUCTION = build_emphasis_instruction()
 # 출력하는 경우가 잦다. 1~2개를 모두 받아 본문 누수를 막는다.
 # 태그는 한글·영문·숫자에 더해 공백·중점(·)·슬래시(/)·괄호·하이픈까지 허용(예: "좋았던 점", "가게/상품명").
 _MARKUP_RE = re.compile(r"<{1,2}([\w ·/().\-]{1,40}?):(.*?)>{1,2}", re.DOTALL)
-
-
-def _norm_tag(t: str) -> str:
-    """태그 매칭 정규화 — 공백 제거 + 소문자화. LLM이 띄어쓰기·대소문자를 살짝 다르게 내도 매칭."""
-    return re.sub(r"\s+", "", t or "").casefold()
 
 
 def parse_emphasis_markup(text: str) -> tuple[str, list[EmphasisRequest]]:

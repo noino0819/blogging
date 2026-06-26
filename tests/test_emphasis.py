@@ -151,8 +151,10 @@ def test_parse_emphasis_markup():
 
 def test_load_emphasis_config_from_file():
     cfg = load_emphasis_config()  # config/emphasis.yaml
-    assert cfg.cycling_pool  # 비어있지 않음
-    assert "price" in cfg.fixed_map and "name" in cfg.fixed_map
+    # 판단형 모델: preset_tags가 색을 강조/주의 두 갈래로 매핑한다.
+    pools = cfg.tag_pools()
+    assert "강조" in pools and pools["강조"]  # 강조 색풀 비어있지 않음
+    assert "주의" in pools and pools["주의"]  # 주의(빨강) 색풀 존재
 
 
 def test_parse_markup_records_position():
