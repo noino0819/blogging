@@ -447,4 +447,14 @@ def build_publish_plan(
         if ref:
             blocks.insert(0, PublishBlock(kind="sticker", sticker_pack=ref[0], sticker_index=ref[1]))
 
+    # 대표 썸네일 — 지정 사진을 본문 '첫 이미지'로 끌어올린다(네이버 대표 사진=글의 첫 이미지).
+    # 마커가 어디에 박히든, 썸네일은 항상 가장 먼저 등장하는 사진이 되도록 보장한다.
+    thumb_path = next((ph.path for ph in photos if ph.thumbnail), None)
+    if thumb_path:
+        img_idx = [i for i, b in enumerate(blocks) if b.kind == "image"]
+        first = img_idx[0] if img_idx else None
+        cur = next((i for i in img_idx if blocks[i].image_path == thumb_path), None)
+        if first is not None and cur is not None and cur != first:
+            blocks.insert(first, blocks.pop(cur))
+
     return PublishPlan(title=title, blocks=blocks)

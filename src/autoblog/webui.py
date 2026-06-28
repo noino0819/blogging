@@ -155,6 +155,18 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pmtile img:active{cursor:grabbing}
  .pmx{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:0;background:#4b5563;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;padding:0}
  .pmtile:hover .pmx{display:flex}
+ /* 대표 썸네일 — ★ 지정 버튼·대표 리본·강조 테두리 */
+ .pmstar{position:absolute;top:-6px;left:-6px;width:18px;height:18px;border-radius:50%;border:0;background:#fff;color:#cbd2d9;font-size:12px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;padding:0;box-shadow:0 1px 3px #0002}
+ .pmstar:hover{color:#ffb400}
+ .pmstar.on{display:flex;background:#ffb400;color:#fff}
+ .pmtile:hover .pmstar{display:flex}
+ .pmtile.thumb img{outline:2px solid #ffb400;outline-offset:1px;border-color:#ffb400}
+ .pmribbon{position:absolute;bottom:0;left:0;right:0;background:#ffb400;color:#fff;font-size:9px;font-weight:800;text-align:center;line-height:14px;border-radius:0 0 6px 6px;letter-spacing:.5px}
+ .pmthumbbar{display:flex;align-items:center;gap:9px;margin-bottom:9px;padding:8px 10px;border:1px solid #ffe2a6;background:#fffaf0;border-radius:9px;font-size:11.5px;color:#7a5b00}
+ .pmthumbbar .pmthumblbl{font-weight:800;color:#b87b00;white-space:nowrap}
+ .pmthumbbar img{width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid #ffd47a}
+ .pmthumbbar .pmempty{padding:0}
+ .pmthumbbar .minibtn{margin-left:auto;white-space:nowrap}
  .pmadd{display:flex;align-items:center;justify-content:center;border:1px dashed #cdd3da;border-radius:8px;background:#fff;color:#6b7280;font-size:12px;padding:8px;cursor:pointer}
  .pmadd:hover{border-color:var(--green);color:var(--green-d)}
  .pmempty{font-size:11px;color:#9ca3af;padding:12px 4px}
@@ -659,7 +671,7 @@ async function importDraft(idx, title){
     const sec=el.stop();
     const paths=d.paths||[];
     // 기존 사진·분류 상태를 모두 비우고 불러온 사진으로 교체
-    PHOTOS=paths.slice(); SELP=[]; PHOTOMETA={};
+    PHOTOS=paths.slice(); SELP=[]; PHOTOMETA={}; THUMB=null;
     PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
     renderGrid(); renderPmeta(); updatePhotoSummary();
     $('#draftlist').style.display='none';
@@ -670,10 +682,13 @@ async function importDraft(idx, title){
 }
 
 // 사진 분류·캡션 (수동 + ✨ AI 자동 추천). 결과는 PHOTOMETA(경로→{label,caption})에 저장.
-let PHOTOMETA={}, PHOTO_CATS={};
+let PHOTOMETA={}, PHOTO_CATS={}, THUMB=null;  // THUMB=대표 썸네일 경로(글 맨 위 첫 사진, 최대 1장)
 async function loadPhotoCats(){ try{PHOTO_CATS=await (await fetch('/api/photo_categories')).json();}catch(e){} }
 function curCats(){ return PHOTO_CATS[SRCKIND]||PHOTO_CATS.place||['외관','내부','메뉴판','음식','영수증','기타']; }
-function photoMetaForSel(){ const o={}; SELP.forEach(p=>{const m=PHOTOMETA[p]; if(m&&(m.label||m.caption))o[p]=m;}); return o; }
+function photoMetaForSel(){ const o={}; SELP.forEach(p=>{const m=PHOTOMETA[p]||{}; const e={};
+  if(m.label)e.label=m.label; if(m.caption)e.caption=m.caption; if(p===THUMB)e.thumbnail=true;
+  if(e.label||e.caption||e.thumbnail)o[p]=e; }); return o; }
+function setThumb(path){ THUMB=(THUMB===path?null:path); renderGrid(); renderPmeta(); updatePhotoSummary(); }
 function updatePhotoSummary(){
   const n=SELP.length;
   const ps=$('#psel'); if(ps) ps.textContent = n? `${n}장` : '';
@@ -753,8 +768,11 @@ function removeSub(parent,sub){
   if(PMACTIVE===sub)PMACTIVE=parent; renderPmeta();
 }
 function pmTile(path){
-  return `<div class="pmtile${PMSEL.has(path)?' sel':''}" data-path="${esc(path)}">`
+  const isT=path===THUMB;
+  return `<div class="pmtile${PMSEL.has(path)?' sel':''}${isT?' thumb':''}" data-path="${esc(path)}">`
     +`<img draggable=true src="/photo?path=${encodeURIComponent(path)}">`
+    +`<button type=button class="pmstar${isT?' on':''}" title="${isT?'대표 썸네일 해제':'대표 썸네일로 지정 — 글 맨 위 첫 사진'}">★</button>`
+    +(isT?'<span class=pmribbon>대표</span>':'')
     +`<button type=button class=pmx title="분류함에서 빼기(다시 더미로)">×</button></div>`;
 }
 function renderPmeta(){
@@ -762,7 +780,12 @@ function renderPmeta(){
   if(PMACTIVE!=null && !allCats().includes(PMACTIVE)) PMACTIVE=null;
   pmEnsureDefaults();
   [...PMSEL].forEach(p=>{ if(!PHOTOS.includes(p))PMSEL.delete(p); });
-  let h='<div class=pmhead><span>'
+  if(THUMB && !SELP.includes(THUMB)) THUMB=null;  // 분류함에서 빠진 사진은 썸네일 해제
+  const tbody = (THUMB)
+    ? `<img src="/photo?path=${encodeURIComponent(THUMB)}"><span>이 사진이 글 맨 위 <b>첫 사진</b>으로 들어가요</span><button type=button class=minibtn id=thumbclr>해제</button>`
+    : `<span class=pmempty>사진의 <b>★</b>를 눌러 <b>대표 썸네일</b>을 정하세요 — 글 맨 위 첫 사진이 됩니다</span>`;
+  let h=`<div class=pmthumbbar><span class=pmthumblbl>⭐ 대표 썸네일</span>${tbody}</div>`
+    +'<div class=pmhead><span>'
     + (PMSEL.size
         ? `<b>${PMSEL.size}장</b> 선택됨 — 담을 칸을 클릭(또는 드래그)`
         : (PMACTIVE!=null
@@ -808,17 +831,21 @@ function renderPmeta(){
   $$('#pmeta .pmtile .pmx').forEach(x=>{
     x.onclick=e=>{ e.stopPropagation();
       const path=x.closest('.pmtile').dataset.path, i=SELP.indexOf(path);
-      if(i>=0)SELP.splice(i,1); PMSEL.delete(path);
+      if(i>=0)SELP.splice(i,1); PMSEL.delete(path); if(THUMB===path)THUMB=null;
       renderGrid(); renderPmeta();
     };
   });
+  $$('#pmeta .pmtile .pmstar').forEach(s=>{
+    s.onclick=e=>{ e.stopPropagation(); setThumb(s.closest('.pmtile').dataset.path); };
+  });
+  const tc=$('#thumbclr'); if(tc) tc.onclick=()=>{ THUMB=null; renderGrid(); renderPmeta(); };
 }
 function newPost(){ $('#npmodal').style.display='flex'; }  // 새 글 시작 확인 모달
 function closeNP(){ $('#npmodal').style.display='none'; }
 function doNewPost(){  // 새 글: 입력·사진선택·분류·세부분류 비우기
   closeNP();
   $('#memo').value=''; $('#srcval').value=''; if(typeof setKind==='function')setKind('place',false);
-  SELP=[]; PHOTOMETA={}; PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
+  SELP=[]; PHOTOMETA={}; THUMB=null; PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
   PLAN=null; const sv=$('#save'); if(sv)sv.disabled=true;
   const pv=$('#preview'); if(pv){ pv.className='doc empty'; pv.innerHTML='왼쪽에서 메모를 쓰고 [초안 생성]을 누르세요.'; }
   loadPhotos(); renderPmeta(); updatePhotoSummary();
