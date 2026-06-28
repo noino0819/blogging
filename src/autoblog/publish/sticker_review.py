@@ -45,7 +45,15 @@ _PAGE = """<!doctype html><html lang=ko><head><meta charset=utf-8>
  .star.on{color:#ffb400}
  .card input.tags{font-size:12px;border:1px solid #e3e5e8;border-radius:6px;padding:5px 6px;width:100%;box-sizing:border-box}
  .card input.tags:focus{outline:2px solid #03c75a55;border-color:#03c75a}
+ /* 토스트 — 중요한 알림(저장 실패 등)만 화면 상단에 띄움 */
+ #toasts{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+ .toast{pointer-events:auto;min-width:240px;max-width:520px;padding:12px 40px 12px 14px;border-radius:12px;font-size:13px;font-weight:700;color:#fff;line-height:1.45;box-shadow:0 10px 30px rgba(0,0,0,.24);position:relative;animation:tin .22s cubic-bezier(.2,.9,.3,1.25)}
+ .toast.err{background:linear-gradient(135deg,#f15a4d,#e23b2e)}
+ .toast.ok{background:linear-gradient(135deg,#1ec46c,#06a94f)}
+ .toast .x{position:absolute;top:8px;right:9px;cursor:pointer;opacity:.85;font-weight:400}
+ @keyframes tin{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
 </style></head><body>
+<div id=toasts></div>
 <header>
  <h1>스티커 검수</h1>
  <span class=filters>
@@ -62,6 +70,12 @@ _PAGE = """<!doctype html><html lang=ko><head><meta charset=utf-8>
 <script>
 let CAT=null, dirty=false;
 const refOf=s=>s.pack+':'+s.index;
+function toast(msg,kind='err',ms){if(ms==null)ms=kind==='ok'?2500:5000;
+  const t=document.createElement('div');t.className='toast '+kind;
+  const ic=kind==='ok'?'✅ ':'⚠️ ';
+  t.innerHTML='<span>'+ic+String(msg).replace(/</g,'&lt;')+'</span><span class=x title=닫기>✕</span>';
+  const close=()=>t.remove();t.querySelector('.x').onclick=close;
+  document.getElementById('toasts').appendChild(t);setTimeout(close,ms);}
 async function load(){CAT=await (await fetch('/api/catalog')).json(); render();}
 function stat(){const a=CAT.stickers.filter(s=>!s.stale);
   document.getElementById('stat').textContent=
@@ -105,7 +119,7 @@ document.getElementById('save').onclick=async()=>{
    body:JSON.stringify({stickers:CAT.stickers,favorites:CAT.favorites})});
  if(r.ok){dirty=false; stat(); const b=document.getElementById('save'); b.textContent='저장됨 ✓';
    setTimeout(()=>b.textContent='저장',1200);}
- else alert('저장 실패');
+ else toast('저장 실패 — 다시 시도해 주세요','err');
 };
 load();
 </script></body></html>"""
