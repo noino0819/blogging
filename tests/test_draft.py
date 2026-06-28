@@ -162,8 +162,9 @@ def test_wrap_long_lines():
     from autoblog.draft.postprocess import wrap_long_lines
 
     line = "비가 와서 우산 들고 걸어갔는데, 다행히 막걸리가 무료라 엄마랑 좋아하며 식사를 했어요"
-    wrapped = wrap_long_lines(line, max_len=30)
-    out_lines = wrapped.split("\n")
+    # 첫 줄(제목)은 분할 대상이 아니므로 본문 줄로 보려면 제목 줄을 앞에 둔다
+    wrapped = wrap_long_lines(f"제목\n\n{line}", max_len=30)
+    out_lines = [ln for ln in wrapped.split("\n")[2:] if ln]  # 제목+빈 줄 제외
     assert len(out_lines) > 1  # 여러 줄로 분할
     # 짧은 어절은 안 끊으므로 약간(≤2자) 초과 허용
     assert all(len(ln) <= 32 for ln in out_lines)
@@ -173,4 +174,17 @@ def test_wrap_long_lines():
     assert wrap_long_lines("짧은 줄\n\n다음 문단") == "짧은 줄\n\n다음 문단"
     # 숫자 안 쉼표(13,000)는 줄바꿈하지 않음
     long_num = "이 메뉴는 무려 13,000원으로 가성비가 정말 훌륭한 편이라고 생각해요"
-    assert "13,000" in wrap_long_lines(long_num, max_len=30)
+    assert "13,000" in wrap_long_lines(f"제목\n\n{long_num}", max_len=30)
+
+
+def test_wrap_keeps_title_intact():
+    """첫 줄(제목)은 쉼표·길이와 무관하게 분할되지 않는다(쉼표 제목 본문 누수 방지)."""
+    from autoblog.draft.postprocess import enforce_format, wrap_long_lines
+
+    title = "서울역에서 만난 미국식 소다 아이스크림, 메종 아카이"
+    text = f"{title}\n\n본문 첫 문단이에요, 이건 평소처럼 절 단위로 쪼개져야 정상입니다"
+    wrapped = wrap_long_lines(text, max_len=30)
+    assert wrapped.split("\n")[0] == title  # 제목은 한 줄 그대로(쉼표로 안 쪼개짐)
+    # plan이 첫 줄만 제목으로 떼어내도 '메종 아카이'가 본문으로 새지 않는지
+    first_line = enforce_format(text).split("\n", 1)[0]
+    assert first_line == title

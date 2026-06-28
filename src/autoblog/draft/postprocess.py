@@ -78,11 +78,18 @@ def _wrap_line(line: str, max_len: int) -> list[str]:
 
 
 def wrap_long_lines(text: str, max_len: int = 30) -> str:
-    """긴 줄을 짧은 절 단위로 줄바꿈(SNS 스타일). 빈 줄(문단 간격)은 보존."""
+    """긴 줄을 짧은 절 단위로 줄바꿈(SNS 스타일). 빈 줄(문단 간격)은 보존.
+
+    첫 비어있지 않은 줄(=제목)은 쪼개지 않는다 — plan이 첫 줄만 제목으로 떼어내므로
+    쉼표·길이로 분할되면 뒷부분이 본문으로 새어 나간다(쉼표 들어간 제목 보호)."""
     out: list[str] = []
+    title_seen = False
     for line in text.split("\n"):
         if not line.strip():
             out.append("")
+        elif not title_seen:
+            out.append(line)  # 제목 줄은 원형 유지
+            title_seen = True
         elif sum(1 for t in line.split() if t.startswith("#")) >= 2:
             out.append(line)  # 해시태그 줄(2개 이상)은 쪼개지 않는다 — 헤더 태그 묶음
         else:
