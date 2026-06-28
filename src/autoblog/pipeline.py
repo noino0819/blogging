@@ -224,6 +224,7 @@ def plan_from_text(
     place_address: str | None = None,
     sponsored: bool = False,
     sponsor_links: list[str] | None = None,
+    sponsor_sticker: str = "",
     photo_meta: dict[str, dict] | None = None,
 ) -> PipelineResult:
     """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱·후처리 → 게시 플랜.
@@ -242,6 +243,10 @@ def plan_from_text(
             sticker_catalog = load_sticker_catalog()
         catalog = sticker_catalog
         labels = catalog.labels(favorites_only=sticker_favorites_only)
+    if catalog is None and sponsored:  # 협찬 고지 스티커(태그명) 해석용 카탈로그
+        from autoblog.publish.stickers import load_sticker_catalog
+
+        catalog = load_sticker_catalog()
     card = FactCard(type=CardType.place)
     if photos:
         if photo_meta is not None:
@@ -270,6 +275,7 @@ def plan_from_text(
         divider_variant=divider_variant, quote_variant_default=quote_variant,
         structure_styles=load_structure_styles(), place_query=place_query,
         place_address=place_address, sponsor=sponsored, sponsor_links=sponsor_links,
+        sponsor_sticker=sponsor_sticker, sticker_catalog=catalog,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
 
@@ -297,6 +303,7 @@ def run_pipeline(
     quote_variants: list[str] | None = None,
     sponsored: bool = False,
     sponsor_links: list[str] | None = None,
+    sponsor_sticker: str = "",
     model: str | None = None,
     photo_meta: dict[str, dict] | None = None,
 ) -> PipelineResult:
@@ -318,6 +325,10 @@ def run_pipeline(
             sticker_catalog = load_sticker_catalog()
         catalog = sticker_catalog
         labels = catalog.labels(favorites_only=sticker_favorites_only)
+    if catalog is None and sponsored:  # 협찬 고지 스티커(태그명) 해석용 카탈로그
+        from autoblog.publish.stickers import load_sticker_catalog
+
+        catalog = load_sticker_catalog()
 
     place_on, place_query, place_address = _place_info(card)
 
@@ -347,5 +358,6 @@ def run_pipeline(
         divider_variant=divider_variant, quote_variant_default=quote_variant,
         structure_styles=load_structure_styles(), place_query=place_query,
         place_address=place_address, sponsor=sponsored, sponsor_links=sponsor_links,
+        sponsor_sticker=sponsor_sticker, sticker_catalog=catalog,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)

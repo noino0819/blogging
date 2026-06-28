@@ -222,6 +222,50 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .lf.ok{background:#eafaf0;color:#02b350}.lf.no{background:#fdecef;color:#d9534f}
  .logpre{background:#f6f8fa;border:1px solid var(--line);border-radius:9px;padding:12px;font-size:11.5px;line-height:1.6;white-space:pre-wrap;max-height:300px;overflow:auto;font-family:ui-monospace,Menlo,monospace;margin:4px 0 8px}
  .logsum{cursor:pointer;font-size:12px;font-weight:600;padding:6px 0;color:#4b5563}
+ /* 도움말 툴팁(ⓘ) — 긴 설명을 마우스 오버로 */
+ .hint{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
+   background:#dfe3e8;color:#fff;font-size:10px;font-weight:800;cursor:help;position:relative;vertical-align:middle;margin-left:4px;font-style:normal}
+ .hint:hover{background:var(--green)}
+ .hint::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);
+   background:#1f2329;color:#fff;font-size:12px;font-weight:500;line-height:1.5;padding:9px 12px;border-radius:9px;
+   width:max-content;max-width:260px;white-space:normal;text-align:left;box-shadow:0 6px 22px rgba(0,0,0,.22);
+   opacity:0;visibility:hidden;transition:.12s;z-index:50;pointer-events:none}
+ .hint::before{content:"";position:absolute;left:50%;bottom:calc(100% + 2px);transform:translateX(-50%);
+   border:6px solid transparent;border-top-color:#1f2329;opacity:0;visibility:hidden;transition:.12s;z-index:50}
+ .hint:hover::after,.hint:hover::before{opacity:1;visibility:visible}
+ /* 협찬 섹션 — 토글 켤 때만 스티커 픽커·링크 펼침 */
+ .togrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;
+   padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fbfcfd}
+ .togrow .tl{font-size:13px;font-weight:700;color:#374151;display:flex;align-items:center}
+ .sponbox{margin-top:10px;padding:14px;border:1px dashed #cdd3da;border-radius:12px;background:#fcfdfe}
+ .sponpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;margin:8px 0 4px;max-height:180px;overflow:auto}
+ .sponpick .spc{position:relative;aspect-ratio:1;border:2px solid transparent;border-radius:10px;overflow:hidden;cursor:pointer;background:#fafbfc}
+ .sponpick .spc img{width:100%;height:100%;object-fit:contain;padding:4px}
+ .sponpick .spc.sel{border-color:#7c4dff;background:#f4f0ff}
+ .sponpick .spc.sel::after{content:"✓";position:absolute;top:2px;right:4px;color:#7c4dff;font-weight:800;font-size:13px}
+ /* 보조 액션(복사/붙여넣기) — 한 줄에 작게 */
+ .actrow{display:flex;gap:8px;margin-top:9px}
+ .actrow .btn{padding:10px;font-size:12px}
+ /* 카테고리 버튼 + 팝오버 */
+ .catwrap{position:relative}
+ .catbtn{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:11px 13px;
+   border:1px solid #d6dade;border-radius:11px;background:#fbfcfd;cursor:pointer;font-size:13px;color:var(--ink);font-weight:600}
+ .catbtn:hover{border-color:#9aa5b1}
+ .catbtn b{font-weight:700}
+ .popover{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:60;background:#fff;border:1px solid var(--line);
+   border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.18);padding:12px;max-height:340px;display:flex;flex-direction:column}
+ .popover .catlist{overflow:auto;margin:-2px -4px 0}
+ .popover .catopt{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:13px;color:#374151}
+ .popover .catopt:hover{background:#f3f6f9}
+ .popover .catopt.on{background:var(--green-soft);color:var(--green-d);font-weight:700}
+ /* 중앙 알림(오류·확인) — 화면 가운데 카드로 */
+ .alertbg{position:fixed;inset:0;background:rgba(20,24,31,.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:24px;animation:tin .16s ease}
+ .alertcard{background:#fff;border-radius:18px;width:min(420px,92vw);padding:26px 26px 22px;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.32)}
+ .alertcard .ai{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px}
+ .alertcard.err .ai{background:#fdecec}.alertcard.info .ai{background:#eaf2fb}.alertcard.ok .ai{background:var(--green-soft)}
+ .alertcard .am{font-size:15px;font-weight:700;color:var(--ink);line-height:1.55;white-space:pre-wrap}
+ .alertcard .ab{margin-top:20px;display:flex;gap:10px}
+ .alertcard .ab .btn{padding:12px}
 </style></head><body><div id=toasts></div>
 <svg width=0 height=0 style="position:absolute" aria-hidden=true><defs>
  <g id=i-write fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="M13.5 6.5l3 3"/></g>
@@ -254,12 +298,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <textarea id=itext placeholder="여기에 받아온 글을 붙여넣기"></textarea>
   <div class=modalft><button class=btn id=iapply style="flex:1">이 글로 미리보기</button><button class="btn ghost" id=imclose2 style="flex:0 0 120px">닫기</button></div>
 </div></div>
-<div id=tmodal class=modal style="display:none"><div class=modalbox>
-  <div class=modalhd><span><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 저장된 양식으로 채우기</span><button class=mx id=tmclose>✕</button></div>
-  <div class=muted>저장된 임시 글 양식(제목/사진 마커/본문 구조)을 붙여넣으면, 같은 형식에 맞춰 내용을 채운 초안을 생성합니다.</div>
-  <textarea id=ttext placeholder="저장된 양식 텍스트를 붙여넣기"></textarea>
-  <div class=modalft><button class=btn id=tapply style="flex:1">이 양식으로 채우기</button><button class="btn ghost" id=tmclose2 style="flex:0 0 120px">닫기</button></div>
-</div></div>
+<div id=alerthost></div>
 <aside class=side>
   <div class=brand><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 블로그 자동작성</div>
   <div class="nav on" data-view=write><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 글쓰기</div>
@@ -278,49 +317,51 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <div class=grid>
       <div class=col>
         <div class=card>
-          <label class=f>수집 <span class=muted>(선택) — 넣으면 정보 자동 수집</span></label>
+          <label class=f>수집 <span class=hint data-tip="선택 사항이에요. 맛집 플레이스 URL을 붙여넣거나 상품 검색어를 적으면 정보를 자동으로 수집합니다.">i</span></label>
           <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력">
-          <div class=muted style="margin-top:8px">자동 인식 <span class=muted>(틀리면 눌러서 바꾸기)</span></div>
-          <div class=kindseg id=kindseg>
+          <div class=kindseg id=kindseg style="margin-top:8px">
             <button data-k=place class=on><span class=em>🍜</span>맛집</button>
             <button data-k=product><span class=em>🛍️</span>상품</button>
           </div>
           <div class=muted id=srchint style="margin-top:6px">링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
-          <label class=f>경험 메모 <span class=muted>(글의 중심)</span></label>
+          <label class=f>경험 메모 <span class=hint data-tip="글의 중심이 되는 실제 경험을 자유롭게 적어주세요. 이 내용을 토대로 글이 작성됩니다.">i</span></label>
           <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>사진 <span class=muted id=psel></span></label>
           <div class=dropzone id=dropzone>📷 사진을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*" multiple hidden></div>
           <div class=pgrid id=pgrid></div>
           <div class=pmbar id=pmbar><button type=button class=minibtn id=pmbtn>🏷️ 사진 분류·캡션</button><span class=muted id=pmhint></span></div>
           <div class=pmeta id=pmeta></div>
-          <label class=f>문체 톤 (선택)</label>
+          <label class=f>문체 톤 <span class=hint data-tip="비우면 기본 톤으로 써요. 예: 친근한 반말로 / 담백하고 차분하게">i</span></label>
           <input type=text id=tone placeholder="예: 친근한 반말로">
-          <label class=f>자동 서식</label>
-          <div class=chips id=fmt>
-            <span class="chip on" data-k=emphasis><span class=dot></span>강조색</span>
-            <span class="chip on" data-k=structure><span class=dot></span>구분선·인용구</span>
-            <span class="chip on" data-k=stickers><span class=dot></span>스티커</span>
-            <span class="chip" data-k=stickerAll><span class=dot></span>스티커 전체 사용 <span class=muted>(끄면 즐겨찾기만)</span></span>
-            <span class="chip" data-k=sponsored><span class=dot></span>협찬 <span class=muted>(켜면 쿠팡파트너스 고지 스티커 맨 위)</span></span>
+          <div class=togrow>
+            <div class=tl>협찬 글 <span class=hint data-tip="켜면 즐겨찾기 스티커 중 고른 고지 스티커가 본문 맨 위에 들어가고, 아래 쿠팡파트너스 링크가 본문 중간중간 카드로 분산 삽입됩니다.">i</span></div>
+            <div class=sw id=sponsw></div>
           </div>
-          <label class=f>쿠팡파트너스 링크 <span class=muted>(선택) — 한 줄에 하나, 본문 중간중간 카드로 분산</span></label>
-          <textarea id=links placeholder="쿠팡파트너스 링크를 한 줄에 하나씩 붙여넣기 (보통 3개)"></textarea>
+          <div class=sponbox id=sponbox style="display:none">
+            <div class=muted>본문 맨 위에 넣을 <b>협찬 고지 스티커</b>를 즐겨찾기에서 고르세요. (선택 안 해도 됨)</div>
+            <div class=sponpick id=sponpick></div>
+            <label class=f>쿠팡파트너스 링크 <span class=hint data-tip="한 줄에 하나씩. 본문 끝에 몰지 않고 중간중간 카드로 분산 삽입돼요. 보통 3개.">i</span></label>
+            <textarea id=links placeholder="쿠팡파트너스 링크를 한 줄에 하나씩 붙여넣기 (보통 3개)" style="min-height:80px"></textarea>
+          </div>
           <div style="margin-top:18px"><button class=btn id=gen>초안 생성</button></div>
-          <div style="margin-top:9px"><button class="btn ghost" id=export><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg>내 프롬프트 합쳐서 복사 <span class=muted>(다른 챗봇에 붙여넣기)</span></button></div>
-          <div style="margin-top:7px"><button class="btn ghost" id=import><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg>받아온 글 붙여넣기 <span class=muted>(다른 챗봇 결과를 미리보기로)</span></button></div>
-          <div style="margin-top:7px"><button class="btn ghost" id=loadTemplate><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg>저장된 양식 불러오기 <span class=muted>(템플릿으로 내용 채우기)</span></button></div>
+          <div class=actrow>
+            <button class="btn ghost" id=export title="내 프롬프트와 입력 자료를 합쳐 복사 — 다른 챗봇에 붙여넣기"><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg>프롬프트 복사</button>
+            <button class="btn ghost" id=import title="다른 챗봇에서 받은 글을 붙여넣어 미리보기로"><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg>받아온 글 붙여넣기</button>
+          </div>
           <div id=status></div>
         </div>
         <div class=card style="margin-top:16px">
           <h3>네이버에 보내기</h3>
-          <label class=f>발행 카테고리 (선택)</label>
-          <div style="display:flex;gap:8px">
-            <select id=category style="flex:1;border:1px solid #d6dade;border-radius:10px;padding:9px;font-size:13px;background:#fbfcfd">
-              <option value="">— 불러오기를 눌러주세요 —</option>
-            </select>
-            <button class="btn ghost" id=catload style="width:auto;padding:9px 13px;flex:0 0 auto">불러오기</button>
+          <div class=catwrap>
+            <button class=catbtn id=catbtn><span>발행 카테고리: <b id=catlabel>선택 안 함</b></span><span style="color:var(--sub)">▾</span></button>
+            <div class=popover id=catpop style="display:none">
+              <div class=catlist id=catlist><div class=muted style="padding:8px 10px">아래 [불러오기]를 눌러주세요</div></div>
+              <div style="display:flex;gap:8px;margin-top:8px;padding-top:10px;border-top:1px solid var(--line)">
+                <button class="btn ghost" id=catload style="flex:1;padding:9px 13px">네이버에서 불러오기</button>
+              </div>
+              <div class=muted id=catstat style="margin-top:6px"></div>
+            </div>
           </div>
-          <div class=muted id=catstat style="margin-top:5px"></div>
           <div style="margin-top:12px"><button class="btn ghost" id=save disabled>임시저장</button></div>
         </div>
       </div>
@@ -336,8 +377,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <!-- 스티커 -->
   <section class="view stickers">
     <h2 class=title>스티커</h2>
-    <p class=desc>★를 눌러 즐겨찾기에 넣으세요. <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.</p>
+    <p class=desc>★를 눌러 즐겨찾기에 넣으세요. 기본은 <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.</p>
     <div class=stat id=ststat></div>
+    <div class=togrow style="margin:0 0 14px;max-width:560px">
+      <div class=tl>스티커 전체 사용 <span class=hint data-tip="끄면 즐겨찾기한 스티커만 글에 쓰입니다. 켜면 전체 스티커에서 상황에 맞게 골라 씁니다.">i</span></div>
+      <div class=sw id=stickerall></div>
+    </div>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
       <div class=seg style="width:280px" id=stfilter>
         <button data-f=fav class=on>⭐ 즐겨찾기</button>
@@ -390,12 +435,26 @@ window.fetch=async(...a)=>{try{return await _fetch(...a);}
   catch(e){const m='서버에 연결할 수 없어요. 앱(서버)이 꺼졌거나 재시작 중일 수 있어요 — 잠시 후 새로고침하거나 다시 시도하세요.';toast(m,'err');throw new Error(m);}};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let PHOTOS=[], SELP=[], PLAN=null;
-// 토스트 팝업: kind=err|ok|info, ms 후 자동 사라짐(클릭 시 즉시)
-function toast(msg,kind='err',ms){if(ms==null)ms=kind==='ok'?3500:6000;
+// 알림: 오류(err)는 화면 가운데 카드로 크게, 완료/안내(ok/info)는 상단 토스트로 가볍게.
+function toast(msg,kind='err',ms){
+  if(kind==='err'){centerAlert(msg,'err');return;}
+  if(ms==null)ms=kind==='ok'?3500:6000;
   const t=document.createElement('div');t.className='toast '+kind;
   const ic=kind==='ok'?'✅':kind==='info'?'ℹ️':'⚠️';
   t.innerHTML='<span class=ic>'+ic+'</span><span>'+String(msg).replace(/</g,'&lt;')+'</span><span class=x>✕</span>';
   t.onclick=()=>t.remove();$('#toasts').appendChild(t);setTimeout(()=>t.remove(),ms);}
+// 화면 중앙 알림 카드(오류·확인). 유저가 직접 닫아야 함(꼭 봐야 하는 알림용).
+function centerAlert(msg,kind='err'){
+  const ic=kind==='ok'?'✅':kind==='info'?'ℹ️':'⚠️';
+  const bg=document.createElement('div');bg.className='alertbg';
+  bg.innerHTML=`<div class="alertcard ${kind}"><div class=ai>${ic}</div>
+    <div class=am>${String(msg).replace(/</g,'&lt;')}</div>
+    <div class=ab><button class=btn>확인</button></div></div>`;
+  const close=()=>bg.remove();
+  bg.querySelector('.btn').onclick=close;
+  bg.onclick=e=>{if(e.target===bg)close();};
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
+  $('#alerthost').appendChild(bg);bg.querySelector('.btn').focus();}
 // 수집 종류: 'place'(맛집·기본) | 'product'(상품). 입력으로 자동 추정하되 직접 고르면 고정.
 let SRCKIND='place', KINDMANUAL=false;
 function autoKind(v){v=(v||'').trim().toLowerCase(); if(!v)return 'place';
@@ -407,9 +466,11 @@ function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
   $$('#kindseg button').forEach(b=>{b.classList.toggle('on',b.dataset.k===k);
     b.classList.toggle('auto',!KINDMANUAL&&b.dataset.k===k);});
   $('#srchint').innerHTML=KINDMANUAL
-    ?('<b>'+(k==='place'?'맛집':'상품')+'</b>으로 수집합니다 (직접 선택).')
+    ?('<b>'+(k==='place'?'맛집':'상품')+'</b>으로 수집합니다.')
     :('입력을 보고 <b>'+(k==='place'?'맛집':'상품')+'</b>으로 자동 인식했어요. 직접 골라도 돼요.');}
-const FMT={emphasis:true,structure:true,stickers:true,stickerAll:false,sponsored:false,hideDefault:true};
+// 강조색·구분선/인용구·스티커는 항상 켜둠(즐겨찾기/설정이 없으면 자동으로 안 들어감) — 토글 UI 제거.
+const FMT={emphasis:true,structure:true,stickers:true,stickerAll:false,sponsored:false,sponsorSticker:'',hideDefault:true};
+let CATEGORY='';
 const LINKS=()=>($('#links').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
 const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:false,emoji:false};
 const RULE_META=[
@@ -429,9 +490,27 @@ $$('.nav').forEach(n=>n.onclick=()=>{
 // 수집 종류: 직접 클릭 → 고정, 안 골랐으면 입력으로 자동 추정
 $$('#kindseg button').forEach(b=>b.onclick=()=>setKind(b.dataset.k,true));
 $('#srcval').oninput=()=>{if(!KINDMANUAL)setKind(autoKind($('#srcval').value),false);};
-// 서식 칩
-$('#fmt').onclick=e=>{const c=e.target.closest('.chip'); if(!c)return;
-  c.classList.toggle('on'); FMT[c.dataset.k]=c.classList.contains('on'); savePrefs();};
+// 협찬 토글 — 켜면 고지 스티커 픽커·쿠팡 링크 입력을 펼침
+$('#sponsw').onclick=function(){FMT.sponsored=!FMT.sponsored;
+  this.classList.toggle('on',FMT.sponsored);
+  $('#sponbox').style.display=FMT.sponsored?'block':'none';
+  if(FMT.sponsored)loadSponPicker();
+  savePrefs();};
+// 협찬 고지 스티커 픽커 — 즐겨찾기한 스티커를 불러와 하나 고름(다시 누르면 해제)
+async function loadSponPicker(){
+  const box=$('#sponpick');
+  try{const c=await (await fetch('/api/catalog')).json();
+    const favset=new Set(c.favorites);
+    const favs=c.stickers.filter(s=>favset.has(s.ref));
+    if(!favs.length){box.innerHTML='<div class=muted>즐겨찾기한 스티커가 없어요. [스티커] 탭에서 ★로 추가하세요.</div>';return;}
+    box.innerHTML=favs.map(s=>`<div class="spc${s.ref===FMT.sponsorSticker?' sel':''}" data-ref="${s.ref}"><img loading=lazy src="/img?ref=${encodeURIComponent(s.ref)}"></div>`).join('');
+  }catch(e){box.innerHTML='<div class=muted>스티커 로드 실패</div>';}
+}
+$('#sponpick').onclick=e=>{const c=e.target.closest('.spc'); if(!c)return;
+  const ref=c.dataset.ref;
+  FMT.sponsorSticker=(FMT.sponsorSticker===ref)?'':ref;
+  $$('#sponpick .spc').forEach(x=>x.classList.toggle('sel',x.dataset.ref===FMT.sponsorSticker));
+  savePrefs();};
 
 function st(m,loading){const s=$('#status'); s.innerHTML=(loading?'<span class=spin></span>':'')+m;
   s.parentElement.classList.toggle('loading',!!loading);}
@@ -540,7 +619,7 @@ $('#gen').onclick=async()=>{
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,
-      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS(),rules:RULES};
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES};
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); toast('초안 생성 실패: '+(d.error||'알 수 없는 오류'),'err'); return;}
@@ -568,7 +647,7 @@ $('#export').onclick=async()=>{
   $('#export').disabled=true; expLoading(true);
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,
-      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS(),rules:RULES};
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES};
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){closePM(); toast('프롬프트 생성 실패: '+(d.error||''),'err');return;}
@@ -591,31 +670,13 @@ $('#iapply').onclick=async()=>{
   if(!text){toast('붙여넣은 글이 비어 있어요.','info');return;}
   $('#iapply').disabled=true;
   try{
-    const body={text,photos:SELP,photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS()};
+    const body={text,photos:SELP,photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS()};
     const r=await fetch('/api/import-draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){toast('가져오기 실패: '+(d.error||''),'err');return;}
     closeIM(); PLAN=d; renderPreview(d); st('받아온 글을 미리보기에 반영했어요. 검토 후 임시저장하세요.'); toast('받아온 글을 가져왔어요! 검토 후 임시저장하세요.','ok'); $('#save').disabled=false;
     if(d.debug)showLog(d.debug);
   }catch(e){toast('가져오기 오류: '+e,'err');}finally{$('#iapply').disabled=false;}
-};
-function closeTM(){$('#tmodal').style.display='none';}
-$('#loadTemplate').onclick=()=>{$('#tmodal').style.display='flex'; $('#ttext').focus();};
-$('#tmclose').onclick=closeTM; $('#tmclose2').onclick=closeTM;
-$('#tmodal').onclick=e=>{if(e.target===$('#tmodal'))closeTM();};
-$('#tapply').onclick=async()=>{
-  const text=$('#ttext').value.trim();
-  if(!text){toast('붙여넣은 양식이 비어 있어요.','info');return;}
-  $('#tapply').disabled=true;
-  try{
-    const body={memo:$('#memo').value,template:text,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
-      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS(),rules:RULES};
-    const r=await fetch('/api/fill-template',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    const d=await r.json();
-    if(!r.ok){toast('템플릿 채우기 실패: '+(d.error||''),'err');return;}
-    closeTM(); PLAN=d; renderPreview(d); st('불러온 템플릿으로 미리보기 생성 완료. 검토 후 임시저장하세요.'); toast('템플릿 글을 불러왔어요! 내용을 확인하세요.','ok'); $('#save').disabled=false;
-    if(d.debug)showLog(d.debug);
-  }catch(e){toast('템플릿 불러오기 오류: '+e,'err');}finally{$('#tapply').disabled=false;}
 };
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function renderText(b){let h=esc(b.text);
@@ -650,22 +711,34 @@ function showLog(dbg){
     +'<details><summary class=logsum>유저 프롬프트(재료) 보기</summary><pre class=logpre>'+esc(dbg.user||'')+'</pre></details>';
   $('#logbox').style.display='block';
 }
-function fillCategories(cats){const sel=$('#category');
-  sel.innerHTML='<option value="">— 선택 안 함 —</option>'+cats.map(c=>
-    `<option value="${esc(c.name)}">${'　'.repeat(c.depth||0)}${c.depth?'└ ':''}${esc(c.name)}</option>`).join('');}
+// 카테고리: 자리 차지 않게 작은 버튼+팝오버. 고른 값(CATEGORY)은 기억(prefs).
+function setCategory(name){CATEGORY=name||'';
+  $('#catlabel').textContent=CATEGORY||'선택 안 함';}
+function fillCategories(cats){
+  const opts='<div class="catopt'+(CATEGORY?'':' on')+'" data-v="">— 선택 안 함 —</div>'+cats.map(c=>
+    `<div class="catopt${c.name===CATEGORY?' on':''}" data-v="${esc(c.name)}">${'　'.repeat(c.depth||0)}${c.depth?'└ ':''}${esc(c.name)}</div>`).join('');
+  $('#catlist').innerHTML=opts;}
 async function loadCategories(){try{const d=await (await fetch('/api/categories')).json();
-  if(d.categories&&d.categories.length){fillCategories(d.categories); $('#catstat').textContent=`저장된 ${d.categories.length}개 · 갱신하려면 [불러오기]`;}
+  if(d.categories&&d.categories.length){fillCategories(d.categories); $('#catstat').textContent=`저장된 ${d.categories.length}개 · 갱신하려면 [네이버에서 불러오기]`;}
 }catch(e){}}
+function catpopOpen(on){$('#catpop').style.display=on?'flex':'none';}
+$('#catbtn').onclick=e=>{e.stopPropagation(); catpopOpen($('#catpop').style.display==='none');};
+$('#catpop').onclick=e=>e.stopPropagation();
+document.addEventListener('click',()=>catpopOpen(false));
+$('#catlist').onclick=e=>{const o=e.target.closest('.catopt'); if(!o)return;
+  setCategory(o.dataset.v);
+  $$('#catlist .catopt').forEach(x=>x.classList.toggle('on',x===o));
+  catpopOpen(false); savePrefs();};
 $('#catload').onclick=async()=>{
   $('#catload').disabled=true; $('#catstat').textContent='백그라운드에서 불러오는 중… (브라우저 안 뜸, 수십 초)';
   try{const r=await fetch('/api/categories',{method:'POST'}); const d=await r.json();
-    if(!r.ok){$('#catstat').textContent='실패: '+(d.error||''); toast('카테고리 불러오기 실패: '+(d.error||''),'err'); return;}
+    if(!r.ok){$('#catstat').textContent='실패'; toast('카테고리 불러오기 실패: '+(d.error||''),'err'); return;}
     fillCategories(d.categories); $('#catstat').textContent=`카테고리 ${d.categories.length}개 불러와 저장됨`; toast(`카테고리 ${d.categories.length}개를 불러와 저장했어요.`,'ok');
-  }catch(e){$('#catstat').textContent='오류: '+e; toast('카테고리 오류: '+e,'err');}finally{$('#catload').disabled=false;}
+  }catch(e){$('#catstat').textContent='오류'; toast('카테고리 오류: '+e,'err');}finally{$('#catload').disabled=false;}
 };
 $('#save').onclick=async()=>{if(!PLAN)return;
   $('#save').disabled=true; st('네이버 에디터에 주입 중… 브라우저가 열립니다',true);
-  try{const r=await fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category:$('#category').value})});
+  try{const r=await fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category:CATEGORY})});
     const d=await r.json(); st(r.ok?'임시저장 완료 ✓ (네이버 글쓰기 › 저장 목록)':'실패: '+(d.error||'')); toast(r.ok?'임시저장 완료! 네이버 글쓰기 › 저장 목록에서 확인하세요.':'임시저장 실패: '+(d.error||''),r.ok?'ok':'err');
   }catch(e){st('오류: '+e); toast('임시저장 오류: '+e,'err');}finally{$('#save').disabled=false;}
 };
@@ -684,6 +757,7 @@ function updateStat(){if(!CAT)return;
 function renderStickers(){
   updateStat();
   $('#hidedef').classList.toggle('on',!!FMT.hideDefault);
+  $('#stickerall').classList.toggle('on',!!FMT.stickerAll);
   const favset=new Set(CAT.favorites);
   const defset=new Set(CAT.default_packs||[]);
   let list=CAT.stickers;
@@ -752,18 +826,28 @@ $('#stbody').onclick=async e=>{const b=e.target.closest('.favbtn'); if(!b)return
   try{await fetch('/api/favorite',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ref,on})});}
   catch(e){}
 };
+// 스티커 전체 사용 토글(끄면 즐겨찾기만) — 글쓰기에서 쓰던 걸 스티커 탭에서 관리
+$('#stickerall').onclick=function(){FMT.stickerAll=!FMT.stickerAll;
+  this.classList.toggle('on',FMT.stickerAll); savePrefs();};
 
-// 글쓰기 설정(규칙·서식칩·톤) 서버 저장/복원 — 새로고침해도 유지
-function applyFmtChips(){$$('#fmt .chip').forEach(c=>c.classList.toggle('on',!!FMT[c.dataset.k]));}
+// 글쓰기 설정(규칙·협찬·톤·카테고리) 서버 저장/복원 — 새로고침해도 유지
 async function savePrefs(){try{await fetch('/api/prefs',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value})});}catch(e){}}
+  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,category:CATEGORY})});}catch(e){}}
 async function loadPrefs(){
   try{const p=await (await fetch('/api/prefs')).json();
     if(p.rules)Object.assign(RULES,p.rules);
     if(p.fmt)Object.assign(FMT,p.fmt);
     if(typeof p.tone==='string')$('#tone').value=p.tone;
+    if(typeof p.category==='string')setCategory(p.category);
   }catch(e){}
-  renderRules(); applyFmtChips();
+  renderRules(); applyFmtState();
+}
+// 저장된 협찬/스티커 상태를 토글 UI에 반영(서식 칩은 제거됨)
+function applyFmtState(){
+  $('#sponsw').classList.toggle('on',!!FMT.sponsored);
+  $('#sponbox').style.display=FMT.sponsored?'block':'none';
+  if(FMT.sponsored)loadSponPicker();
+  $('#stickerall').classList.toggle('on',!!FMT.stickerAll);
 }
 
 // 설정
@@ -1144,14 +1228,16 @@ def _make_handler(state: dict):
                     self._export_prompt(self._json_body())
                 elif path == "/api/import-draft":
                     self._import_draft(self._json_body())
-                elif path == "/api/fill-template":
-                    self._fill_template(self._json_body())
                 elif path == "/api/publish":
                     self._publish(self._json_body())
                 elif path == "/api/favorite":
                     body = self._json_body()
                     n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
                     self._send(200, json.dumps({"ok": True, "favorites": n}).encode())
+                elif path == "/api/sponsor-sticker":
+                    body = self._json_body()
+                    ref = _set_sponsor_sticker(body.get("ref", ""))
+                    self._send(200, json.dumps({"ok": True, "sponsor": ref}).encode())
                 elif path == "/api/upload":
                     body = self._json_body()
                     p = _save_upload(body.get("filename", ""), body.get("data", ""))
@@ -1270,6 +1356,7 @@ def _make_handler(state: dict):
                 emphasis=bool(body.get("emphasis")),
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
+                sticker_favorites_only=not bool(body.get("stickerAll")),
                 divider_variants=dkeys,
                 quote_variants=qkeys,
             )
@@ -1327,6 +1414,7 @@ def _make_handler(state: dict):
                 quote_variants=qkeys,
                 sponsored=bool(body.get("sponsored")),
                 sponsor_links=_links(body),
+                sponsor_sticker=(body.get("sponsorSticker") or "").strip(),
             )
             self._send_plan(result)
 
@@ -1353,43 +1441,7 @@ def _make_handler(state: dict):
                 quote_variant=qv[0],
                 sponsored=bool(body.get("sponsored")),
                 sponsor_links=_links(body),
-            )
-            self._send_plan(result)
-
-        def _fill_template(self, body):
-            """저장된 양식/템플릿을 가져와 같은 구조로 글 내용을 채워 생성."""
-            from autoblog.draft.rules import CommonRules
-            from autoblog.draft.style import StyleProfile
-            from autoblog.pipeline import run_pipeline
-
-            template = (body.get("template") or "").strip()
-            if not template:
-                self._send(400, json.dumps({"error": "붙여넣은 양식이 비어 있어요"}).encode())
-                return
-            srcval, src = self._resolve_src(body)
-            photos = [p for p in (body.get("photos") or []) if p]
-            tone = (body.get("tone") or "").strip() or None
-            rules = CommonRules(**body["rules"]) if body.get("rules") else None
-            dv, qv = _enabled_variants()
-            dkeys, qkeys = _enabled_variant_keys()
-            result = run_pipeline(
-                (body.get("memo") or "").strip(),
-                place_url=srcval if src == "place" else None,
-                product=srcval if src == "product" else None,
-                photos=photos or None,
-                style=StyleProfile(tone=tone) if tone else None,
-                rules=rules,
-                template_text=template,
-                emphasis=bool(body.get("emphasis")),
-                structure=bool(body.get("structure")),
-                stickers=bool(body.get("stickers")),
-                sticker_favorites_only=not bool(body.get("stickerAll")),
-                divider_variant=dv[0],
-                quote_variant=qv[0],
-                divider_variants=dkeys,
-                quote_variants=qkeys,
-                sponsored=bool(body.get("sponsored")),
-                sponsor_links=_links(body),
+                sponsor_sticker=(body.get("sponsorSticker") or "").strip(),
             )
             self._send_plan(result)
 
@@ -1451,8 +1503,10 @@ _PREFS_DEFAULT = {
     "fmt": {
         "emphasis": True, "structure": True, "stickers": True,
         "stickerAll": False, "hideDefault": True,
+        "sponsored": False, "sponsorSticker": "",
     },
     "tone": "",
+    "category": "",
 }
 
 
@@ -1479,6 +1533,8 @@ def _save_prefs(body: dict) -> None:
             cur[k].update(body[k])
     if "tone" in body:
         cur["tone"] = body.get("tone") or ""
+    if "category" in body:
+        cur["category"] = body.get("category") or ""
     PREFS_PATH.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -1978,6 +2034,7 @@ def _catalog_summary() -> dict:
         "label_count": len(cat.labels()),
         "stickers": stickers,
         "default_packs": sorted(DEFAULT_PACKS),
+        "sponsor": cat.sponsor,  # 현재 협찬 고지로 지정된 스티커 ref(없으면 "")
     }
 
 
@@ -2043,6 +2100,16 @@ def _toggle_favorite(ref: str, on: bool) -> int:
     cat.favorites = favs
     save_sticker_catalog(cat)
     return len(favs)
+
+
+def _set_sponsor_sticker(ref: str) -> str:
+    """협찬 고지 스티커를 ref로 지정(같은 ref면 해제). 하나만 유지. 새 sponsor ref 반환."""
+    from autoblog.publish.stickers import load_sticker_catalog, save_sticker_catalog
+
+    cat = load_sticker_catalog()
+    cat.sponsor = "" if cat.sponsor == ref else (ref if ref in cat.by_ref() else "")
+    save_sticker_catalog(cat)
+    return cat.sponsor
 
 
 def serve_ui(host: str = "127.0.0.1", port: int = 8770) -> ThreadingHTTPServer:

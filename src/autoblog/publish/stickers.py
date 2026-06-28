@@ -52,6 +52,7 @@ class StickerCatalog(BaseModel):
 
     stickers: list[Sticker] = Field(default_factory=list)
     favorites: list[str] = Field(default_factory=list)  # 즐겨쓰기 ref("pack:index") 목록
+    sponsor: str = ""  # 협찬 고지 스티커 ref("pack:index") — UI에서 카드 골라 지정(협찬 토글 시 맨 위)
 
     def by_ref(self) -> dict[str, Sticker]:
         return {s.ref: s for s in self.stickers}
@@ -91,6 +92,22 @@ class StickerCatalog(BaseModel):
             hits = [s for s in hits if s.ref in favs]
         hits.sort(key=lambda s: s.ref not in favs)  # 즐겨쓰기 우선(False<True)
         return hits
+
+    def resolve_ref(self, spec: str) -> tuple[str, int] | None:
+        """스티커 지정값(spec) → (pack, index). 협찬 고지 스티커 지정 등에 사용.
+
+        spec이 'pack:index' 형식이면 그대로 해석하고, 아니면 '태그 이름'으로 보고
+        그 태그를 가진 스티커(즐겨쓰기 우선, 없으면 전체)를 찾아 첫 번째를 쓴다.
+        예: "파트너스" → 그 태그가 달린 스티커. 못 찾거나 비어 있으면 None.
+        """
+        spec = (spec or "").strip()
+        if not spec:
+            return None
+        if ":" in spec:  # pack:index 직접 지정
+            pack, _, idx = spec.partition(":")
+            return (pack, int(idx)) if pack and idx.isdigit() else None
+        hits = self.find(spec, favorites_only=False)  # 태그 이름으로 검색(전체에서)
+        return (hits[0].pack, hits[0].index) if hits else None
 
 
 def merge_catalog(existing: StickerCatalog, scraped: list[Sticker]) -> StickerCatalog:

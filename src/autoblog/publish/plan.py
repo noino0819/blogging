@@ -215,6 +215,8 @@ def build_publish_plan(
     place_address: str | None = None,
     sponsor: bool = False,
     sponsor_links: list[str] | None = None,
+    sponsor_sticker: str = "",
+    sticker_catalog=None,
 ) -> PublishPlan:
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
 
@@ -225,8 +227,9 @@ def build_publish_plan(
     - [스티커:상황] → picker가 (팩,인덱스)로 해석한 스티커(picker 없거나 미해석이면 무시)
     그 외 줄은 텍스트 문단으로 누적. 강조 span은 해당 텍스트 블록에 배분.
 
-    sponsor=True면 structure_styles.sponsor_sticker(쿠팡파트너스 고지 스티커)를
-    본문 맨 위 블록으로 고정 삽입한다(ref 형식이 어긋나면 조용히 건너뜀).
+    sponsor=True면 structure_styles.sponsor_sticker(쿠팡파트너스 고지 스티커)를 본문 맨 위
+    블록으로 고정 삽입한다. 지정값은 '태그 이름'(예: 파트너스) 또는 'pack:index'. 태그면
+    sticker_catalog에서 찾아 해석한다(카탈로그 없으면 pack:index만 인식). 못 찾으면 건너뜀.
     sponsor_links를 주면 그 URL들을 링크 카드로 본문 텍스트 사이 고른 위치에 분산 삽입한다.
     """
     photos = list(photos or [])
@@ -428,8 +431,19 @@ def build_publish_plan(
             blocks = spread
 
     # 협찬 고지 스티커 — 본문 맨 위에 고정 삽입(제목 칸과 별개로 본문 첫 블록).
-    if sponsor and structure_styles is not None:
-        ref = structure_styles.sponsor_ref()
+    # 우선순위: 글쓰기 화면에서 고른 sponsor_sticker > structure_styles.yaml 수동 지정 > catalog.sponsor.
+    # 지정값이 태그명이면 카탈로그로 해석, 아니면 pack:index로 해석.
+    if sponsor:
+        spec = sponsor_sticker or ""
+        if not spec and structure_styles is not None:
+            spec = structure_styles.sponsor_sticker
+        if not spec and sticker_catalog is not None:
+            spec = getattr(sticker_catalog, "sponsor", "")  # 예전 스티커탭 지정(하위호환)
+        ref = None
+        if sticker_catalog is not None:
+            ref = sticker_catalog.resolve_ref(spec)
+        elif structure_styles is not None:
+            ref = structure_styles.sponsor_ref()
         if ref:
             blocks.insert(0, PublishBlock(kind="sticker", sticker_pack=ref[0], sticker_index=ref[1]))
 

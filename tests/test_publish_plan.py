@@ -180,9 +180,45 @@ def test_sponsor_sticker_prepended_at_top():
     assert on.blocks[0].sticker_pack == "ogq_cp"
     assert on.blocks[0].sticker_index == 7
 
-    # ref 형식이 어긋나거나 비면 토글 ON이어도 안 들어감
+    # ref 형식이 어긋나거나 비면(카탈로그 없음) 토글 ON이어도 안 들어감
     bad = build_publish_plan(draft, structure_styles=StructureStyles(sponsor_sticker="없음"), sponsor=True)
     assert all(b.kind != "sticker" for b in bad.blocks)
+
+
+def test_sponsor_sticker_resolved_by_tag():
+    from autoblog.publish.stickers import Sticker, StickerCatalog
+
+    draft = DraftResult(text="제목\n\n본문.")
+    cat = StickerCatalog(stickers=[
+        Sticker(pack="ogq_z", index=2, tags=["기쁨"]),
+        Sticker(pack="ogq_p", index=5, tags=["파트너스"]),
+    ])
+    ss = StructureStyles(sponsor_sticker="파트너스")  # ref이 아니라 태그 이름
+
+    on = build_publish_plan(draft, structure_styles=ss, sponsor=True, sticker_catalog=cat)
+    assert on.blocks[0].kind == "sticker"
+    assert (on.blocks[0].sticker_pack, on.blocks[0].sticker_index) == ("ogq_p", 5)
+
+    # 없는 태그면 안 들어감
+    miss = build_publish_plan(
+        draft, structure_styles=StructureStyles(sponsor_sticker="없는태그"), sponsor=True, sticker_catalog=cat
+    )
+    assert all(b.kind != "sticker" for b in miss.blocks)
+
+
+def test_sponsor_sticker_from_catalog_pick():
+    # structure_styles에 수동 지정이 없으면 UI에서 고른 catalog.sponsor(ref)를 쓴다
+    from autoblog.publish.stickers import Sticker, StickerCatalog
+
+    draft = DraftResult(text="제목\n\n본문.")
+    cat = StickerCatalog(
+        stickers=[Sticker(pack="ogq_p", index=5, tags=["협찬"])], sponsor="ogq_p:5"
+    )
+    plan = build_publish_plan(
+        draft, structure_styles=StructureStyles(), sponsor=True, sticker_catalog=cat
+    )
+    assert plan.blocks[0].kind == "sticker"
+    assert (plan.blocks[0].sticker_pack, plan.blocks[0].sticker_index) == ("ogq_p", 5)
 
 
 def test_sponsor_links_spread_in_middle():
