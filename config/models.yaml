@@ -65,7 +65,7 @@ presets:
     concurrent_load: true
 default: apple_18gb
 selection:
-  text: claude-opus-4-8
+  text: qwen2.5:14b
   vision: qwen2.5vl:7b
 # 사진 '✨ AI 자동 추천'(온디맨드)에 쓰는 멀티모달 모델.
 # Gemini Flash 권장 — 글 1개당 호출 1번(사진 전부 한 번에)이라 매우 저렴(글당 수 원).
