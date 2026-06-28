@@ -107,6 +107,45 @@ def _chat_gemini(messages: list[dict], model: str, fmt: str | None = None) -> st
     return resp.text or ""
 
 
+def _vision_gemini(prompt: str, images: list[bytes], model: str, *, fmt: str | None = None) -> str:
+    """Google Gemini 멀티모달 호출 — 프롬프트 + 이미지 여러 장 한 번에. GEMINI_API_KEY 필요."""
+    try:
+        from google import genai
+        from google.genai import errors, types
+    except ImportError as exc:
+        raise LLMUnavailable("google-genai 패키지 미설치 — pip install google-genai") from exc
+
+    env = load_env()
+    if not env.gemini_api_key:
+        raise LLMUnavailable("GEMINI_API_KEY 미설정 — 설정 탭에서 API 키를 입력하세요")
+    parts = [types.Part(text=prompt)]
+    parts += [types.Part.from_bytes(data=b, mime_type="image/png") for b in images]
+    cfg = types.GenerateContentConfig(
+        response_mime_type="application/json" if fmt == "json" else None,
+    )
+    client = genai.Client(api_key=env.gemini_api_key)
+    try:
+        resp = client.models.generate_content(
+            model=model, contents=[types.Content(role="user", parts=parts)], config=cfg
+        )
+    except errors.APIError as exc:
+        raise LLMUnavailable(f"Gemini API 오류: {exc}") from exc
+    return resp.text or ""
+
+
+def vision_chat(prompt: str, images: list[bytes], model: str, *, fmt: str | None = None) -> str:
+    """이미지(여러 장)+프롬프트 멀티모달 호출 → 응답 텍스트.
+
+    현재 Gemini만 지원(사진 자동 추천용). 로컬(Ollama) 비전은 vision.py 참고.
+    """
+    if provider_for(model) == "gemini":
+        return _vision_gemini(prompt, images, model, fmt=fmt)
+    raise LLMUnavailable(
+        f"사진 자동 추천은 Gemini 모델만 지원합니다(현재 caption.model: {model!r}). "
+        "config/models.yaml 의 caption.model 을 gemini-* 로 설정하세요."
+    )
+
+
 def chat(
     messages: list[dict],
     model: str | None = None,

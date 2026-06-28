@@ -361,7 +361,7 @@ def build_publish_plan(
             flush_text()
             ph = take_photo(photo_m.group(1))
             if ph is not None:
-                blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.label))
+                blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.caption or ph.label))
         else:
             role = classify_role(s)
             if role:
@@ -384,7 +384,7 @@ def build_publish_plan(
         text_pos = [i for i, b in enumerate(blocks) if b.kind == "text"]
         if not text_pos:  # 본문 텍스트가 없으면 그대로 끝에
             for ph in leftover:
-                blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.label))
+                blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.caption or ph.label))
         else:
             def trailing_end(idx: int) -> int:  # 텍스트 블록 뒤 마커 이미지까지 건너뛴 위치
                 while idx + 1 < len(blocks) and blocks[idx + 1].kind == "image":
@@ -401,7 +401,7 @@ def build_publish_plan(
                 spread.append(b)
                 for ph in after.get(i, []):
                     spread.append(
-                        PublishBlock(kind="image", image_path=ph.path, image_label=ph.label)
+                        PublishBlock(kind="image", image_path=ph.path, image_label=ph.caption or ph.label)
                     )
             blocks = spread
 

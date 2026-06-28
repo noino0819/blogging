@@ -101,10 +101,11 @@ class ProductFacts(BaseModel):
 
 
 class PhotoItem(BaseModel):
-    """입력 사진 1장 + Vision 자동 분류 라벨."""
+    """입력 사진 1장 + 분류 라벨 + 맥락 캡션."""
 
     path: str
     label: str = "기타"  # 음식/메뉴판/외관/내부/영수증/상품/기타
+    caption: str = ""  # 맥락 유추 캡션(예: '데미소스 돈까스'). AI 자동 추천 또는 사용자 입력.
 
 
 class FactCard(BaseModel):

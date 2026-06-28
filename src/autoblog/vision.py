@@ -248,3 +248,100 @@ def classify_photos(
             label = "기타"
         result[path] = label if label in labels else "기타"
     return result
+
+
+# --- 온디맨드 맥락 캡션 (Gemini 배치) ------------------------------------------
+# 사진 전부 + 메모/메뉴/가게설명을 한 번에 넣어 '데미소스 돈까스'처럼 사람처럼 유추.
+# 글 1개당 호출 1번이라 저렴하고, 로컬 분류보다 훨씬 정확하다.
+
+_DEFAULT_CAPTION_LABELS = ["음식", "메뉴판", "외관", "내부", "영수증", "상품", "기타"]
+
+
+def default_caption_model() -> str:
+    """사진 자동 추천에 쓰는 멀티모달 모델명(config/models.yaml caption.model). 비면 빈 문자열."""
+    return load_models_config().caption.model
+
+
+def caption_available() -> bool:
+    """자동 추천을 쓸 수 있는지(모델 지정 + 키 존재 여부는 호출 시 검증)."""
+    return bool(default_caption_model())
+
+
+def _caption_prompt(n: int, cats: list[str], context: str) -> str:
+    ctx = (context or "").strip()
+    ctx_block = (
+        "\n[참고 맥락 — 이 가게/상품의 메모·메뉴·설명. 사진이 구체적으로 무엇인지 "
+        f"유추하는 데 활용하세요]\n{ctx}\n" if ctx else ""
+    )
+    return (
+        f"사진 {n}장을 순서대로 줄게요. 각 사진이 무엇인지 사람처럼 파악하세요."
+        f"{ctx_block}\n"
+        "각 사진마다 두 가지를 정하세요:\n"
+        f"1) label: 다음 중 하나로만 분류 — {', '.join(cats)}\n"
+        "2) caption: 그 사진이 구체적으로 무엇인지 한국어로 짧게. 위 맥락의 메뉴·설명과 "
+        "대조해 가능한 한 구체적으로(예: '데미글라스 소스를 올린 등심돈까스', '가게 외관 간판'). "
+        "맥락에서 못 찾으면 보이는 그대로 묘사하세요. 추측으로 사실을 지어내지 마세요.\n"
+        "JSON으로만 답하세요. 형식: "
+        '{"items":[{"index":1,"label":"음식","caption":"데미소스 돈까스"}]} — '
+        f"index는 1부터 {n}까지, 준 사진 순서와 정확히 일치시키세요."
+    )
+
+
+def _parse_captions(
+    content: str, image_paths: list[str], cats: list[str]
+) -> dict[str, dict[str, str]]:
+    """모델 JSON → {path: {"label","caption"}} (안전 파싱·범위 검증, 누락은 기타로 채움)."""
+    out: dict[str, dict[str, str]] = {}
+    items = None
+    try:
+        data = json.loads(content)
+        if isinstance(data, dict):
+            items = data.get("items")
+    except json.JSONDecodeError:
+        items = None
+    if isinstance(items, list):
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            idx = it.get("index")
+            if not isinstance(idx, int) or not (1 <= idx <= len(image_paths)):
+                continue
+            label = str(it.get("label") or "").strip()
+            caption = str(it.get("caption") or "").strip()
+            out[image_paths[idx - 1]] = {
+                "label": label if label in cats else "기타",
+                "caption": caption,
+            }
+    for p in image_paths:
+        out.setdefault(p, {"label": "기타", "caption": ""})
+    return out
+
+
+def smart_caption_photos(
+    image_paths: list[str],
+    context: str = "",
+    categories: list[str] | None = None,
+    model: str | None = None,
+) -> dict[str, dict[str, str]]:
+    """사진들을 '한 번의 호출'로 맥락 기반 분류+캡션 → {path: {"label","caption"}}.
+
+    context: 메모+수집 메뉴/가게/상품 정보 텍스트. categories: 허용 라벨 목록.
+    Gemini 등 멀티모달 모델 사용(llm.vision_chat). 키 미설정/패키지 미설치면 LLMUnavailable.
+    """
+    from autoblog.llm import vision_chat
+
+    if not image_paths:
+        return {}
+    model = model or default_caption_model()
+    if not model:
+        from autoblog.llm import LLMUnavailable
+
+        raise LLMUnavailable(
+            "사진 자동 추천 모델 미설정 — config/models.yaml 의 caption.model 을 gemini-* 로 두세요"
+        )
+    cats = [c for c in (categories or []) if c] or _DEFAULT_CAPTION_LABELS
+    if "기타" not in cats:
+        cats = [*cats, "기타"]
+    images = [_downscale_image(p) for p in image_paths]
+    content = vision_chat(_caption_prompt(len(image_paths), cats, context), images, model, fmt="json")
+    return _parse_captions(content, image_paths, cats)

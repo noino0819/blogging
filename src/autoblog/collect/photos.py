@@ -28,6 +28,28 @@ def classify_photos_into(card: FactCard, image_paths: list[str], model: str | No
     return card
 
 
+def attach_photos(
+    card: FactCard,
+    image_paths: list[str],
+    meta: dict[str, dict] | None = None,
+) -> FactCard:
+    """사진을 card.photos에 채운다(Vision 호출 없음).
+
+    meta가 있으면 그 라벨·캡션(사용자 수동 분류 또는 AI 자동 추천 결과)을 쓰고,
+    없으면 라벨 '기타'로 둔다. webui는 항상 이 경로로 채워 자동 분류를 돌리지 않는다.
+    """
+    meta = meta or {}
+    card.photos = [
+        PhotoItem(
+            path=p,
+            label=(meta.get(p) or {}).get("label") or "기타",
+            caption=(meta.get(p) or {}).get("caption") or "",
+        )
+        for p in image_paths
+    ]
+    return card
+
+
 def photo_summary(photos: list[PhotoItem]) -> str:
     """분류 라벨 분포 요약 (예: '음식 3, 외관 1, 메뉴판 1')."""
     counts = Counter(p.label for p in photos)

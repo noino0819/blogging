@@ -119,6 +119,13 @@ def build_user_prompt(card: FactCard, experience_memo: str, template_text: str |
             "예: 음식 묘사 문단 뒤엔 [사진:음식], 가게 첫인상 문단 뒤엔 [사진:외관]. "
             "라벨을 모르겠으면 그냥 [사진] 으로 두면 됩니다. 같은 라벨 사진이 여러 장이면 그만큼 마커를 반복하세요."
         )
+        captioned = [p for p in card.photos if p.caption]
+        if captioned:
+            parts.append(
+                "# 사진 내용 (각 사진이 구체적으로 무엇인지 — 이 설명에 맞는 문맥에 배치하세요)\n"
+                + "\n".join(f"- {p.caption} (라벨: {p.label})" for p in captioned)
+                + "\n사진 속 대상을 본문에서 정확히 언급하되, 이 목록의 형식 자체는 본문에 옮기지 마세요."
+            )
     if template_text and template_text.strip():
         parts.append(
             "# 사용 템플릿\n"

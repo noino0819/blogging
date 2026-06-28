@@ -40,8 +40,13 @@ def collect_card(
     place_url: str | None = None,
     product: str | None = None,
     photos: list[str] | None = None,
+    photo_meta: dict[str, dict] | None = None,
 ) -> FactCard:
-    """수집: 플레이스 URL 또는 상품 검색어 → 사실 카드. 사진 있으면 분류해 카드에 채움."""
+    """수집: 플레이스 URL 또는 상품 검색어 → 사실 카드. 사진 있으면 카드에 채움.
+
+    photo_meta(경로→{label,caption})를 주면 그 값으로 채우고 Vision 호출을 건너뛴다
+    (webui: 수동 분류·AI 자동 추천 결과). None이면 기존처럼 로컬 Vision 자동 분류(CLI 등).
+    """
     if place_url:
         from autoblog.collect.place import collect_place_from_url
 
@@ -53,10 +58,86 @@ def collect_card(
     else:
         card = FactCard(type=CardType.place)
     if photos:
-        from autoblog.collect.photos import classify_photos_into
+        if photo_meta is not None:
+            from autoblog.collect.photos import attach_photos
 
-        classify_photos_into(card, photos)
+            attach_photos(card, photos, photo_meta)
+        else:
+            from autoblog.collect.photos import classify_photos_into
+
+            classify_photos_into(card, photos)
     return card
+
+
+def build_photo_context(card: FactCard | None, memo: str = "") -> str:
+    """사진 자동 추천용 맥락 텍스트 — 메모 + 수집한 가게/메뉴/상품 정보.
+
+    이 맥락을 멀티모달 모델에 함께 줘서 '데미소스 돈까스'처럼 구체적으로 유추하게 한다.
+    """
+    parts: list[str] = []
+    if memo and memo.strip():
+        parts.append(f"메모: {memo.strip()}")
+    if card and card.place:
+        p = card.place
+        if p.name:
+            parts.append("가게: " + p.name + (f" ({p.category})" if p.category else ""))
+        if p.description:
+            parts.append(f"가게 소개: {p.description}")
+        if p.menus:
+            lines = []
+            for m in p.menus[:30]:
+                seg = m.name + (f" {m.price}" if m.price else "")
+                if m.description:
+                    seg += f" — {m.description}"
+                lines.append(seg)
+            parts.append("메뉴:\n" + "\n".join(lines))
+    if card and card.product:
+        pr = card.product
+        if pr.name:
+            parts.append("상품: " + pr.name + (f" ({pr.category})" if pr.category else ""))
+        if pr.detail_text:
+            parts.append("상세설명: " + pr.detail_text[:1500])
+        if pr.selling_points:
+            parts.append("셀링포인트: " + ", ".join(pr.selling_points))
+    return "\n".join(parts)
+
+
+def _categories_for(card: FactCard | None, review_type: str | None) -> list[str] | None:
+    """리뷰 타입(또는 카드 종류)에 맞는 사진 카테고리 프리셋."""
+    from autoblog.config import load_photo_categories
+
+    cats = load_photo_categories()
+    key = review_type or (card.type.value if (card and card.type) else None)
+    return cats.get(key or "") or cats.get("place")
+
+
+def caption_photos(
+    memo: str = "",
+    *,
+    place_url: str | None = None,
+    product: str | None = None,
+    photos: list[str] | None = None,
+    review_type: str | None = None,
+) -> list[dict]:
+    """온디맨드 '✨ AI 자동 추천': (가능하면)수집 → 맥락 조립 → 멀티모달 배치 캡션.
+
+    반환: [{"path","label","caption"}] (사진 순서대로). 수집 실패해도 메모 맥락만으로 진행.
+    """
+    paths = [p for p in (photos or []) if p]
+    if not paths:
+        return []
+    card = None
+    try:  # 메뉴·가게설명을 맥락으로 쓰려고 정보만 수집(사진 분류는 안 함)
+        if place_url or product:
+            card = collect_card(place_url=place_url, product=product)
+    except Exception:  # noqa: BLE001 — 수집 실패해도 메모만으로 캡션 진행
+        card = None
+    from autoblog.vision import smart_caption_photos
+
+    meta = smart_caption_photos(
+        paths, build_photo_context(card, memo), categories=_categories_for(card, review_type)
+    )
+    return [{"path": p, **meta.get(p, {"label": "기타", "caption": ""})} for p in paths]
 
 
 def build_export_prompt(
@@ -76,19 +157,25 @@ def build_export_prompt(
     sticker_favorites_only: bool = True,
     divider_variants: list[str] | None = None,
     quote_variants: list[str] | None = None,
+    photo_meta: dict[str, dict] | None = None,
 ) -> str:
     """수집(선택)→프롬프트 조립까지만 하고, 다른 챗봇에 붙여넣을 단일 텍스트로 반환.
 
     run_pipeline과 동일한 지시문(강조/구조/스티커/규칙)을 넣되 LLM은 호출하지 않는다.
     system을 지시문으로, user를 입력 자료로 묶어 그대로 복사-붙여넣기 가능하게 만든다.
+    photo_meta(경로→{label,caption})를 주면 사진을 그 값으로 채운다(Vision 분류 생략).
     """
     from autoblog.draft.generate import build_prompt
 
     if card is None:
         try:
-            card = collect_card(place_url, product, photos)
+            card = collect_card(place_url, product, photos, photo_meta=photo_meta)
         except Exception:  # noqa: BLE001 — 수집 실패해도 내보내기는 메모만으로 진행
-            card = collect_card(photos=photos) if photos else FactCard(type=CardType.place)
+            card = (
+                collect_card(photos=photos, photo_meta=photo_meta)
+                if photos
+                else FactCard(type=CardType.place)
+            )
     labels: list[str] = []
     if stickers:
         if sticker_catalog is None:
@@ -137,12 +224,14 @@ def plan_from_text(
     place_address: str | None = None,
     sponsored: bool = False,
     sponsor_links: list[str] | None = None,
+    photo_meta: dict[str, dict] | None = None,
 ) -> PipelineResult:
     """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱·후처리 → 게시 플랜.
 
     수집·LLM 호출 없이 run_pipeline의 후반부(초안→플랜)만 재현한다. 선택한 사진은
     플랜에 이미지 블록으로 배치된다. place_query를 주면 [지도] 마커를 그 가게명으로
     해석하고, place_address(도로명)를 주면 검색 결과를 그 주소로 매칭한다.
+    photo_meta(경로→{label,caption})를 주면 사진을 그 값으로 채운다(Vision 분류 생략).
     """
     catalog = None
     labels: list[str] = []
@@ -155,9 +244,14 @@ def plan_from_text(
         labels = catalog.labels(favorites_only=sticker_favorites_only)
     card = FactCard(type=CardType.place)
     if photos:
-        from autoblog.collect.photos import classify_photos_into
+        if photo_meta is not None:
+            from autoblog.collect.photos import attach_photos
 
-        classify_photos_into(card, photos)
+            attach_photos(card, photos, photo_meta)
+        else:
+            from autoblog.collect.photos import classify_photos_into
+
+            classify_photos_into(card, photos)
     req = DraftRequest(
         fact_card=card,
         experience_memo="",
@@ -204,14 +298,16 @@ def run_pipeline(
     sponsored: bool = False,
     sponsor_links: list[str] | None = None,
     model: str | None = None,
+    photo_meta: dict[str, dict] | None = None,
 ) -> PipelineResult:
     """수집→초안(강조/구조/스티커 마커 자동)→게시 플랜까지 한 번에 조립.
 
     card를 직접 주면 수집을 건너뛴다(테스트/재사용). stickers=True면 카탈로그 라벨을
     초안에 주입하고 같은 카탈로그로 picker를 만들어 플랜에서 스티커를 해석한다.
+    photo_meta(경로→{label,caption})를 주면 사진을 그 값으로 채우고 Vision 분류를 건너뛴다.
     """
     if card is None:
-        card = collect_card(place_url, product, photos)
+        card = collect_card(place_url, product, photos, photo_meta=photo_meta)
 
     catalog = None
     labels: list[str] = []

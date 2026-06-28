@@ -114,6 +114,19 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pcell.sel{border-color:var(--green)}
  .dropzone{border:2px dashed #cdd3da;border-radius:11px;padding:18px;text-align:center;color:var(--sub);font-size:13px;cursor:pointer;margin-bottom:10px}
  .dropzone:hover,.dropzone.drag{border-color:var(--green);background:#f3fcf6;color:var(--green-d)}
+ .pmbar{display:flex;align-items:center;gap:8px;margin-top:8px}
+ .minibtn{font-size:12px;padding:5px 10px;border:1px solid #cdd3da;border-radius:8px;background:#fff;cursor:pointer;color:#374151}
+ .minibtn:hover{border-color:var(--green);color:var(--green-d)}
+ .minibtn:disabled{opacity:.55;cursor:default}
+ .pmeta{display:none;margin-top:8px;border:1px solid #e5e7eb;border-radius:10px;padding:8px;max-height:280px;overflow:auto}
+ .pmeta.open{display:block}
+ .pmhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:12px;color:#374151}
+ .pmrow{display:flex;align-items:center;gap:8px;padding:5px 2px;border-top:1px solid #f1f3f5}
+ .pmrow:first-of-type{border-top:none}
+ .pmrow img{width:42px;height:42px;object-fit:cover;border-radius:6px;flex:none}
+ .pmf{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+ .pmlabel{font-size:12px;padding:3px 5px;border:1px solid #cdd3da;border-radius:6px;max-width:140px}
+ .pmcap{font-size:12px;padding:4px 6px;border:1px solid #cdd3da;border-radius:6px;width:100%}
  .pcell.uploading{opacity:.5}
  .pcell .num{position:absolute;top:4px;left:4px;background:var(--green);color:#fff;width:18px;height:18px;border-radius:50%;font-size:11px;display:none;align-items:center;justify-content:center;font-weight:700}
  .pcell.sel .num{display:flex}
@@ -278,6 +291,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <label class=f>사진 <span class=muted id=psel></span></label>
           <div class=dropzone id=dropzone>📷 사진을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*" multiple hidden></div>
           <div class=pgrid id=pgrid></div>
+          <div class=pmbar id=pmbar><button type=button class=minibtn id=pmbtn>🏷️ 사진 분류·캡션</button><span class=muted id=pmhint></span></div>
+          <div class=pmeta id=pmeta></div>
           <label class=f>문체 톤 (선택)</label>
           <input type=text id=tone placeholder="예: 친근한 반말로">
           <label class=f>자동 서식</label>
@@ -429,7 +444,8 @@ function addCell(path, thumbSrc, sel){
 }
 function renumP(){$$('#pgrid .pcell').forEach(c=>{const k=SELP.indexOf(c.dataset.path);
   c.querySelector('.num').textContent=k>=0?k+1:'';});
-  $('#psel').textContent=SELP.length?`${SELP.length}장 선택`:'';}
+  $('#psel').textContent=SELP.length?`${SELP.length}장 선택`:'';
+  if($('#pmeta')&&$('#pmeta').classList.contains('open'))renderPmeta();}
 async function loadPhotos(){
   try{const ps=await (await fetch('/api/photos')).json(); $('#pgrid').innerHTML='';
     ps.forEach(p=>addCell(p.path, '/photo?path='+encodeURIComponent(p.path)));
@@ -454,6 +470,48 @@ async function handleFiles(files){
     }catch(e){cell.remove();}
   }
   renumP();
+}
+
+// 사진 분류·캡션 (수동 + ✨ AI 자동 추천). 결과는 PHOTOMETA(경로→{label,caption})에 저장.
+let PHOTOMETA={}, PHOTO_CATS={};
+async function loadPhotoCats(){ try{PHOTO_CATS=await (await fetch('/api/photo_categories')).json();}catch(e){} }
+function curCats(){ return PHOTO_CATS[SRCKIND]||PHOTO_CATS.place||['음식','외관','내부','메뉴판','기타']; }
+function photoMetaForSel(){ const o={}; SELP.forEach(p=>{const m=PHOTOMETA[p]; if(m&&(m.label||m.caption))o[p]=m;}); return o; }
+function togglePmeta(){
+  const box=$('#pmeta');
+  if(box.classList.contains('open')){ box.classList.remove('open'); return; }
+  if(!SELP.length){ toast('먼저 사진을 선택하세요.','info'); return; }
+  renderPmeta(); box.classList.add('open');
+}
+function renderPmeta(){
+  const cats=curCats();
+  let h='<div class=pmhead><span>각 사진이 뭔지 직접 적거나, AI로 자동 채우세요</span>'
+    +'<button type=button class=minibtn id=aibtn>✨ AI 자동 추천</button></div>';
+  h+=SELP.map(path=>{
+    const m=PHOTOMETA[path]||{label:'',caption:''};
+    const opts='<option value="">(미분류)</option>'+cats.map(c=>`<option ${c===m.label?'selected':''}>${esc(c)}</option>`).join('');
+    return `<div class=pmrow data-path="${esc(path)}"><img src="/photo?path=${encodeURIComponent(path)}">`
+      +`<div class=pmf><select class=pmlabel>${opts}</select>`
+      +`<input class=pmcap placeholder="이 사진이 뭔지 (예: 데미소스 돈까스)" value="${esc(m.caption)}"></div></div>`;
+  }).join('');
+  const box=$('#pmeta'); box.innerHTML=h;
+  $('#aibtn').onclick=runAiCaption;
+  $$('#pmeta .pmrow').forEach(r=>{const path=r.dataset.path;
+    r.querySelector('.pmlabel').onchange=e=>{(PHOTOMETA[path]=PHOTOMETA[path]||{}).label=e.target.value;};
+    r.querySelector('.pmcap').oninput=e=>{(PHOTOMETA[path]=PHOTOMETA[path]||{}).caption=e.target.value;};
+  });
+}
+async function runAiCaption(){
+  const btn=$('#aibtn'); if(!btn)return; btn.disabled=true; const old=btn.textContent; btn.textContent='분석 중…';
+  try{
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,reviewType:SRCKIND};
+    const r=await fetch('/api/photos/caption',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(!r.ok){toast('자동 추천 실패: '+(d.error||''),'err'); return;}
+    (d.photos||[]).forEach(p=>{PHOTOMETA[p.path]={label:p.label||'',caption:p.caption||''};});
+    renderPmeta(); toast('사진 자동 분석 완료! 검토·수정 후 생성하세요.','ok');
+  }catch(e){toast('자동 추천 오류: '+e,'err');}
+  finally{btn.disabled=false; btn.textContent=old;}
 }
 
 let GENTIMER=null;
@@ -481,7 +539,7 @@ $('#gen').onclick=async()=>{
   if(!$('#memo').value.trim()){st('경험 메모를 입력하세요.');return;}
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS(),rules:RULES};
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
@@ -509,7 +567,7 @@ $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
   $('#export').disabled=true; expLoading(true);
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,tone:$('#tone').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS(),rules:RULES};
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
@@ -533,7 +591,7 @@ $('#iapply').onclick=async()=>{
   if(!text){toast('붙여넣은 글이 비어 있어요.','info');return;}
   $('#iapply').disabled=true;
   try{
-    const body={text,photos:SELP,emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS()};
+    const body={text,photos:SELP,photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,links:LINKS()};
     const r=await fetch('/api/import-draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){toast('가져오기 실패: '+(d.error||''),'err');return;}
@@ -941,7 +999,7 @@ $('#variants').onclick=async e=>{const c=e.target.closest('.vcell'); if(!c)retur
   try{await fetch('/api/format',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,value,on})});}catch(e){}
 };
 $('#tone').onchange=savePrefs;
-setKind('place',false); loadPhotos(); setupUpload(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories();
+setKind('place',false); loadPhotos(); setupUpload(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories(); loadPhotoCats(); $('#pmbtn').onclick=togglePmeta;
 </script></body></html>"""
 
 
@@ -1068,6 +1126,10 @@ def _make_handler(state: dict):
                 self._send(200, json.dumps(_prompt_preview()).encode())
             elif u.path == "/api/categories":
                 self._send(200, json.dumps({"categories": _load_categories()}).encode())
+            elif u.path == "/api/photo_categories":
+                from autoblog.config import load_photo_categories
+
+                self._send(200, json.dumps(load_photo_categories()).encode())
             elif u.path == "/api/prefs":
                 self._send(200, json.dumps(_load_prefs()).encode())
             else:
@@ -1094,6 +1156,8 @@ def _make_handler(state: dict):
                     body = self._json_body()
                     p = _save_upload(body.get("filename", ""), body.get("data", ""))
                     self._send(200, json.dumps({"path": p}).encode())
+                elif path == "/api/photos/caption":
+                    self._caption_photos(self._json_body())
                 elif path == "/api/categories":
                     cats = _fetch_categories()
                     state["categories"] = cats
@@ -1191,6 +1255,7 @@ def _make_handler(state: dict):
 
             srcval, src = self._resolve_src(body)
             photos = [p for p in (body.get("photos") or []) if p]
+            photo_meta = body.get("photoMeta") if isinstance(body.get("photoMeta"), dict) else {}
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
             dkeys, qkeys = _enabled_variant_keys()  # '서식'에서 고른 종류만 프롬프트에 안내
@@ -1199,6 +1264,7 @@ def _make_handler(state: dict):
                 place_url=srcval if src == "place" else None,
                 product=srcval if src == "product" else None,
                 photos=photos or None,
+                photo_meta=photo_meta,
                 style=StyleProfile(tone=tone) if tone else None,
                 rules=rules,
                 emphasis=bool(body.get("emphasis")),
@@ -1209,6 +1275,28 @@ def _make_handler(state: dict):
             )
             self._send(200, json.dumps({"prompt": text}).encode())
 
+        def _caption_photos(self, body):
+            """온디맨드 '✨ AI 자동 추천' — 사진 맥락 캡션 → [{path,label,caption}]."""
+            from autoblog.pipeline import caption_photos
+
+            srcval, src = self._resolve_src(body)
+            photos = [p for p in (body.get("photos") or []) if p]
+            if not photos:
+                self._send(400, json.dumps({"error": "선택된 사진이 없어요"}).encode())
+                return
+            try:
+                items = caption_photos(
+                    body.get("memo", ""),
+                    place_url=srcval if src == "place" else None,
+                    product=srcval if src == "product" else None,
+                    photos=photos,
+                    review_type=(body.get("reviewType") or src or None),
+                )
+            except Exception as exc:  # noqa: BLE001 — 키 미설정/패키지 미설치/API 오류 그대로 안내
+                self._send(400, json.dumps({"error": str(exc)}).encode())
+                return
+            self._send(200, json.dumps({"photos": items}).encode())
+
         def _generate(self, body):
             from autoblog.draft.rules import CommonRules
             from autoblog.draft.style import StyleProfile
@@ -1216,6 +1304,7 @@ def _make_handler(state: dict):
 
             srcval, src = self._resolve_src(body)
             photos = [p for p in (body.get("photos") or []) if p]
+            photo_meta = body.get("photoMeta") if isinstance(body.get("photoMeta"), dict) else {}
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
             dv, qv = _enabled_variants()  # 활성 종류 중 첫 번째를 기본 적용(다중 중 우선)
@@ -1225,6 +1314,7 @@ def _make_handler(state: dict):
                 place_url=srcval if src == "place" else None,
                 product=srcval if src == "product" else None,
                 photos=photos or None,
+                photo_meta=photo_meta,
                 style=StyleProfile(tone=tone) if tone else None,
                 rules=rules,
                 emphasis=bool(body.get("emphasis")),
@@ -1249,10 +1339,12 @@ def _make_handler(state: dict):
                 self._send(400, json.dumps({"error": "붙여넣은 글이 비어 있어요"}).encode())
                 return
             photos = [p for p in (body.get("photos") or []) if p]
+            photo_meta = body.get("photoMeta") if isinstance(body.get("photoMeta"), dict) else {}
             dv, qv = _enabled_variants()
             result = plan_from_text(
                 text,
                 photos=photos or None,
+                photo_meta=photo_meta,
                 emphasis=bool(body.get("emphasis")),
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
