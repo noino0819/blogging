@@ -94,6 +94,11 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .kindseg button .em{font-size:17px;margin-right:5px}
  .kindseg button.on{background:var(--green);color:#fff;border-color:var(--green);box-shadow:0 3px 10px #03c75a44}
  .kindseg button.auto{outline:3px solid #03c75a33}
+ /* 백그라운드 작업 칩 — 코너에 떠서 경과시간을 보여주고, 끝나면 사라진다 */
+ #bgtasks{position:fixed;right:18px;bottom:18px;z-index:9999;display:flex;flex-direction:column;gap:9px;align-items:flex-end;pointer-events:none}
+ .bgtask{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:11px 16px;font-size:12.5px;font-weight:600;color:var(--ink);box-shadow:0 12px 30px rgba(0,0,0,.16);animation:tin .24s cubic-bezier(.2,.9,.3,1.25);pointer-events:auto}
+ .bgtask.out{animation:tout .18s ease forwards}
+ .bgtask .spin{display:inline-block}
  /* 토스트 팝업 — 에러/완료를 화면 중앙 상단에 크게 */
  #toasts{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:9px;align-items:center;pointer-events:none;width:max-content;max-width:90vw}
  .toast{position:relative;pointer-events:auto;min-width:300px;max-width:560px;padding:14px 46px 14px 16px;border-radius:14px;font-size:14px;font-weight:700;color:#fff;line-height:1.45;box-shadow:0 12px 34px rgba(0,0,0,.26);display:flex;gap:11px;align-items:flex-start;animation:tin .24s cubic-bezier(.2,.9,.3,1.25)}
@@ -188,6 +193,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .doc h1{font-size:23px;margin:0 0 20px;line-height:1.4}
  .doc .tx{font-size:15px;line-height:2;white-space:pre-wrap;margin:0 0 6px}
  .doc hr{border:none;border-top:1px solid #e3e6ea;margin:22px 36px}
+ .doc hr.ctr{width:42%;margin-left:auto;margin-right:auto}
  .doc .q{border-left:3px solid var(--green);padding:8px 0 8px 18px;color:#3a4250;font-size:16.5px;margin:18px 0;font-style:italic}
  .doc img.st{width:148px;height:148px;object-fit:contain;display:block;margin:10px 0}
  .doc .ph{background:#eef6ff;border:1px dashed #9ec5ff;border-radius:10px;padding:14px;color:#2f6fd6;font-size:13px;margin:10px 0}
@@ -310,7 +316,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .alertcard .am{font-size:14px;font-weight:600;color:#5a626c;line-height:1.6;white-space:pre-wrap}
  .alertcard .ab{margin-top:20px;display:flex;gap:10px}
  .alertcard .ab .btn{padding:12px}
-</style></head><body><div id=toasts></div>
+</style></head><body><div id=toasts></div><div id=bgtasks></div>
 <svg width=0 height=0 style="position:absolute" aria-hidden=true><defs>
  <g id=i-write fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="M13.5 6.5l3 3"/></g>
  <g id=i-sticker fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=12 cy=12 r=9 /><path d="M8.5 14.5a4 4 0 0 0 7 0"/><circle cx=9 cy=10 r=.7 fill=currentColor stroke=none /><circle cx=15 cy=10 r=.7 fill=currentColor stroke=none /></g>
@@ -525,17 +531,27 @@ function centerAlert(msg,kind='err'){
   bg.onclick=e=>{if(e.target===bg)close();};
   document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
   $('#alerthost').appendChild(bg);bg.querySelector('.btn').focus();}
-// 실측 경과시간 카운터 — 가짜 %가 아니라 '진짜로 얼마나 걸리는지'를 0.2초마다 보여줌.
-// render(plainText, sec)로 갱신, stop()은 멈추고 총 걸린 초(소수1)를 돌려줌.
+// 실측 경과시간 카운터 — 가짜 %가 아니라 '진짜로 얼마나 걸리는지'를 보여줌.
+// requestAnimationFrame으로 0.1초 단위 표시가 바뀔 때만 갱신해 숫자가 자연스럽게 올라가고,
+// 글자만 바꾸므로 스피너 회전이 끊기지 않는다. render(plainText, sec)로 갱신, stop()은 멈추고 총 초(소수1).
 function elapsed(label, render){
   const t0=Date.now();
   const fmt=s=>s<10?s.toFixed(1):Math.round(s);
-  const tick=()=>render(`${label} ${fmt((Date.now()-t0)/1000)}초 경과…`, (Date.now()-t0)/1000);
-  tick(); const id=setInterval(tick,200);
-  return {stop(){clearInterval(id); return +((Date.now()-t0)/1000).toFixed(1);}};
+  let raf, last=null;
+  const tick=()=>{
+    const s=(Date.now()-t0)/1000, shown=fmt(s);
+    if(shown!==last){ last=shown; render(`${label} ${shown}초 경과…`, s); }
+    raf=requestAnimationFrame(tick);
+  };
+  tick();
+  return {stop(){if(raf)cancelAnimationFrame(raf); return +((Date.now()-t0)/1000).toFixed(1);}};
 }
-// 부모에 .loading이 없어도 항상 도는 스피너(.loading .spin 규칙을 자기 안에서 충족).
-const spinHTML=t=>'<span class=loading><span class=spin></span></span> '+String(t).replace(/</g,'&lt;');
+// 컨테이너에 스피너를 한 번만 그리고 글자만 바꾸는 setter를 돌려준다(rAF로 자주 갱신해도 회전이 안 끊김).
+function spinRow(el){
+  el.innerHTML='<span class=loading><span class=spin></span></span> <span class=spintext></span>';
+  const txt=el.querySelector('.spintext');
+  return t=>{txt.textContent=t;};
+}
 // 수집 종류: 'place'(맛집·기본) | 'product'(상품). 입력으로 자동 추정하되 직접 고르면 고정.
 let SRCKIND='place', KINDMANUAL=false;
 function autoKind(v){v=(v||'').trim().toLowerCase(); if(!v)return 'place';
@@ -639,7 +655,7 @@ function setupDraftImport(){
     const list=$('#draftlist'), stat=$('#draftstat');
     if(list.style.display==='block'){ list.style.display='none'; return; }  // 토글로 닫기
     if(DRAFTBUSY) return; DRAFTBUSY=true;
-    const el=elapsed('네이버에서 목록 불러오는 중…', t=>stat.innerHTML=spinHTML(t));
+    const el=elapsed('네이버에서 목록 불러오는 중…', spinRow(stat));
     try{
       const r=await fetch('/api/drafts',{method:'POST'});
       const d=await r.json();
@@ -663,7 +679,7 @@ function setupDraftImport(){
 async function importDraft(idx, title){
   if(DRAFTBUSY) return; DRAFTBUSY=true;
   const stat=$('#draftstat');
-  const el=elapsed(`"${title}" 사진 가져오는 중…`, t=>stat.innerHTML=spinHTML(t));
+  const el=elapsed(`"${title}" 사진 가져오는 중…`, spinRow(stat));
   try{
     const r=await fetch('/api/drafts/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idx})});
     const d=await r.json();
@@ -955,16 +971,18 @@ $('#iapply').onclick=async()=>{
   }catch(e){toast('가져오기 오류: '+e,'err');}finally{$('#iapply').disabled=false;}
 };
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+// 단락 정렬(left/center/right/justify) — 에디터에 실제 적용되는 align을 미리보기에도 반영
+function alignStyle(b){return b&&b.align&&b.align!=='left'?`text-align:${b.align};`:'';}
 function renderText(b){let h=esc(b.text);
   (b.emphases||[]).forEach(e=>{const stl=(e.text_color?`color:${e.text_color};`:'')+(e.background_color?`background:${e.background_color};`:'');
     h=h.replace(esc(e.text),`<em class=hl style="${stl}">${esc(e.text)}</em>`);});
-  return `<p class=tx>${h}</p>`;}
+  return `<p class=tx style="${alignStyle(b)}">${h}</p>`;}
 function renderPreview(d){
   let h=`<h1>${esc(d.title)||'(제목 없음)'}</h1>`;
   for(const b of d.blocks){
     if(b.kind==='text')h+=renderText(b);
-    else if(b.kind==='divider')h+='<hr>';
-    else if(b.kind==='quote')h+=`<div class=q>${esc(b.text)}</div>`;
+    else if(b.kind==='divider')h+=`<hr${b.align==='center'?' class=ctr':''}>`;
+    else if(b.kind==='quote')h+=`<div class=q style="${alignStyle(b)}">${esc(b.text)}</div>`;
     else if(b.kind==='sticker')h+=`<img class=st src="/img?ref=${encodeURIComponent(b.sticker_ref)}">`;
     else if(b.kind==='image')h+=`<div class=ph>🖼 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
     else if(b.kind==='link')h+=`<div class=ph>🔗 링크 카드 <small>${esc(b.link_url)}</small></div>`;
@@ -1007,22 +1025,34 @@ $('#catlist').onclick=e=>{const o=e.target.closest('.catopt'); if(!o)return;
   catpopOpen(false); savePrefs();};
 $('#catload').onclick=async()=>{
   $('#catload').disabled=true;
-  const el=elapsed('네이버에서 카테고리 불러오는 중…', t=>$('#catstat').innerHTML=spinHTML(t));
+  const el=elapsed('네이버에서 카테고리 불러오는 중…', spinRow($('#catstat')));
   try{const r=await fetch('/api/categories',{method:'POST'}); const d=await r.json();
     if(!r.ok){throw new Error(d.error||'알 수 없는 오류');}
     const sec=el.stop();
     fillCategories(d.categories); $('#catstat').textContent=`카테고리 ${d.categories.length}개 불러와 저장됨 (${sec}초)`; toast(`카테고리 ${d.categories.length}개를 불러와 저장했어요.`,'ok');
   }catch(e){el.stop(); $('#catstat').textContent='실패'; toast('카테고리 불러오기 실패 — '+e.message,'err');}finally{$('#catload').disabled=false;}
 };
+// 백그라운드 작업 칩 — 코너에 스피너+경과시간을 띄우고, done()이 부드럽게 닫는다.
+function bgTask(label){
+  const el=document.createElement('div'); el.className='bgtask';
+  el.innerHTML='<span class=spin></span><span class=bgtext></span>';
+  const txt=el.querySelector('.bgtext');
+  $('#bgtasks').appendChild(el);
+  const e=elapsed(label, t=>txt.textContent=t);
+  return {done(){const sec=e.stop(); el.classList.add('out'); setTimeout(()=>el.remove(),200); return sec;}};
+}
+let BGSAVE=false;
 $('#save').onclick=async()=>{if(!PLAN)return;
-  $('#save').disabled=true; $('#status').parentElement.classList.add('loading');
-  const el=elapsed('네이버에 임시저장 중…', t=>$('#status').innerHTML=spinHTML(t));
+  if(BGSAVE){toast('이미 백그라운드에서 임시저장 중이에요. 잠시만요.','info');return;}
+  BGSAVE=true; $('#save').disabled=true;
+  st('백그라운드에서 임시저장 중… 다른 작업을 계속하셔도 돼요.');
+  const task=bgTask('네이버에 임시저장 중…');
   try{const r=await fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category:CATEGORY})});
     const d=await r.json();
     if(!r.ok){throw new Error(d.error||'알 수 없는 오류');}
-    const sec=el.stop();
+    const sec=task.done();
     st(`임시저장 완료 ✓ ${sec}초 (네이버 글쓰기 › 저장 목록)`); toast('임시저장 완료! 네이버 글쓰기 › 저장 목록에서 확인하세요.','ok');
-  }catch(e){el.stop(); st('임시저장 실패'); toast('임시저장 실패 — '+e.message,'err');}finally{$('#save').disabled=false;}
+  }catch(e){task.done(); st('임시저장 실패'); toast('임시저장 실패 — '+e.message,'err');}finally{BGSAVE=false; $('#save').disabled=false;}
 };
 
 // 스티커 탭
@@ -1778,7 +1808,7 @@ def _make_handler(state: dict):
             state["last"] = result
             blocks = []
             for b in result.plan.blocks:
-                blk = {"kind": b.kind, "text": b.text, "variant": b.variant}
+                blk = {"kind": b.kind, "text": b.text, "variant": b.variant, "align": b.align}
                 if b.kind == "sticker":
                     blk["sticker_ref"] = f"{b.sticker_pack}:{b.sticker_index}"
                 elif b.kind == "image":
