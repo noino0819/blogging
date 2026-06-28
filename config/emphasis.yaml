@@ -14,3 +14,15 @@ preset_tags:
   4: 강조
   5: 강조
   16: 주의
+
+# 색(강조)별 글자색·배경·굵게·폰트·크기 (서식 탭에서 직접 편집)
+styles:
+  4:
+    text_color: '#eb7d7d'
+    background_color: '#fef3c7'
+    font_family: nanumdasisijaghae
+    font_size: '13'
+  16:
+    text_color: '#be123c'
+    background_color: '#ffe4e6'
+    bold: true
