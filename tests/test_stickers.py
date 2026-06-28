@@ -138,7 +138,9 @@ def test_picker_empty_label_uses_favorites():
 def test_labels_distinct_excludes_stale():
     cat = _cat()
     cat.stickers[3].stale = True  # 슬픔 제거
-    labels = cat.labels()
+    # 전체 후보 기준으로 stale 제외를 검증(기본값 favorites_only=True면 즐겨찾기 태그만
+    # 나와 stale 검증이 무의미해진다 — '좋아요'는 즐겨찾기 아님).
+    labels = cat.labels(favorites_only=False)
     assert "기쁨" in labels and "감사" in labels and "좋아요" in labels
     assert "슬픔" not in labels
 
