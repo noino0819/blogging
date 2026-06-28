@@ -41,6 +41,12 @@ SMART_EDITOR = {
     "sticker_element": "button.se-sidebar-element-sticker",  # [data-index=N]
     "canvas_bottom_button": "button.se-canvas-bottom-button",  # 본문 끝에 새 문단(블록 탈출용)
     "save_button": 'button[data-click-area="tpb.save"]',  # 임시저장
+    # 임시저장 글 불러오기(사진 추출용)
+    "save_count_button": 'button[data-click-area="tpb*s.count"]',  # '저장글 N' → 목록 팝업 열기
+    "draft_list": 'ul[aria-label="임시저장된 글"]',  # 임시저장 목록 컨테이너(li 항목들)
+    "draft_item_button": 'button[data-click-area="tpb*s.tlist"]',  # 목록 항목(클릭 시 에디터에 로드)
+    "draft_load_confirm": "button.se-popup-button-confirm",  # 불러오기 시 뜨는 확인 팝업
+    "editor_image": "img.se-image-resource",  # 본문 사진(지도 se-map-image는 제외됨)
     "publish_button": 'button[data-click-area="tpb.publish"]',  # 발행(설정 레이어 열기)
     "publish_confirm": 'button[data-click-area="tpb*i.publish"]',  # 레이어 내 최종 발행
     "category_button": 'button[data-click-area="tpb*i.category"]',  # 카테고리 선택 열기

@@ -194,6 +194,91 @@ class BlogPublisher:
         self._page.click(SMART_EDITOR["save_button"])
         self._page.wait_for_timeout(1500)
 
+    # --- 임시저장 글 불러오기(사진 추출) ---
+    def _open_draft_list(self):
+        """'저장글 N' 버튼을 눌러 임시저장 목록 팝업을 연다(필요 시 글쓰기 페이지부터)."""
+        if "postwrite" not in (self._page.url or ""):
+            self.open_write_page()
+        if not self._page.query_selector(SMART_EDITOR["draft_list"]):
+            self._page.click(SMART_EDITOR["save_count_button"])
+            self._page.wait_for_selector(SMART_EDITOR["draft_list"], timeout=8000)
+            self._page.wait_for_timeout(600)
+
+    def list_drafts(self) -> list[dict]:
+        """임시저장 글 목록을 [{idx, title, date}]로 반환."""
+        self._open_draft_list()
+        return self._page.eval_on_selector_all(
+            SMART_EDITOR["draft_list"] + " li",
+            """els => els.map((e, i) => ({
+                idx: i,
+                title: ((e.querySelector('[data-click-area="tpb*s.tlist"] strong') || {}).innerText || '').trim(),
+                date: ((e.querySelector('[class*=date]') || {}).innerText || '').trim(),
+            }))""",
+        )
+
+    def import_draft_photos(self, idx: int, dest_dir: Path) -> list[str]:
+        """idx번 임시저장 글을 에디터에 로드해 본문 사진을 dest_dir에 내려받고 로컬 경로 목록을 반환.
+
+        - 본문 사진은 img.se-image-resource(지도 se-map-image는 클래스가 달라 자동 제외).
+        - lazy-load라 각 이미지를 화면에 스크롤시켜 실제 CDN URL이 채워질 때까지 폴링한다.
+        - 다운로드는 로그인 세션(컨텍스트)으로 수행해 권한 문제를 피한다.
+        """
+        import uuid
+
+        page = self._page
+        self._open_draft_list()
+        buttons = page.query_selector_all(SMART_EDITOR["draft_item_button"])
+        if idx < 0 or idx >= len(buttons):
+            raise ValueError(f"임시저장 인덱스 범위를 벗어남: {idx} (총 {len(buttons)}건)")
+        buttons[idx].click()
+        page.wait_for_timeout(1500)
+        confirm = page.query_selector(SMART_EDITOR["draft_load_confirm"])  # '불러오기' 확인 팝업
+        if confirm and confirm.is_visible():
+            confirm.click()
+        # 사진이 없는 글일 수 있으니 짧게만 기다린다.
+        try:
+            page.wait_for_selector(SMART_EDITOR["editor_image"], timeout=8000)
+        except Exception:
+            return []
+        page.wait_for_timeout(1000)
+        urls = page.evaluate(
+            """async () => {
+                const imgs = [...document.querySelectorAll('img.se-image-resource')];
+                const out = [];
+                for (const im of imgs) {
+                    im.scrollIntoView({block: 'center'});
+                    for (let t = 0; t < 25; t++) {
+                        if (im.src && !im.src.startsWith('data:')) break;
+                        await new Promise(r => setTimeout(r, 150));
+                    }
+                    if (im.src && !im.src.startsWith('data:')) out.push(im.src);
+                }
+                return out;
+            }"""
+        )
+        # 순서 유지 중복 제거
+        seen, ordered = set(), []
+        for u in urls:
+            if u not in seen:
+                seen.add(u)
+                ordered.append(u)
+        # 로그인 컨텍스트로 다운로드
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        saved: list[str] = []
+        for u in ordered:
+            try:
+                resp = self._ctx.request.get(u)
+                if resp.status != 200:
+                    continue
+                ctype = resp.headers.get("content-type", "")
+                ext = ".png" if "png" in ctype else ".jpg"
+                dest = dest_dir / f"draft_{uuid.uuid4().hex[:8]}{ext}"
+                dest.write_bytes(resp.body())
+                saved.append(str(dest))
+            except Exception:  # noqa: BLE001 - 일부 이미지 실패해도 나머지 진행
+                continue
+        return saved
+
     # --- 카테고리 (유저별 동적) ---
     def _open_publish_layer(self):
         self._page.click(SMART_EDITOR["publish_button"])

@@ -103,30 +103,55 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  /* 프롬프트 내보내기 모달 */
  .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:24px}
  .modalbox{background:#fff;border-radius:16px;width:min(780px,94vw);max-height:88vh;display:flex;flex-direction:column;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+ .phbox{width:min(920px,96vw)}
+ .phscroll{flex:1;overflow:auto;margin-top:10px}
+ .phbox .pgrid{max-height:none;margin-bottom:10px}
+ .phbox .pmeta{max-height:none;border:0;padding:0}
  .modalhd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:15.5px;font-weight:700}
  .mx{border:0;background:#eef0f2;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px}
  .modalbox textarea{flex:1;min-height:360px;margin-top:10px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.55;background:#fafbfc}
  .modalft{margin-top:14px;display:flex;gap:10px}
  /* photo grid */
- .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;max-height:230px;overflow:auto;padding:2px}
+ .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;max-height:230px;overflow:auto;padding:2px;user-select:none;-webkit-user-select:none}
  .pcell{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;cursor:pointer;border:2px solid transparent}
  .pcell img{width:100%;height:100%;object-fit:cover;display:block}
  .pcell.sel{border-color:var(--green)}
  .dropzone{border:2px dashed #cdd3da;border-radius:11px;padding:18px;text-align:center;color:var(--sub);font-size:13px;cursor:pointer;margin-bottom:10px}
  .dropzone:hover,.dropzone.drag{border-color:var(--green);background:#f3fcf6;color:var(--green-d)}
- .pmbar{display:flex;align-items:center;gap:8px;margin-top:8px}
+ .draftlist{border:1px solid #e3e7ec;border-radius:10px;margin-bottom:10px;max-height:220px;overflow:auto}
+ .draftlist .ditem{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #f0f2f5;cursor:pointer;font-size:13px}
+ .draftlist .ditem:last-child{border-bottom:none}
+ .draftlist .ditem:hover{background:#f3fcf6}
+ .draftlist .ditem .dt{font-weight:600;color:#1f2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .draftlist .ditem .dd{color:var(--sub);font-size:11px;white-space:nowrap}
  .minibtn{font-size:12px;padding:5px 10px;border:1px solid #cdd3da;border-radius:8px;background:#fff;cursor:pointer;color:#374151}
  .minibtn:hover{border-color:var(--green);color:var(--green-d)}
  .minibtn:disabled{opacity:.55;cursor:default}
- .pmeta{display:none;margin-top:8px;border:1px solid #e5e7eb;border-radius:10px;padding:8px;max-height:280px;overflow:auto}
+ .pmeta{display:none;margin-top:8px;border:1px solid #e5e7eb;border-radius:10px;padding:8px;max-height:360px;overflow:auto;user-select:none;-webkit-user-select:none}
  .pmeta.open{display:block}
- .pmhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:12px;color:#374151}
- .pmrow{display:flex;align-items:center;gap:8px;padding:5px 2px;border-top:1px solid #f1f3f5}
- .pmrow:first-of-type{border-top:none}
- .pmrow img{width:42px;height:42px;object-fit:cover;border-radius:6px;flex:none}
- .pmf{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
- .pmlabel{font-size:12px;padding:3px 5px;border:1px solid #cdd3da;border-radius:6px;max-width:140px}
- .pmcap{font-size:12px;padding:4px 6px;border:1px solid #cdd3da;border-radius:6px;width:100%}
+ .pmhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:12px;color:#374151}
+ .pmboard{display:flex;flex-direction:column;gap:6px}
+ .pmlane{border:1px solid #e5e7eb;border-radius:8px;padding:5px 6px;background:#fafbfc;cursor:pointer;transition:background .12s,border-color .12s}
+ .pmlane.over{border-color:var(--green);background:#eafaf0;box-shadow:0 0 0 2px rgba(46,160,67,.18) inset}
+ .pmlane.active{border-color:var(--green);background:#eafaf0}
+ .pmlanehd{font-size:11px;color:#6b7280;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:5px}
+ .pmlane.sub{margin-left:18px;border-style:dashed;background:#fff}
+ .pmtarget{margin-left:auto;background:var(--green);color:#fff;border-radius:9px;padding:0 7px;font-size:10px;font-weight:600}
+ .pmsubbtn{margin-left:auto;border:0;background:#eef0f2;color:#4b5563;border-radius:7px;padding:1px 7px;font-size:10px;cursor:pointer}
+ .pmsubbtn:hover{background:var(--green);color:#fff}
+ .pmsubdel{border:0;background:transparent;color:#9ca3af;font-size:12px;cursor:pointer;padding:0 2px}
+ .pmsubdel:hover{color:#d9534f}
+ .pmcount{background:#e5e7eb;color:#374151;border-radius:9px;padding:0 6px;font-size:10px}
+ .pmdrop{display:flex;flex-wrap:wrap;gap:6px;min-height:44px;align-items:flex-start}
+ .pmtile{position:relative;width:54px;height:54px;border-radius:6px;cursor:pointer}
+ .pmtile img{width:54px;height:54px;object-fit:cover;border-radius:6px;border:1px solid #e5e7eb;background:#fff;display:block}
+ .pmtile.sel img{outline:2px solid var(--green);outline-offset:1px;border-color:var(--green)}
+ .pmtile img:active{cursor:grabbing}
+ .pmx{position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:0;background:#4b5563;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;padding:0}
+ .pmtile:hover .pmx{display:flex}
+ .pmadd{display:flex;align-items:center;justify-content:center;border:1px dashed #cdd3da;border-radius:8px;background:#fff;color:#6b7280;font-size:12px;padding:8px;cursor:pointer}
+ .pmadd:hover{border-color:var(--green);color:var(--green-d)}
+ .pmempty{font-size:11px;color:#9ca3af;padding:12px 4px}
  .pcell.uploading{opacity:.5}
  .pcell .num{position:absolute;top:4px;left:4px;background:var(--green);color:#fff;width:18px;height:18px;border-radius:50%;font-size:11px;display:none;align-items:center;justify-content:center;font-weight:700}
  .pcell.sel .num{display:flex}
@@ -298,6 +323,27 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <textarea id=itext placeholder="여기에 받아온 글을 붙여넣기"></textarea>
   <div class=modalft><button class=btn id=iapply style="flex:1">이 글로 미리보기</button><button class="btn ghost" id=imclose2 style="flex:0 0 120px">닫기</button></div>
 </div></div>
+<div id=phmodal class=modal style="display:none"><div class="modalbox phbox">
+  <div class=modalhd><span>📷 사진 추가·분류</span><button class=mx id=phclose>✕</button></div>
+  <div class=muted>사진을 올리고 → 글에 넣을 사진을 클릭·Shift로 선택 → 아래 칸으로 끌거나 선택 후 칸을 눌러 분류하세요.</div>
+  <div class=dropzone id=dropzone>📷 사진을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*" multiple hidden></div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+    <button type=button class="btn ghost" id=draftload style="white-space:nowrap">📥 임시저장에서 불러오기</button>
+    <span class=muted id=draftstat></span>
+  </div>
+  <div class=draftlist id=draftlist style="display:none"></div>
+  <div class=phscroll>
+    <div class=pgrid id=pgrid></div>
+    <div class=pmeta id=pmeta></div>
+  </div>
+  <div class=modalft><button class=btn id=phdone style="flex:1">완료</button></div>
+</div></div>
+<div id=catmodal class=modal style="display:none"><div class=modalbox style="width:min(420px,92vw)">
+  <div class=modalhd><span id=cattitle>새 분류 추가</span><button class=mx id=catx>✕</button></div>
+  <div class=muted id=catdesc></div>
+  <input type=text id=catinput placeholder="예: 디저트, 음료" autocomplete=off style="margin-top:12px;padding:10px 12px;border:1px solid #cdd3da;border-radius:9px;font-size:14px;width:100%">
+  <div class=modalft><button class=btn id=catok style="flex:1">추가</button><button class="btn ghost" id=catcancel style="flex:0 0 100px">취소</button></div>
+</div></div>
 <div id=alerthost></div>
 <aside class=side>
   <div class=brand><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 블로그 자동작성</div>
@@ -327,10 +373,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <label class=f>경험 메모 <span class=hint data-tip="글의 중심이 되는 실제 경험을 자유롭게 적어주세요. 이 내용을 토대로 글이 작성됩니다.">i</span></label>
           <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>사진 <span class=muted id=psel></span></label>
-          <div class=dropzone id=dropzone>📷 사진을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*" multiple hidden></div>
-          <div class=pgrid id=pgrid></div>
-          <div class=pmbar id=pmbar><button type=button class=minibtn id=pmbtn>🏷️ 사진 분류·캡션</button><span class=muted id=pmhint></span></div>
-          <div class=pmeta id=pmeta></div>
+          <button type=button class="btn ghost" id=photobtn style="width:100%;justify-content:center;gap:8px">📷 사진 추가·분류 <span class=muted id=photosum>사진 없음</span></button>
           <label class=f>문체 톤 <span class=hint data-tip="비우면 기본 톤으로 써요. 예: 친근한 반말로 / 담백하고 차분하게">i</span></label>
           <input type=text id=tone placeholder="예: 친근한 반말로">
           <div class=togrow>
@@ -343,7 +386,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <label class=f>쿠팡파트너스 링크 <span class=hint data-tip="한 줄에 하나씩. 본문 끝에 몰지 않고 중간중간 카드로 분산 삽입돼요. 보통 3개.">i</span></label>
             <textarea id=links placeholder="쿠팡파트너스 링크를 한 줄에 하나씩 붙여넣기 (보통 3개)" style="min-height:80px"></textarea>
           </div>
-          <div style="margin-top:18px"><button class=btn id=gen>초안 생성</button></div>
+          <div style="margin-top:18px;display:flex;gap:8px"><button class=btn id=gen style="flex:1">초안 생성</button><button class="btn ghost" id=newpost style="flex:0 0 110px" title="입력·사진·분류를 비우고 새 글 시작">✏️ 새 글</button></div>
           <div class=actrow>
             <button class="btn ghost" id=export title="내 프롬프트와 입력 자료를 합쳐 복사 — 다른 챗봇에 붙여넣기"><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg>프롬프트 복사</button>
             <button class="btn ghost" id=import title="다른 챗봇에서 받은 글을 붙여넣어 미리보기로"><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg>받아온 글 붙여넣기</button>
@@ -515,24 +558,24 @@ $('#sponpick').onclick=e=>{const c=e.target.closest('.spc'); if(!c)return;
 function st(m,loading){const s=$('#status'); s.innerHTML=(loading?'<span class=spin></span>':'')+m;
   s.parentElement.classList.toggle('loading',!!loading);}
 
-// 사진 로드
-function addCell(path, thumbSrc, sel){
-  const d=document.createElement('div'); d.className='pcell'+(sel?' sel':''); d.dataset.path=path;
-  d.innerHTML=`<img loading=lazy src="${thumbSrc}"><span class=num></span>`;
-  d.onclick=()=>toggleP(d); $('#pgrid').appendChild(d); return d;
+// 사진: PHOTOS=업로드 전체, SELP=분류함(보드)에 넣은 사진. 그리드(위)=아직 분류 안 한 더미(=PHOTOS−SELP).
+function inboxPhotos(){ return PHOTOS.filter(p=>!SELP.includes(p)); }
+function gridCell(path){
+  const d=document.createElement('div'); d.className='pcell'+(PMSEL.has(path)?' sel':''); d.dataset.path=path;
+  d.innerHTML=`<img loading=lazy src="/photo?path=${encodeURIComponent(path)}">`;
+  d.onclick=(e)=>photoSel(path,e);
+  d.onmousedown=(e)=>{ if(e.shiftKey) e.preventDefault(); };  // Shift+클릭 시 텍스트선택 방지
+  return d;
 }
-function renumP(){$$('#pgrid .pcell').forEach(c=>{const k=SELP.indexOf(c.dataset.path);
-  c.querySelector('.num').textContent=k>=0?k+1:'';});
-  $('#psel').textContent=SELP.length?`${SELP.length}장 선택`:'';
-  if($('#pmeta')&&$('#pmeta').classList.contains('open'))renderPmeta();}
+function renderGrid(){
+  const g=$('#pgrid'); if(!g)return; g.innerHTML='';
+  const inbox=inboxPhotos();
+  if(!inbox.length) g.innerHTML='<div class=muted style="grid-column:1/-1;padding:6px 2px">분류할 사진이 없어요. 위에서 추가하거나 아래 분류함에서 ×로 다시 꺼낼 수 있어요.</div>';
+  else inbox.forEach(p=>g.appendChild(gridCell(p)));
+  updatePhotoSummary();
+}
 async function loadPhotos(){
-  try{const ps=await (await fetch('/api/photos')).json(); $('#pgrid').innerHTML='';
-    ps.forEach(p=>addCell(p.path, '/photo?path='+encodeURIComponent(p.path)));
-  }catch(e){}
-}
-function toggleP(el){const path=el.dataset.path; if(!path)return; const i=SELP.indexOf(path);
-  if(i>=0){SELP.splice(i,1);el.classList.remove('sel');} else {SELP.push(path);el.classList.add('sel');}
-  renumP();
+  try{ const ps=await (await fetch('/api/photos')).json(); PHOTOS=ps.map(p=>p.path); renderGrid(); }catch(e){}
 }
 function setupUpload(){const dz=$('#dropzone'), fi=$('#fileinput');
   dz.onclick=()=>fi.click(); fi.onchange=()=>handleFiles(fi.files);
@@ -542,43 +585,213 @@ function setupUpload(){const dz=$('#dropzone'), fi=$('#fileinput');
 async function handleFiles(files){
   for(const f of files){ if(!f.type.startsWith('image/'))continue;
     const dataurl=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f);});
-    const cell=addCell('', dataurl, true); cell.classList.add('uploading');
     try{const res=await fetch('/api/upload',{method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify({filename:f.name,data:dataurl.split(',')[1]})});
-      const d=await res.json(); cell.dataset.path=d.path; cell.classList.remove('uploading'); SELP.push(d.path);
-    }catch(e){cell.remove();}
+      const d=await res.json(); if(d.path && !PHOTOS.includes(d.path)) PHOTOS.push(d.path); renderGrid();
+    }catch(e){}
   }
-  renumP();
+  renderGrid();
+}
+
+// 네이버 임시저장 글에서 사진 불러오기: 목록 조회 → 글 선택 → 본문 사진 다운로드 → PHOTOS에 추가
+let DRAFTBUSY=false;
+function setupDraftImport(){
+  const btn=$('#draftload'); if(!btn) return;
+  btn.onclick=async()=>{
+    const list=$('#draftlist'), stat=$('#draftstat');
+    if(list.style.display==='block'){ list.style.display='none'; return; }  // 토글로 닫기
+    if(DRAFTBUSY) return; DRAFTBUSY=true;
+    stat.textContent='목록 불러오는 중… (브라우저 창이 잠깐 떠요)';
+    try{
+      const r=await fetch('/api/drafts',{method:'POST'});
+      const d=await r.json();
+      if(!r.ok){ throw new Error(d.error||'목록 실패'); }
+      const drafts=d.drafts||[];
+      if(!drafts.length){ stat.textContent='임시저장된 글이 없어요.'; DRAFTBUSY=false; return; }
+      stat.textContent=`${drafts.length}건 — 사진을 가져올 글을 선택하세요`;
+      list.innerHTML='';
+      drafts.forEach(dr=>{
+        const row=document.createElement('div'); row.className='ditem';
+        row.innerHTML=`<span class=dt>${(dr.title||'(제목 없음)')}</span><span class=dd>${dr.date||''}</span>`;
+        row.onclick=()=>importDraft(dr.idx, dr.title);
+        list.appendChild(row);
+      });
+      list.style.display='block';
+    }catch(e){ stat.textContent='불러오기 실패: '+e.message; toast('임시저장 목록을 못 불러왔어요'); }
+    DRAFTBUSY=false;
+  };
+}
+async function importDraft(idx, title){
+  if(DRAFTBUSY) return; DRAFTBUSY=true;
+  const stat=$('#draftstat');
+  stat.textContent=`"${title}" 사진 가져오는 중…`;
+  try{
+    const r=await fetch('/api/drafts/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idx})});
+    const d=await r.json();
+    if(!r.ok){ throw new Error(d.error||'가져오기 실패'); }
+    const paths=d.paths||[];
+    let added=0;
+    paths.forEach(p=>{ if(!PHOTOS.includes(p)){ PHOTOS.push(p); added++; } });
+    renderGrid();
+    $('#draftlist').style.display='none';
+    stat.textContent = added? `${added}장 추가됨 — 아래에서 분류하세요` : '가져올 사진이 없는 글이에요';
+    if(added) toast(`${added}장 불러왔어요`,'ok');
+  }catch(e){ stat.textContent='가져오기 실패: '+e.message; toast('사진을 못 가져왔어요'); }
+  DRAFTBUSY=false;
 }
 
 // 사진 분류·캡션 (수동 + ✨ AI 자동 추천). 결과는 PHOTOMETA(경로→{label,caption})에 저장.
 let PHOTOMETA={}, PHOTO_CATS={};
 async function loadPhotoCats(){ try{PHOTO_CATS=await (await fetch('/api/photo_categories')).json();}catch(e){} }
-function curCats(){ return PHOTO_CATS[SRCKIND]||PHOTO_CATS.place||['음식','외관','내부','메뉴판','기타']; }
+function curCats(){ return PHOTO_CATS[SRCKIND]||PHOTO_CATS.place||['외관','내부','메뉴판','음식','영수증','기타']; }
 function photoMetaForSel(){ const o={}; SELP.forEach(p=>{const m=PHOTOMETA[p]; if(m&&(m.label||m.caption))o[p]=m;}); return o; }
-function togglePmeta(){
-  const box=$('#pmeta');
-  if(box.classList.contains('open')){ box.classList.remove('open'); return; }
-  if(!SELP.length){ toast('먼저 사진을 선택하세요.','info'); return; }
-  renderPmeta(); box.classList.add('open');
+function updatePhotoSummary(){
+  const n=SELP.length;
+  const ps=$('#psel'); if(ps) ps.textContent = n? `${n}장` : '';
+  const su=$('#photosum'); if(su) su.textContent = n? `${n}장 선택됨` : '사진 없음';
+}
+function openPhotoModal(){
+  const m=$('#phmodal'); if(!m)return;
+  m.style.display='flex';
+  const box=$('#pmeta'); if(box){ box.classList.add('open'); }
+  renderGrid(); renderPmeta();
+}
+function closePhotoModal(){ const m=$('#phmodal'); if(m)m.style.display='none'; updatePhotoSummary(); }
+// PMACTIVE: 활성 칸(undefined=초기→첫칸 외관, 문자열=활성, null=해제). PMSEL=보이는 선택(더미·보드 공통). SUBCATS=세션 세부분류.
+let PMDRAG=null, PMSEL=new Set(), PMANCHOR=null, PMACTIVE=undefined, SUBCATS={}, CATCB=null;
+function baseCats(){ return curCats(); }  // 영구 분류(config)
+function allCats(){ const o=[]; baseCats().forEach(c=>{ o.push(c); (SUBCATS[c]||[]).forEach(s=>{ if(!o.includes(s))o.push(s); }); }); return o; }
+function pmBuckets(){ const o=[]; baseCats().forEach(c=>{ o.push({key:c,name:c,sub:false}); (SUBCATS[c]||[]).forEach(s=>o.push({key:s,name:s,sub:true,parent:c})); }); return o; }
+function pmBucketOf(path){ const cats=allCats(), lb=(PHOTOMETA[path]||{}).label||''; return cats.includes(lb)?lb:(baseCats()[0]||''); }
+function pmAssign(path,key){ (PHOTOMETA[path]=PHOTOMETA[path]||{}).label=key; }
+function pmEnsureDefaults(){ const def=baseCats()[0]||''; SELP.forEach(p=>{const m=(PHOTOMETA[p]=PHOTOMETA[p]||{}); if(!m.label)m.label=def;}); }
+// 사진 클릭(더미·보드 공통): 단일=활성 칸으로 즉시 / Shift=보이는 범위 선택(이동X, 업로드 순서) / ⌘·Ctrl=개별 토글
+function photoSel(path,ev){
+  if(ev.shiftKey){  // Shift는 항상 '선택'만(즉시 이동 안 함). 시작점도 Shift로 가능.
+    if(PMANCHOR){
+      const a=PHOTOS.indexOf(PMANCHOR), b=PHOTOS.indexOf(path);
+      if(a>=0&&b>=0){ const lo=Math.min(a,b),hi=Math.max(a,b), remove=PMSEL.has(path);
+        for(let i=lo;i<=hi;i++){ const p=PHOTOS[i]; if(!p)continue; if(remove)PMSEL.delete(p); else PMSEL.add(p); } }
+      else PMSEL.add(path);
+    } else PMSEL.add(path);
+    PMANCHOR=path;
+  } else if(ev.metaKey||ev.ctrlKey){ if(PMSEL.has(path))PMSEL.delete(path); else PMSEL.add(path); PMANCHOR=path; }
+  else {
+    if(PMACTIVE!=null){ if(!SELP.includes(path))SELP.push(path); pmAssign(path,PMACTIVE); PMSEL.clear(); }
+    else PMSEL=new Set([path]);
+    PMANCHOR=path;
+  }
+  renderGrid(); renderPmeta();
+}
+function laneClick(key){  // 칸 클릭: 선택한 사진 있으면 그 칸으로 이동, 없으면 활성 토글
+  if(PMSEL.size){
+    const moved=[...PMSEL];
+    moved.forEach(p=>{ if(!SELP.includes(p))SELP.push(p); pmAssign(p,key); });
+    PMSEL=new Set(); PMANCHOR=null; PMACTIVE=key;
+    if(moved.length>1){  // 시프트로 여러 장 담았으면 → 다음 더미 사진을 자동 선택해 이어서 처리
+      const lastIdx=Math.max(...moved.map(p=>PHOTOS.indexOf(p)));
+      const nxt=PHOTOS.find((p,i)=>i>lastIdx && !SELP.includes(p));
+      if(nxt){ PMSEL.add(nxt); PMANCHOR=nxt; }
+    }
+  } else PMACTIVE=(PMACTIVE===key?null:key);
+  renderGrid(); renderPmeta();
+}
+function openCatModal(title,desc,cb){
+  CATCB=cb; $('#cattitle').textContent=title; $('#catdesc').textContent=desc||'';
+  const inp=$('#catinput'); inp.value=''; $('#catmodal').style.display='flex'; setTimeout(()=>inp.focus(),30);
+}
+function closeCatModal(){ $('#catmodal').style.display='none'; CATCB=null; }
+function catSubmit(){ const v=$('#catinput').value.trim(); if(!v){toast('이름을 입력하세요.','info');return;} const cb=CATCB; closeCatModal(); if(cb)cb(v); }
+function addCategory(){  // 영구 분류 추가(파일 저장)
+  openCatModal('새 분류 추가','이 리뷰 타입에 계속 쓸 분류예요(저장됨).', async name=>{
+    if(allCats().includes(name)){ toast('이미 있는 분류예요.','info'); return; }
+    try{ const r=await fetch('/api/photo_categories',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({reviewType:SRCKIND,category:name})});
+      const d=await r.json(); if(!r.ok){ toast('분류 추가 실패: '+(d.error||''),'err'); return; }
+      PHOTO_CATS=d; renderPmeta(); toast('"'+name+'" 분류를 추가했어요.','ok');
+    }catch(e){ toast('분류 추가 오류: '+e,'err'); }
+  });
+}
+function addSub(parent){  // 세부분류 추가(이 글에만, 저장 안 함)
+  openCatModal('세부분류 추가', "'"+parent+"' 아래 세부분류 — 이번 글에만(새 글 시작하면 사라짐)", name=>{
+    if(allCats().includes(name)){ toast('이미 있는 분류예요.','info'); return; }
+    (SUBCATS[parent]=SUBCATS[parent]||[]).push(name); PMACTIVE=name; renderPmeta(); toast('세부분류 "'+name+'" 추가(이 글에만)','ok');
+  });
+}
+function removeSub(parent,sub){
+  SUBCATS[parent]=(SUBCATS[parent]||[]).filter(s=>s!==sub);
+  SELP.forEach(p=>{ if((PHOTOMETA[p]||{}).label===sub) pmAssign(p,parent); });  // 그 세부 사진은 부모 칸으로
+  if(PMACTIVE===sub)PMACTIVE=parent; renderPmeta();
+}
+function pmTile(path){
+  return `<div class="pmtile${PMSEL.has(path)?' sel':''}" data-path="${esc(path)}">`
+    +`<img draggable=true src="/photo?path=${encodeURIComponent(path)}">`
+    +`<button type=button class=pmx title="분류함에서 빼기(다시 더미로)">×</button></div>`;
 }
 function renderPmeta(){
-  const cats=curCats();
-  let h='<div class=pmhead><span>각 사진이 뭔지 직접 적거나, AI로 자동 채우세요</span>'
-    +'<button type=button class=minibtn id=aibtn>✨ AI 자동 추천</button></div>';
-  h+=SELP.map(path=>{
-    const m=PHOTOMETA[path]||{label:'',caption:''};
-    const opts='<option value="">(미분류)</option>'+cats.map(c=>`<option ${c===m.label?'selected':''}>${esc(c)}</option>`).join('');
-    return `<div class=pmrow data-path="${esc(path)}"><img src="/photo?path=${encodeURIComponent(path)}">`
-      +`<div class=pmf><select class=pmlabel>${opts}</select>`
-      +`<input class=pmcap placeholder="이 사진이 뭔지 (예: 데미소스 돈까스)" value="${esc(m.caption)}"></div></div>`;
-  }).join('');
+  if(PMACTIVE===undefined) PMACTIVE = baseCats()[0]||null;
+  if(PMACTIVE!=null && !allCats().includes(PMACTIVE)) PMACTIVE=null;
+  pmEnsureDefaults();
+  [...PMSEL].forEach(p=>{ if(!PHOTOS.includes(p))PMSEL.delete(p); });
+  let h='<div class=pmhead><span>'
+    + (PMSEL.size
+        ? `<b>${PMSEL.size}장</b> 선택됨 — 담을 칸을 클릭(또는 드래그)`
+        : (PMACTIVE!=null
+            ? `<b>${esc(PMACTIVE)}</b> 칸 활성 — 사진 클릭하면 담겨요 · Shift로 여러 장 선택 후 칸 클릭`
+            : '사진 클릭/Shift로 선택 → 담을 칸 클릭. (칸을 클릭하면 활성=클릭으로 담기)'))
+    + '</span><button type=button class=minibtn id=aibtn>✨ AI 자동 추천</button></div>';
+  h+='<div class=pmboard>'+pmBuckets().map(b=>{
+    const items=SELP.filter(p=>pmBucketOf(p)===b.key);
+    const inner=items.length?items.map(pmTile).join(''):'<span class=pmempty>여기로 끌어다 놓기</span>';
+    const act=(b.key===PMACTIVE)?' active':'';
+    const badge=`<span class=pmcount>${items.length}</span>${act?'<span class=pmtarget>담는 중</span>':''}`;
+    const hd = b.sub
+      ? `<div class=pmlanehd>↳ ${esc(b.name)} ${badge}<button type=button class=pmsubdel data-parent="${esc(b.parent)}" data-sub="${esc(b.name)}" title="세부분류 삭제">×</button></div>`
+      : `<div class=pmlanehd>${esc(b.name)} ${badge}<button type=button class=pmsubbtn data-cat="${esc(b.key)}" title="세부분류 추가(이 글에만)">+세부</button></div>`;
+    return `<div class="pmlane${b.sub?' sub':''}${act}" data-key="${esc(b.key)}">${hd}<div class=pmdrop>${inner}</div></div>`;
+  }).join('')
+   + '<button type=button class=pmadd id=pmadd>+ 새 분류 추가</button>'
+   + '</div>';
   const box=$('#pmeta'); box.innerHTML=h;
   $('#aibtn').onclick=runAiCaption;
-  $$('#pmeta .pmrow').forEach(r=>{const path=r.dataset.path;
-    r.querySelector('.pmlabel').onchange=e=>{(PHOTOMETA[path]=PHOTOMETA[path]||{}).label=e.target.value;};
-    r.querySelector('.pmcap').oninput=e=>{(PHOTOMETA[path]=PHOTOMETA[path]||{}).caption=e.target.value;};
+  $('#pmadd').onclick=addCategory;
+  $$('#pmeta .pmsubbtn').forEach(btn=>{ btn.onclick=e=>{ e.stopPropagation(); addSub(btn.dataset.cat); }; });
+  $$('#pmeta .pmsubdel').forEach(btn=>{ btn.onclick=e=>{ e.stopPropagation(); removeSub(btn.dataset.parent,btn.dataset.sub); }; });
+  $$('#pmeta .pmlane[data-key]').forEach(l=>{
+    l.onclick=()=>laneClick(l.dataset.key);
+    l.ondragover=e=>{e.preventDefault(); e.dataTransfer.dropEffect='move'; l.classList.add('over');};
+    l.ondragleave=()=>l.classList.remove('over');
+    l.ondrop=e=>{e.preventDefault(); l.classList.remove('over');
+      const set=(PMDRAG&&PMDRAG.length)?PMDRAG:[]; PMDRAG=null;
+      if(!set.length)return;
+      set.forEach(p=>{ if(!SELP.includes(p))SELP.push(p); pmAssign(p,l.dataset.key); }); PMSEL=new Set(); PMANCHOR=null;
+      renderGrid(); renderPmeta();
+    };
   });
+  $$('#pmeta .pmtile img').forEach(img=>{
+    const path=img.closest('.pmtile').dataset.path;
+    img.onmousedown=e=>{ if(e.shiftKey) e.preventDefault(); };
+    img.onclick=e=>{ e.stopPropagation(); photoSel(path,e); };
+    img.ondragstart=e=>{ PMDRAG=(PMSEL.has(path)&&PMSEL.size)?[...PMSEL]:[path];
+      e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',path);}catch(_){}};
+    img.ondragend=()=>{PMDRAG=null; $$('#pmeta .pmlane').forEach(l=>l.classList.remove('over'));};
+  });
+  $$('#pmeta .pmtile .pmx').forEach(x=>{
+    x.onclick=e=>{ e.stopPropagation();
+      const path=x.closest('.pmtile').dataset.path, i=SELP.indexOf(path);
+      if(i>=0)SELP.splice(i,1); PMSEL.delete(path);
+      renderGrid(); renderPmeta();
+    };
+  });
+}
+function newPost(){  // 새 글: 입력·사진선택·분류·세부분류 비우기
+  if(!confirm('새 글을 시작할까요? 지금 메모·사진 선택·분류가 비워집니다.')) return;
+  $('#memo').value=''; $('#srcval').value=''; if(typeof setKind==='function')setKind('place',false);
+  SELP=[]; PHOTOMETA={}; PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
+  PLAN=null; const sv=$('#save'); if(sv)sv.disabled=true;
+  const pv=$('#preview'); if(pv){ pv.className='doc empty'; pv.innerHTML='왼쪽에서 메모를 쓰고 [초안 생성]을 누르세요.'; }
+  loadPhotos(); renderPmeta(); updatePhotoSummary();
+  toast('새 글을 시작했어요.','ok');
 }
 async function runAiCaption(){
   const btn=$('#aibtn'); if(!btn)return; btn.disabled=true; const old=btn.textContent; btn.textContent='분석 중…';
@@ -1083,7 +1296,13 @@ $('#variants').onclick=async e=>{const c=e.target.closest('.vcell'); if(!c)retur
   try{await fetch('/api/format',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,value,on})});}catch(e){}
 };
 $('#tone').onchange=savePrefs;
-setKind('place',false); loadPhotos(); setupUpload(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories(); loadPhotoCats(); $('#pmbtn').onclick=togglePmeta;
+setKind('place',false); loadPhotos(); setupUpload(); setupDraftImport(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories(); loadPhotoCats();
+$('#photobtn').onclick=openPhotoModal; $('#phclose').onclick=closePhotoModal; $('#phdone').onclick=closePhotoModal;
+$('#phmodal').onclick=e=>{ if(e.target===$('#phmodal'))closePhotoModal(); };
+$('#newpost').onclick=newPost;
+$('#catok').onclick=catSubmit; $('#catx').onclick=closeCatModal; $('#catcancel').onclick=closeCatModal;
+$('#catinput').onkeydown=e=>{ if(e.key==='Enter')catSubmit(); else if(e.key==='Escape')closeCatModal(); };
+$('#catmodal').onclick=e=>{ if(e.target===$('#catmodal'))closeCatModal(); };
 </script></body></html>"""
 
 
@@ -1230,6 +1449,10 @@ def _make_handler(state: dict):
                     self._import_draft(self._json_body())
                 elif path == "/api/publish":
                     self._publish(self._json_body())
+                elif path == "/api/drafts":
+                    self._list_drafts()
+                elif path == "/api/drafts/import":
+                    self._import_draft_photos(self._json_body())
                 elif path == "/api/favorite":
                     body = self._json_body()
                     n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
@@ -1244,6 +1467,8 @@ def _make_handler(state: dict):
                     self._send(200, json.dumps({"path": p}).encode())
                 elif path == "/api/photos/caption":
                     self._caption_photos(self._json_body())
+                elif path == "/api/photo_categories":
+                    self._add_photo_category(self._json_body())
                 elif path == "/api/categories":
                     cats = _fetch_categories()
                     state["categories"] = cats
@@ -1384,6 +1609,38 @@ def _make_handler(state: dict):
                 return
             self._send(200, json.dumps({"photos": items}).encode())
 
+        def _add_photo_category(self, body):
+            """사용자가 추가한 사진 분류를 config/photo_categories.yaml에 저장하고 전체 목록 반환."""
+            import yaml
+
+            from autoblog.config import CONFIG_DIR, load_photo_categories
+
+            rt = (body.get("reviewType") or "place").strip() or "place"
+            name = (body.get("category") or "").strip()
+            if not name:
+                self._send(400, json.dumps({"error": "분류 이름이 비었어요"}).encode())
+                return
+            path = CONFIG_DIR / "photo_categories.yaml"
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            except FileNotFoundError:
+                data = {}
+            if not isinstance(data, dict):
+                data = {}
+            lst = [str(x) for x in data.get(rt, []) if isinstance(data.get(rt), list)]
+            if name not in lst:
+                lst.insert(lst.index("기타"), name) if "기타" in lst else lst.append(name)
+            data[rt] = lst
+            header = (
+                "# 사진 카테고리 프리셋 — 리뷰 타입별 분류 목록. UI '+ 새 분류 추가' 또는 직접 편집.\n"
+                "# 첫 칸이 기본값(분류 안 한 사진이 들어갈 곳).\n\n"
+            )
+            path.write_text(
+                header + yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8"
+            )
+            load_photo_categories.cache_clear()
+            self._send(200, json.dumps(load_photo_categories()).encode())
+
         def _generate(self, body):
             from autoblog.draft.rules import CommonRules
             from autoblog.draft.style import StyleProfile
@@ -1486,6 +1743,39 @@ def _make_handler(state: dict):
             finally:
                 pub.close()
             self._send(200, b'{"ok":true}')
+
+        def _list_drafts(self):
+            """네이버 임시저장 글 목록을 읽어 [{idx,title,date}]로 반환."""
+            from autoblog.publish.editor import BlogPublisher
+
+            pub = BlogPublisher(headless=False)
+            pub.start()
+            try:
+                if not pub.wait_for_login():
+                    raise RuntimeError("네이버 로그인이 필요합니다")
+                drafts = pub.list_drafts()
+            finally:
+                pub.close()
+            self._send(200, json.dumps({"drafts": drafts}).encode())
+
+        def _import_draft_photos(self, body):
+            """선택한 임시저장 글(idx)의 본문 사진을 내려받아 로컬 경로 목록을 반환."""
+            from autoblog.publish.editor import BlogPublisher
+
+            try:
+                idx = int(body.get("idx"))
+            except (TypeError, ValueError):
+                self._send(400, json.dumps({"error": "idx가 필요합니다"}).encode())
+                return
+            pub = BlogPublisher(headless=False)
+            pub.start()
+            try:
+                if not pub.wait_for_login():
+                    raise RuntimeError("네이버 로그인이 필요합니다")
+                paths = pub.import_draft_photos(idx, UPLOAD_DIR)
+            finally:
+                pub.close()
+            self._send(200, json.dumps({"paths": paths}).encode())
 
     return Handler
 
