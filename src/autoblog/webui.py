@@ -204,7 +204,22 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .doc .tx{font-size:15px;line-height:2;white-space:pre-wrap;margin:0 0 6px}
  .doc hr{border:none;border-top:1px solid #e3e6ea;margin:22px 36px}
  .doc hr.ctr{width:42%;margin-left:auto;margin-right:auto}
- .doc .q{border-left:3px solid var(--green);padding:8px 0 8px 18px;color:#3a4250;font-size:16.5px;margin:18px 0;font-style:italic}
+ /* 인용구 — 에디터 종류(variant)별 모양을 미리보기에서도 구분해 보여준다 */
+ .doc .q{color:#3a4250;font-size:16.5px;margin:18px 0;line-height:1.7;white-space:pre-line}
+ .doc .q-quote{text-align:center;padding:4px 0}
+ .doc .q-quote::before{content:'\201C';display:block;font-size:30px;color:#c4c9d0;line-height:.7}
+ .doc .q-quote::after{content:'\201D';display:block;font-size:30px;color:#c4c9d0;line-height:.2;margin-top:8px}
+ .doc .q-line{border-left:3px solid #333;padding:2px 0 2px 18px;text-align:left}
+ .doc .q-bubble{border:1px solid #d3d7dd;border-radius:5px;padding:18px 20px;text-align:center;position:relative;margin-bottom:28px}
+ .doc .q-bubble::after{content:'';position:absolute;left:40px;bottom:-9px;width:15px;height:15px;background:#fff;border:1px solid #d3d7dd;border-top:0;border-left:0;transform:rotate(45deg)}
+ .doc .q-underline{border-bottom:1px solid #333;padding:0 0 14px;text-align:left}
+ .doc .q-underline::before{content:'\201C';display:block;font-size:26px;color:#c4c9d0;line-height:.9;margin-bottom:4px}
+ .doc .q-postit{border:1px solid #d3d7dd;padding:18px 20px;text-align:center;position:relative}
+ .doc .q-postit::after{content:'';position:absolute;right:-1px;bottom:-1px;border:9px solid #fff;border-right-color:#d3d7dd;border-bottom-color:#d3d7dd}
+ .doc .q-corner{text-align:center;padding:22px 8px;position:relative}
+ .doc .q-corner::before,.doc .q-corner::after{content:'';position:absolute;width:20px;height:20px;border:2px solid #333}
+ .doc .q-corner::before{left:34px;top:0;border-right:0;border-bottom:0}
+ .doc .q-corner::after{right:34px;bottom:0;border-left:0;border-top:0}
  .doc img.st{width:148px;height:148px;object-fit:contain;display:block;margin:10px 0}
  .doc .ph{background:#eef6ff;border:1px dashed #9ec5ff;border-radius:10px;padding:14px;color:#2f6fd6;font-size:13px;margin:10px 0}
  em.hl{font-style:normal;border-radius:3px;padding:1px 3px}
@@ -417,6 +432,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=nav data-view=stickers><svg class=ic viewBox="0 0 24 24"><use href="#i-sticker"/></svg> 스티커</div>
   <div class=nav data-view=format><svg class=ic viewBox="0 0 24 24"><use href="#i-format"/></svg> 서식</div>
   <div class=nav data-view=prompt><svg class=ic viewBox="0 0 24 24"><use href="#i-prompt"/></svg> 프롬프트</div>
+  <div class=nav data-view=persona><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 문체</div>
   <div class=nav data-view=models><svg class=ic viewBox="0 0 24 24"><use href="#i-model"/></svg> 모델</div>
   <div class=nav data-view=settings><svg class=ic viewBox="0 0 24 24"><use href="#i-settings"/></svg> 설정</div>
   <div class=foot>로컬에서 동작 · 네이버 임시저장</div>
@@ -440,7 +456,11 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>사진 <span class=muted id=psel></span></label>
           <button type=button class="btn ghost" id=photobtn style="width:100%;justify-content:center;gap:8px">📷 사진 추가·분류 <span class=muted id=photosum>사진 없음</span></button>
-          <label class=f>문체 톤 <span class=hint data-tip="비우면 기본 톤으로 써요. 예: 친근한 반말로 / 담백하고 차분하게">i</span></label>
+          <label class=f>문체 <span class=hint data-tip="[문체] 탭에서 만든 페르소나를 고르면 그 사람의 평소 문체로 써요. '기본'이면 적용 안 함.">i</span></label>
+          <select id=persona style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:var(--fs-md);background:#fff;color:#1f2937">
+            <option value="">기본 (설정 안 함)</option>
+          </select>
+          <label class=f>문체 톤 <span class=hint data-tip="비우면 기본 톤으로 써요. 위 문체와 함께 '이번 글'만의 조정으로 쓰여요. 예: 친근한 반말로 / 담백하고 차분하게">i</span></label>
           <input type=text id=tone placeholder="예: 친근한 반말로">
           <label class=f>필수 키워드 <span class=hint data-tip="본문에 꼭 들어갈 키워드를 쉼표로 구분해 적어주세요. 비우면 안 씁니다. 예: 강남맛집, 데이트코스">i</span></label>
           <input type=text id=keywords placeholder="예: 강남맛집, 데이트코스 (쉼표로 구분)">
@@ -529,6 +549,39 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     </div>
     <div class=card style="margin-top:16px"><h3>자동 추가 레이어 <span class=muted style="font-weight:400">— 마커 지시문(읽기 전용, 토글 켤 때만)</span></h3><div id=promptlayers><div class=muted>불러오는 중…</div></div></div>
   </section>
+  <!-- 문체 -->
+  <section class="view persona">
+    <h2 class=title>문체</h2>
+    <p class=desc>블로거의 <b>인기글 top 5</b>에서 평소 문체를 뽑아 이름표를 붙여 저장해 두고, 글쓰기에서 골라 그 사람처럼 쓸 수 있어요. 저장한 문체는 골랐을 때만 적용되고, 모두가 공유하는 베이스 프롬프트에는 섞이지 않습니다.</p>
+    <div class=card>
+      <h3>새 문체 만들기</h3>
+      <label class=f>블로그 주소 또는 ID <span class=hint data-tip="예: blog.naver.com/아이디, m.blog.naver.com/아이디, 또는 아이디만">i</span></label>
+      <div style="display:flex;gap:8px;align-items:stretch">
+        <input type=text id=pf_blog placeholder="예: blog.naver.com/아이디 또는 아이디" style="flex:1">
+        <button class=btn id=pf_fetch style="flex:0 0 140px">인기글 불러오기</button>
+      </div>
+      <div class=muted id=pf_stat style="margin-top:8px"></div>
+      <div id=pf_posts style="margin-top:10px"></div>
+      <div id=pf_extractrow style="display:none;margin-top:12px;gap:8px;flex-wrap:wrap">
+        <button class=btn id=pf_extract style="width:auto;padding:9px 18px">선택한 글로 문체 추출</button>
+        <button class="btn ghost" id=pf_promptonly style="width:auto;padding:9px 18px" data-tip="LLM 호출 없이, 글+분석 지시를 합친 프롬프트를 복사해요. ChatGPT·Claude 등에 붙여넣어 쓰세요.">프롬프트만 복사</button>
+      </div>
+      <div id=pf_result style="display:none;margin-top:16px">
+        <label class=f>문체 특징 <span class=muted style="font-weight:400">— 추출 결과(직접 다듬어도 됩니다)</span></label>
+        <textarea id=pf_profile class=promptarea style="min-height:150px"></textarea>
+        <label class=f>이름</label>
+        <input type=text id=pf_name placeholder="예: 내 본캐 문체">
+        <div style="margin-top:10px;display:flex;align-items:center;gap:12px">
+          <button class=btn id=pf_save style="width:auto;padding:9px 18px">문체 저장</button>
+          <span class=muted id=pf_savestat></span>
+        </div>
+      </div>
+    </div>
+    <div class=card style="margin-top:16px">
+      <h3>저장된 문체</h3>
+      <div id=personalist><div class=muted>불러오는 중…</div></div>
+    </div>
+  </section>
   <!-- 모델 -->
   <section class="view models">
     <h2 class=title>모델</h2>
@@ -550,6 +603,7 @@ window.fetch=async(...a)=>{try{return await _fetch(...a);}
   catch(e){const m='서버에 연결할 수 없어요. 앱(서버)이 꺼졌거나 재시작 중일 수 있어요 — 잠시 후 새로고침하거나 다시 시도하세요.';toast(m,'err');throw new Error(m);}};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let PHOTOS=[], SELP=[], PLAN=null;
+let PERSONAS=[], PERSONA_ID='', PF={};  // 문체 페르소나: 목록 / 선택된 id / 새로 만드는 중 임시상태
 // 알림: 오류(err)는 화면 가운데 카드로 크게, 완료/안내(ok/info)는 상단 토스트로 가볍게.
 function toast(msg,kind='err',ms){
   if(kind==='err'){centerAlert(msg,'err');return;}
@@ -703,6 +757,7 @@ $$('.nav').forEach(n=>n.onclick=()=>{
   $$('.nav').forEach(x=>x.classList.remove('on')); n.classList.add('on');
   $$('.view').forEach(v=>v.classList.remove('on')); $('.view.'+n.dataset.view).classList.add('on');
   if(n.dataset.view==='stickers') loadStickers();
+  if(n.dataset.view==='persona') loadPersonas();
 });
 // 수집 종류: 직접 클릭 → 고정, 안 골랐으면 입력으로 자동 추정
 $$('#kindseg button').forEach(b=>b.onclick=()=>setKind(b.dataset.k,true));
@@ -1075,7 +1130,7 @@ $('#gen').onclick=async()=>{
   if(!$('#memo').value.trim()){st('경험 메모를 입력하세요.');return;}
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,keywords:$('#keywords').value,minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:$('#keywords').value,minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES};
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
@@ -1104,7 +1159,7 @@ $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
   $('#export').disabled=true; expLoading(true);
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,keywords:$('#keywords').value,minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:$('#keywords').value,minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES};
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     if(!r.body){closePM(); toast('프롬프트 생성 실패','err');return;}
@@ -1157,7 +1212,8 @@ function renderPreview(d){
   for(const b of d.blocks){
     if(b.kind==='text')h+=renderText(b);
     else if(b.kind==='divider')h+=`<hr${b.align==='center'?' class=ctr':''}>`;
-    else if(b.kind==='quote')h+=`<div class=q style="${alignStyle(b)}">${esc(b.text)}</div>`;
+    else if(b.kind==='quote'){const qc={1:'q-quote',2:'q-line',3:'q-bubble',4:'q-underline',5:'q-postit',6:'q-corner'}[b.variant]||'q-quote';
+      h+=`<div class="q ${qc}" style="${alignStyle(b)}">${esc(b.text)}</div>`;}
     else if(b.kind==='sticker')h+=`<img class=st src="/img?ref=${encodeURIComponent(b.sticker_ref)}">`;
     else if(b.kind==='image')h+=`<div class=ph>🖼 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
     else if(b.kind==='link')h+=`<div class=ph>🔗 링크 카드 <small>${esc(b.link_url)}</small></div>`;
@@ -1331,13 +1387,14 @@ $('#stickerall').onclick=function(){FMT.stickerAll=!FMT.stickerAll;
 
 // 글쓰기 설정(규칙·협찬·톤·카테고리) 서버 저장/복원 — 새로고침해도 유지
 async function savePrefs(){try{await fetch('/api/prefs',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,minChars:$('#minchars').value,category:CATEGORY,pruneDrafts:PRUNE})});}catch(e){}}
+  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,personaId:PERSONA_ID,minChars:$('#minchars').value,category:CATEGORY,pruneDrafts:PRUNE})});}catch(e){}}
 async function loadPrefs(){
   let asked=true;
   try{const p=await (await fetch('/api/prefs')).json();
     if(p.rules)Object.assign(RULES,p.rules);
     if(p.fmt)Object.assign(FMT,p.fmt);
     if(typeof p.tone==='string')$('#tone').value=p.tone;
+    if(typeof p.personaId==='string'){PERSONA_ID=p.personaId; const sel=$('#persona'); if(sel)sel.value=PERSONA_ID;}
     if(p.minChars!=null)$('#minchars').value=p.minChars;
     if(typeof p.category==='string')setCategory(p.category);
     if(typeof p.pruneDrafts==='boolean')PRUNE=p.pruneDrafts;
@@ -1399,7 +1456,7 @@ function provOf(model){const s=(model||'').toLowerCase();
   if(s.startsWith('claude'))return 'anthropic';
   if(s.startsWith('gemini'))return 'gemini';
   if(s.startsWith('gpt')||/^o[134]/.test(s))return 'openai';
-  return 'ollama';}
+  return 'unknown';}
 // 모델 적용(텍스트/비전 독립) — 적용 후 새로고침해 '적용 중' 갱신
 async function applyModel(payload, okmsg, btn){
   if(btn)btn.disabled=true;
@@ -1418,76 +1475,30 @@ function apiKeyBox(provider){
 }
 async function loadModels(){try{const m=await (await fetch('/api/models')).json();
   MODEL_KEYS=m.keys||{};
-  const installed=m.installed||[];
-  const instSet=new Set(installed.map(x=>x.name));
-  const tApi=m.text_provider!=='ollama';
-  // ── 텍스트: 내장 카드 ──
-  const localTextNames=installed.map(x=>x.name);
-  if(!tApi && m.text && !instSet.has(m.text)) localTextNames.unshift(m.text);  // 적용 중인데 미설치면 노출
-  const localCards=localTextNames.map(n=>{const i=installed.find(x=>x.name===n), miss=!instSet.has(n);
-    return mcard(n, n, miss?'미설치':(i&&i.size_gb?i.size_gb+'GB':'로컬'), n===m.text, miss);}).join('')
-    || '<div class=muted>설치된 모델이 없어요</div>';
   // ── 텍스트: 외부 API 카드(공급자별 묶음) ──
   const byProv={}; (m.api_text||[]).forEach(a=>{(byProv[a.provider]=byProv[a.provider]||[]).push(a);});
   const apiCards=Object.entries(byProv).map(([prov,list])=>{const pv=PROV[prov]||{short:prov}; const key=!!MODEL_KEYS[prov];
     return `<div class=mgroup>${pv.short} <span class="keychip ${key?'ok':'no'}">${key?'키 있음':'키 필요'}</span></div>
       <div class=mgrid>${list.map(a=>mcard(a.model, nicer(a.model), pv.short, a.model===m.text)).join('')}</div>`;}).join('');
-  // ── 비전: 카드(비전 추정 우선) ──
-  const visNames=[...installed].sort((a,b)=>(b.vision?1:0)-(a.vision?1:0)).map(x=>x.name);
-  if(m.vision && !instSet.has(m.vision)) visNames.unshift(m.vision);
-  const visCards=visNames.map(n=>{const i=installed.find(x=>x.name===n), miss=!instSet.has(n);
-    return mcard(n, (i&&i.vision?'🖼 ':'')+n, miss?'미설치':(i&&i.size_gb?i.size_gb+'GB':'로컬'), n===m.vision, miss);}).join('');
 
-  const noLocal=installed.length===0;
   $('#models').innerHTML=`
     <h3>텍스트 모델 <span class=muted style="font-weight:400">— 초안 글 작성</span></h3>
-    <div class=muted style="margin-bottom:4px">카드를 누르면 바로 적용돼요. 적용 중: <b>${m.text||'-'}</b> ${tApi?`<span style="color:${(PROV[m.text_provider]||{}).color||'#666'}">· ${(PROV[m.text_provider]||{}).short||m.text_provider}</span>`:'<span class=muted>· 내장</span>'}</div>
-    <div id=txtsection>
-      <div class=mgroup>내장 (내 컴퓨터 · Ollama)</div>
-      <div class=mgrid>${localCards}</div>
-      ${apiCards}
-    </div>
+    <div class=muted style="margin-bottom:4px">카드를 누르면 바로 적용돼요. 적용 중: <b>${m.text||'-'}</b> <span style="color:${(PROV[m.text_provider]||{}).color||'#666'}">· ${(PROV[m.text_provider]||{}).short||m.text_provider}</span></div>
+    <div id=txtsection>${apiCards}</div>
     <div id=txtnote></div>
     <div id=apikeybox></div>
 
-    <h3 style="margin-top:26px">비전 모델 <span class=muted style="font-weight:400">— 사진·상품 이미지 분석 (내장 전용)</span></h3>
-    ${noLocal
-      ? `<div class=muted>로컬 모델이 안 보여요 — Ollama가 꺼져 있거나 설치된 모델이 없어요. <b>ollama.com</b>에서 설치 후 아래 명령으로 받으세요.<pre class=mcmd>ollama pull qwen2.5vl:7b</pre></div>`
-      : `<div class=muted style="margin-bottom:4px">적용 중: <b>${m.vision||'-'}</b> · 🖼 표시가 비전 모델이에요.</div>
-         <div class=mgrid id=viscards>${visCards}</div>
-         <div id=visnote></div>`}
+    <h3 style="margin-top:26px">비전 모델 <span class=muted style="font-weight:400">— 사진·상품 이미지 분석</span></h3>
+    <div class=muted>이미지 분석은 Gemini API로 처리돼요. 적용 중: <b>${m.vision||'-'}</b> · <b>GEMINI_API_KEY</b>가 필요해요.</div>`;
 
-    <details style="margin-top:26px"><summary style="cursor:pointer;font-weight:700;font-size:13px">🎁 추천 조합 (내 그래픽카드 사양별 한 번에)</summary>
-      <div class=muted style="margin:8px 0">사양에 맞는 조합을 고르면 텍스트·비전을 한 번에 설정해요.</div>
-      <div id=presets></div></details>`;
-
-  // 텍스트 적용 중 안내(설치/키)
+  // 텍스트 적용 중 안내(API 키)
   function txtNote(){const prov=m.text_provider;
-    $('#txtnote').innerHTML = (prov==='ollama' && !instSet.has(m.text))
-      ? `<div class=sub-h style="margin-top:14px">설치 필요 — 터미널에 입력</div><pre class=mcmd>ollama pull ${m.text}</pre>` : '';
-    $('#apikeybox').innerHTML = (prov!=='ollama') ? apiKeyBox(prov) : '';
+    $('#apikeybox').innerHTML = apiKeyBox(prov);
     const sv=$('#apikeysave'); if(sv)sv.onclick=()=>saveKey(prov);}
   txtNote();
   $$('#txtsection [data-model]').forEach(c=>c.onclick=()=>{const v=c.dataset.model;
     if(v===m.text){toast('이미 쓰는 모델이에요.','info');return;}
     applyModel({text:v}, '텍스트 모델 적용됨 ✓');});
-
-  // 비전 적용 중 안내 + 카드 클릭
-  if(!noLocal){
-    const vi=installed.find(x=>x.name===m.vision);
-    $('#visnote').innerHTML = !instSet.has(m.vision)
-      ? `<div class=sub-h style="margin-top:14px">설치 필요 — 터미널에 입력</div><pre class=mcmd>ollama pull ${m.vision}</pre>`
-      : (vi&&!vi.vision?`<div class=muted style="margin-top:8px">⚠️ 이 모델은 비전(이미지) 모델이 아닐 수 있어요. 사진 분석이 안 되면 🖼 표시 모델을 고르세요.</div>`:'');
-    $$('#viscards [data-model]').forEach(c=>c.onclick=()=>{const v=c.dataset.model;
-      if(v===m.vision){toast('이미 쓰는 모델이에요.','info');return;}
-      applyModel({vision:v}, '비전 모델 적용됨 ✓');});
-  }
-
-  // 추천 조합 — 내장(로컬) 프리셋만(GPU 사양 가이드)
-  $('#presets').innerHTML=(m.presets||[]).filter(p=>p.provider==='ollama').map(p=>
-    `<div class=setrow><div><div class=t>${p.label}</div><div class=d>텍스트 ${p.text} · 비전 ${p.vision}</div></div>
-      <button class=btn data-preset="${p.key}" style="width:auto;padding:7px 14px">적용</button></div>`).join('');
-  $$('#presets [data-preset]').forEach(b=>b.onclick=()=>applyModel({preset:b.dataset.preset}, '프리셋 적용됨 ✓', b));
 }catch(e){$('#models').innerHTML='<div class=muted>로드 실패</div>';}}
 async function saveKey(provider){const v=$('#apikey').value.trim(); if(!v){toast('키를 입력하세요.','info');return;}
   const b=$('#apikeysave'); if(b)b.disabled=true;
@@ -1609,7 +1620,84 @@ $('#variants').onclick=async e=>{const c=e.target.closest('.vcell'); if(!c)retur
   try{await fetch('/api/format',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type,value,on})});}catch(e){}
 };
 $('#tone').onchange=savePrefs;
-setKind('place',false); loadPhotos(); setupUpload(); setupDraftImport(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories(); loadPhotoCats();
+
+// ===== 문체(페르소나) =====
+async function loadPersonas(){try{const d=await (await fetch('/api/personas')).json();
+  PERSONAS=d.personas||[]; renderPersonaSelect(); renderPersonaList();
+}catch(e){$('#personalist').innerHTML='<div class=muted>로드 실패</div>';}}
+function renderPersonaSelect(){const sel=$('#persona'); if(!sel)return;
+  sel.innerHTML='<option value="">기본 (설정 안 함)</option>'+
+    PERSONAS.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  sel.value=PERSONAS.some(p=>p.id===PERSONA_ID)?PERSONA_ID:''; if(sel.value!==PERSONA_ID)PERSONA_ID=sel.value;}
+function renderPersonaList(){const c=$('#personalist'); if(!c)return;
+  if(!PERSONAS.length){c.innerHTML='<div class=muted>아직 저장된 문체가 없어요. 위에서 블로그 주소로 만들어 보세요.</div>';return;}
+  c.innerHTML=PERSONAS.map(p=>{const n=(p.sources||[]).length;
+    return `<div class=setrow><div style="min-width:0">
+      <div class=t>${esc(p.name)}</div>
+      <div class=d>${esc(p.blog||'')}${n?(' · 인기글 '+n+'개로 학습'):''}</div></div>
+      <button class="btn ghost pdel" data-id="${p.id}" style="width:auto;padding:7px 13px;flex:0 0 auto">삭제</button></div>`;}).join('');}
+$('#persona').onchange=()=>{PERSONA_ID=$('#persona').value; savePrefs();};
+$('#pf_fetch').onclick=async()=>{
+  const blog=$('#pf_blog').value.trim(); if(!blog){toast('블로그 주소를 입력하세요','err');return;}
+  const btn=$('#pf_fetch'); btn.disabled=true; $('#pf_stat').textContent='인기글 불러오는 중…';
+  $('#pf_posts').innerHTML=''; $('#pf_extractrow').style.display='none'; $('#pf_result').style.display='none';
+  try{const r=await fetch('/api/personas/fetch',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({blog})});
+    const d=await r.json(); if(!r.ok){$('#pf_stat').textContent=''; toast('불러오기 실패: '+(d.error||''),'err'); return;}
+    PF={blogId:d.blogId, posts:d.posts||[]};
+    if(!PF.posts.length){$('#pf_stat').textContent='인기글을 찾지 못했어요.'; return;}
+    $('#pf_stat').textContent=`인기글 ${PF.posts.length}개 — 학습에 쓸 글을 고르세요 (기본 전체 선택).`;
+    $('#pf_posts').innerHTML=PF.posts.map((p,i)=>`<label style="display:flex;align-items:center;gap:9px;padding:8px 4px;border-bottom:1px solid var(--line);cursor:pointer">
+      <input type=checkbox class=pchk data-i="${i}" checked>
+      <span style="flex:1;min-width:0;font-size:13.5px">${esc(p.title||('글 '+(i+1)))}</span>
+      <span class=muted style="font-size:12px;white-space:nowrap">공감 ${p.sympathy} · 댓글 ${p.comments}</span></label>`).join('');
+    $('#pf_extractrow').style.display='flex';
+  }catch(e){$('#pf_stat').textContent='';}finally{btn.disabled=false;}};
+$('#pf_extract').onclick=async()=>{
+  const logNos=$$('#pf_posts .pchk:checked').map(c=>PF.posts[+c.dataset.i].logNo);
+  if(!logNos.length){toast('최소 한 개는 선택하세요','err');return;}
+  const btn=$('#pf_extract'); btn.disabled=true; $('#pf_stat').textContent='문체 추출 중… 글 본문을 읽고 분석해요 (20~40초)';
+  try{const r=await fetch('/api/personas/extract',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({blog:PF.blogId, logNos})});
+    const d=await r.json(); if(!r.ok){$('#pf_stat').textContent=''; toast('추출 실패: '+(d.error||''),'err'); return;}
+    PF.profile=d.profile; PF.sources=d.sources||[];
+    $('#pf_profile').value=d.profile||'';
+    if(!$('#pf_name').value.trim())$('#pf_name').value=(PF.blogId||'')+' 문체';
+    $('#pf_result').style.display='block'; $('#pf_stat').textContent='추출 완료 — 내용을 다듬고 이름을 정해 저장하세요.';
+  }catch(e){$('#pf_stat').textContent='';}finally{btn.disabled=false;}};
+$('#pf_promptonly').onclick=async()=>{
+  const logNos=$$('#pf_posts .pchk:checked').map(c=>PF.posts[+c.dataset.i].logNo);
+  if(!logNos.length){toast('최소 한 개는 선택하세요','err');return;}
+  const btn=$('#pf_promptonly'); btn.disabled=true; $('#pf_stat').textContent='프롬프트 만드는 중… 글 본문을 읽어요';
+  try{const r=await fetch('/api/personas/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({blog:PF.blogId, logNos})});
+    const d=await r.json(); if(!r.ok){$('#pf_stat').textContent=''; toast('만들기 실패: '+(d.error||''),'err'); return;}
+    let copied=false; try{await navigator.clipboard.writeText(d.prompt); copied=true;}catch(e){PF.prompt=d.prompt;}
+    // 프롬프트는 클립보드로만. 문체 특징 칸은 유저가 'LLM 분석 결과'를 붙여넣을 자리이므로 비워서 노출.
+    $('#pf_profile').value=''; $('#pf_result').style.display='block';
+    if(!$('#pf_name').value.trim())$('#pf_name').value=(PF.blogId||'')+' 문체';
+    $('#pf_stat').textContent=copied
+      ?'프롬프트를 클립보드에 복사했어요. ChatGPT·Claude 등에 붙여넣어 받은 분석 결과를 아래 [문체 특징] 칸에 붙여넣고 저장하세요.'
+      :'복사 권한이 막혀 있어요. 콘솔에서 PF.prompt 를 복사하거나 다시 시도하세요.';
+    toast(copied?'프롬프트 복사 완료 — LLM 결과를 문체 특징 칸에 붙여넣으세요':'프롬프트 생성됨','ok');
+  }catch(e){$('#pf_stat').textContent='';}finally{btn.disabled=false;}};
+$('#pf_save').onclick=async()=>{
+  const name=$('#pf_name').value.trim(), profile=$('#pf_profile').value.trim();
+  if(!name||!profile){toast('이름과 문체 내용을 모두 채워주세요','err');return;}
+  const btn=$('#pf_save'); btn.disabled=true; $('#pf_savestat').textContent='저장 중…';
+  try{const r=await fetch('/api/personas/save',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({name, blog:PF.blogId||$('#pf_blog').value.trim(), profile, sources:PF.sources||[]})});
+    if(!r.ok){$('#pf_savestat').textContent=''; toast('저장 실패','err'); return;}
+    $('#pf_savestat').textContent='저장됨 ✓'; await loadPersonas();
+    PF={}; $('#pf_result').style.display='none'; $('#pf_posts').innerHTML=''; $('#pf_extractrow').style.display='none';
+    $('#pf_blog').value=''; $('#pf_name').value=''; $('#pf_profile').value=''; $('#pf_stat').textContent='';
+    toast('문체가 저장됐어요. 글쓰기에서 골라 쓰세요.','ok');
+  }catch(e){$('#pf_savestat').textContent='';}finally{btn.disabled=false;}};
+$('#personalist').onclick=async e=>{const b=e.target.closest('.pdel'); if(!b)return;
+  if(!confirm('이 문체를 삭제할까요?'))return;
+  try{await fetch('/api/personas/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
+    if(PERSONA_ID===b.dataset.id){PERSONA_ID=''; savePrefs();}
+    await loadPersonas();
+  }catch(e){}};
+
+setKind('place',false); loadPhotos(); setupUpload(); setupDraftImport(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories(); loadPhotoCats(); loadPersonas();
 $('#photobtn').onclick=openPhotoModal; $('#phclose').onclick=closePhotoModal; $('#phdone').onclick=closePhotoModal;
 $('#phmodal').onclick=e=>{ if(e.target===$('#phmodal'))closePhotoModal(); };
 $('#newpost').onclick=newPost;
@@ -1769,6 +1857,8 @@ def _make_handler(state: dict):
                 self._send(200, json.dumps(load_photo_categories()).encode())
             elif u.path == "/api/prefs":
                 self._send(200, json.dumps(_load_prefs()).encode())
+            elif u.path == "/api/personas":
+                self._send(200, json.dumps(_personas_payload(), ensure_ascii=False).encode())
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -1781,6 +1871,16 @@ def _make_handler(state: dict):
                     self._export_prompt(self._json_body())
                 elif path == "/api/import-draft":
                     self._import_draft(self._json_body())
+                elif path == "/api/personas/fetch":
+                    self._persona_fetch(self._json_body())
+                elif path == "/api/personas/extract":
+                    self._persona_extract(self._json_body())
+                elif path == "/api/personas/prompt":
+                    self._persona_prompt(self._json_body())
+                elif path == "/api/personas/save":
+                    self._persona_save(self._json_body())
+                elif path == "/api/personas/delete":
+                    self._persona_delete(self._json_body())
                 elif path == "/api/publish":
                     self._publish(self._json_body())
                 elif path == "/api/drafts":
@@ -1895,13 +1995,13 @@ def _make_handler(state: dict):
         def _export_prompt(self, body):
             """수집+내 프롬프트+지시문을 한 텍스트로 합쳐 반환(다른 챗봇에 붙여넣기용)."""
             from autoblog.draft.rules import CommonRules
-            from autoblog.draft.style import StyleProfile
             from autoblog.pipeline import build_export_prompt
 
             srcval, src = self._resolve_src(body)
             photos = [p for p in (body.get("photos") or []) if p]
             photo_meta = body.get("photoMeta") if isinstance(body.get("photoMeta"), dict) else {}
             tone = (body.get("tone") or "").strip() or None
+            style = _style_for(body.get("personaId"), tone)
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
             guidelines = _build_guidelines(body)
             dkeys, qkeys = _enabled_variant_keys()  # '서식'에서 고른 종류만 프롬프트에 안내
@@ -1923,7 +2023,7 @@ def _make_handler(state: dict):
                     product=srcval if src == "product" else None,
                     photos=photos or None,
                     photo_meta=photo_meta,
-                    style=StyleProfile(tone=tone) if tone else None,
+                    style=style,
                     rules=rules,
                     guidelines=guidelines,
                     emphasis=bool(body.get("emphasis")),
@@ -1962,6 +2062,96 @@ def _make_handler(state: dict):
                 return
             self._send(200, json.dumps({"photos": items}).encode())
 
+        def _persona_fetch(self, body):
+            """블로그 주소 → 인기글 top N 메타데이터(제목·공감수). 본문은 추출 단계에서."""
+            from autoblog.collect.blog_posts import fetch_popular_posts, parse_blog_id
+
+            try:
+                blog_id = parse_blog_id(body.get("blog", ""))
+                posts = fetch_popular_posts(blog_id, n=int(body.get("count") or 5))
+            except Exception as exc:  # noqa: BLE001 — 주소 오류/네트워크 그대로 안내
+                self._send(400, json.dumps({"error": str(exc)}).encode())
+                return
+            self._send(
+                200,
+                json.dumps({"blogId": blog_id, "posts": posts}, ensure_ascii=False).encode(),
+            )
+
+        def _persona_extract(self, body):
+            """선택한 인기글 본문을 모아 평소 문체 특징(프로필)을 추출(LLM)."""
+            from autoblog.collect.blog_posts import collect_style_samples, parse_blog_id
+            from autoblog.draft.style import extract_style_profile
+
+            try:
+                blog_id = parse_blog_id(body.get("blog", ""))
+                log_nos = [str(x) for x in (body.get("logNos") or []) if str(x).strip()]
+                samples = collect_style_samples(
+                    blog_id, log_nos=log_nos or None, n=int(body.get("count") or 5)
+                )
+                if not samples:
+                    self._send(400, json.dumps({"error": "글 본문을 가져오지 못했어요"}).encode())
+                    return
+                profile = extract_style_profile([s["text"] for s in samples])
+            except Exception as exc:  # noqa: BLE001
+                self._send(400, json.dumps({"error": str(exc)}).encode())
+                return
+            sources = [{"title": s.get("title", ""), "url": s.get("url", "")} for s in samples]
+            self._send(
+                200,
+                json.dumps({"profile": profile, "sources": sources}, ensure_ascii=False).encode(),
+            )
+
+        def _persona_prompt(self, body):
+            """선택한 글 본문 + 분석 지시를 합친 '문체 분석 프롬프트'를 반환(LLM 미호출).
+
+            API 키가 없을 때 사용자가 ChatGPT·Claude 등에 그대로 붙여넣어 쓰는 용도.
+            """
+            from autoblog.collect.blog_posts import collect_style_samples, parse_blog_id
+            from autoblog.draft.style import build_style_prompt
+
+            try:
+                blog_id = parse_blog_id(body.get("blog", ""))
+                log_nos = [str(x) for x in (body.get("logNos") or []) if str(x).strip()]
+                samples = collect_style_samples(
+                    blog_id, log_nos=log_nos or None, n=int(body.get("count") or 5)
+                )
+                if not samples:
+                    self._send(400, json.dumps({"error": "글 본문을 가져오지 못했어요"}).encode())
+                    return
+                prompt = build_style_prompt([s["text"] for s in samples])
+            except Exception as exc:  # noqa: BLE001
+                self._send(400, json.dumps({"error": str(exc)}).encode())
+                return
+            self._send(200, json.dumps({"prompt": prompt}, ensure_ascii=False).encode())
+
+        def _persona_save(self, body):
+            """추출·편집한 문체를 이름표와 함께 저장(같은 id면 갱신)."""
+            from autoblog.draft.persona import Persona, PersonaSource, save_persona
+
+            name = (body.get("name") or "").strip()
+            profile = (body.get("profile") or "").strip()
+            if not name or not profile:
+                self._send(400, json.dumps({"error": "이름과 문체 내용을 모두 채워주세요"}).encode())
+                return
+            sources = [
+                PersonaSource(title=s.get("title", ""), url=s.get("url", ""))
+                for s in (body.get("sources") or [])
+                if isinstance(s, dict)
+            ]
+            persona = Persona(
+                name=name, blog=(body.get("blog") or "").strip(), profile=profile, sources=sources
+            )
+            if body.get("id"):
+                persona.id = str(body["id"])
+            saved = save_persona(persona)
+            self._send(200, saved.model_dump_json().encode())
+
+        def _persona_delete(self, body):
+            from autoblog.draft.persona import delete_persona
+
+            delete_persona((body.get("id") or "").strip())
+            self._send(200, b'{"ok":true}')
+
         def _add_photo_category(self, body):
             """사용자가 추가한 사진 분류를 config/photo_categories.yaml에 저장하고 전체 목록 반환."""
             import yaml
@@ -1996,13 +2186,13 @@ def _make_handler(state: dict):
 
         def _generate(self, body):
             from autoblog.draft.rules import CommonRules
-            from autoblog.draft.style import StyleProfile
             from autoblog.pipeline import run_pipeline
 
             srcval, src = self._resolve_src(body)
             photos = [p for p in (body.get("photos") or []) if p]
             photo_meta = body.get("photoMeta") if isinstance(body.get("photoMeta"), dict) else {}
             tone = (body.get("tone") or "").strip() or None
+            style = _style_for(body.get("personaId"), tone)
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
             guidelines = _build_guidelines(body)
             dv, qv = _enabled_variants()  # 활성 종류 중 첫 번째를 기본 적용(다중 중 우선)
@@ -2013,7 +2203,7 @@ def _make_handler(state: dict):
                 product=srcval if src == "product" else None,
                 photos=photos or None,
                 photo_meta=photo_meta,
-                style=StyleProfile(tone=tone) if tone else None,
+                style=style,
                 rules=rules,
                 guidelines=guidelines,
                 emphasis=bool(body.get("emphasis")),
@@ -2174,6 +2364,7 @@ _PREFS_DEFAULT = {
         "sponsored": False, "sponsorSticker": "",
     },
     "tone": "",
+    "personaId": "",  # 글쓰기에서 선택한 문체 페르소나(config/personas.json의 id)
     "keywords": "",
     "minChars": DEFAULT_MIN_CHARS,
     "category": "",
@@ -2181,6 +2372,31 @@ _PREFS_DEFAULT = {
     "pruneDrafts": True,
     "pruneDraftsAsked": False,
 }
+
+
+def _personas_payload() -> dict:
+    """저장된 문체 페르소나 목록(관리·선택 UI용)."""
+    from autoblog.draft.persona import load_personas
+
+    return {"personas": [p.model_dump() for p in load_personas()]}
+
+
+def _style_for(persona_id, tone):
+    """선택한 페르소나의 평소 문체(profile) + 이번 글 톤(tone) → StyleProfile.
+
+    둘 다 비면 None. 페르소나 id가 유효하지 않으면 무시하고 톤만 적용한다.
+    """
+    from autoblog.draft.persona import get_persona
+    from autoblog.draft.style import StyleProfile
+
+    profile = None
+    if persona_id:
+        persona = get_persona(str(persona_id))
+        if persona:
+            profile = persona.profile
+    if profile or tone:
+        return StyleProfile(profile=profile, tone=tone)
+    return None
 
 
 def _build_guidelines(body: dict):
@@ -2227,6 +2443,8 @@ def _save_prefs(body: dict) -> None:
             cur[k].update(body[k])
     if "tone" in body:
         cur["tone"] = body.get("tone") or ""
+    if "personaId" in body:
+        cur["personaId"] = body.get("personaId") or ""
     if "keywords" in body:
         cur["keywords"] = body.get("keywords") or ""
     if "minChars" in body:
@@ -2561,72 +2779,25 @@ def _save_prompt(text: str) -> None:
     DEFAULT_PROMPT_PATH.write_text(text, encoding="utf-8")
 
 
-def _ollama_installed() -> list[dict]:
-    """로컬 Ollama에 실제 설치된 모델 목록(없거나 꺼져 있으면 빈 목록).
-
-    각 항목: {name, size_gb, vision}(vision은 모델명으로 추정).
-    """
-    import requests
-
-    from autoblog.config import load_env
-
-    host = load_env().ollama_host
-    try:
-        data = requests.get(f"{host}/api/tags", timeout=3).json()
-    except (requests.RequestException, ValueError):
-        return []
-    out = []
-    for m in data.get("models", []):
-        name = m.get("name", "")
-        if not name:
-            continue
-        size = m.get("size") or 0
-        out.append({
-            "name": name,
-            "size_gb": round(size / 1e9, 1) if size else None,
-            "vision": _looks_vision(name),
-        })
-    out.sort(key=lambda x: x["name"])
-    return out
-
-
-# 모델명에 비전 능력이 드러나는 흔한 토큰(설치 모델 분류용 추정 — 100% 정확하진 않음)
-_VISION_HINTS = ("vl", "vision", "llava", "moondream", "minicpm-v", "bakllava")
-
-
-def _looks_vision(name: str) -> bool:
-    n = name.lower()
-    return any(h in n for h in _VISION_HINTS)
-
-
 def _models_info() -> dict:
-    """현재 적용 모델 + 텍스트/비전 독립 선택용 후보(로컬 설치본 + 외부 API)."""
+    """현재 적용 모델 + 텍스트 선택용 API 후보(API 전용 — 비전은 Gemini 고정)."""
     from autoblog.config import load_env, load_models_config, provider_for_model
 
     cfg = load_models_config()
     eff = cfg.effective()
-    presets = [
-        {"key": k, "label": p.label, "text": p.text, "vision": p.vision,
-         "note": p.note, "provider": p.provider, "concurrent_load": p.concurrent_load}
-        for k, p in cfg.presets.items()
-    ]
-    # 외부 API 텍스트 모델 후보 — 프리셋에서 추출(provider별 중복 제거, 모델명 기준)
+    # 텍스트 API 모델 후보 — 프리셋에서 추출(모델명 기준 중복 제거)
     api_text: dict[str, dict] = {}
     for p in cfg.presets.values():
-        if p.provider != "ollama":
-            api_text.setdefault(p.text, {
-                "model": p.text, "provider": p.provider, "label": p.label,
-            })
+        api_text.setdefault(p.text, {
+            "model": p.text, "provider": p.provider, "label": p.label,
+        })
     env = load_env()
     return {
         "text": eff.text,
         "vision": eff.vision,
         "text_provider": eff.provider,
-        "vision_provider": provider_for_model(eff.vision),  # 비전은 사실상 항상 ollama
-        "installed": _ollama_installed(),
+        "vision_provider": provider_for_model(eff.vision),  # 비전은 Gemini 고정
         "api_text": list(api_text.values()),
-        "presets": presets,
-        "default_preset": cfg.default,
         "keys": {
             "anthropic": bool(env.anthropic_api_key),
             "openai": bool(env.openai_api_key),

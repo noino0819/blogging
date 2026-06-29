@@ -81,9 +81,21 @@ def test_build_plan_divider_and_quote():
     quote = next(b for b in plan.blocks if b.kind == "quote")
     assert quote.variant == 3
     assert quote.text == "인상 깊은 한마디"
+    assert quote.align == "center"  # 말풍선(3)은 가운데정렬
     # 텍스트 블록은 구분선/인용구 기준으로 분리
     texts = [b.text for b in plan.blocks if b.kind == "text"]
     assert "첫 문단이에요." in texts and "마지막 문단." in texts
+
+
+def test_quote_align_follows_variant():
+    # 왼쪽줄(2)·밑줄형(4)은 에디터 기본이 왼쪽정렬 → align 없음. 나머지는 가운데정렬.
+    for variant, expected in ((1, "center"), (2, None), (3, "center"),
+                              (4, None), (5, "center"), (6, "center")):
+        plan = build_publish_plan(
+            DraftResult(text=f"제목\n\n글\n[인용구:{variant}]\n한마디\n[/인용구]")
+        )
+        quote = next(b for b in plan.blocks if b.kind == "quote")
+        assert quote.align == expected, f"variant={variant}"
 
 
 def test_build_plan_divider_variant():

@@ -53,6 +53,14 @@ QUOTE_META = {
     "quotation_postit": (5, "포스트잇", "본문 흐름 밖 곁다리 팁·꿀팁 메모. '알아두면 좋은' 정보"),
     "quotation_corner": (6, "모서리", "글을 닫는 여운 있는 마무리 멘트"),
 }
+# 에디터에서 가운데정렬이 기본 모양인 인용구 종류(variant 인덱스). 왼쪽줄(2)·밑줄형(4)은
+# 왼쪽정렬이 기본·고정이라 가운데정렬을 주면 미리보기·에디터 둘 다 어긋난다.
+_QUOTE_CENTERED_VARIANTS = {1, 3, 5, 6}
+
+
+def quote_align(variant: int) -> str | None:
+    """인용구 종류에 맞는 단락 정렬(가운데형은 center, 왼쪽줄·밑줄형은 None=왼쪽)."""
+    return "center" if variant in _QUOTE_CENTERED_VARIANTS else None
 
 # 초안 구조 마커: 구분선 [구분선], 인용 블록 [인용구]…[/인용구]
 # (EMPHASIS_INSTRUCTION과 같은 추가 레이어. generate_draft(structure=True)에서 시스템 프롬프트에 덧붙임)
@@ -328,7 +336,12 @@ def build_publish_plan(
                 quote_buf.clear()
                 if qtext:
                     blocks.append(
-                        PublishBlock(kind="quote", text=qtext, variant=quote_variant, align="center")
+                        PublishBlock(
+                            kind="quote",
+                            text=qtext,
+                            variant=quote_variant,
+                            align=quote_align(quote_variant),
+                        )
                     )
             else:
                 quote_buf.append(line)
