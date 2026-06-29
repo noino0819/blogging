@@ -173,6 +173,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pmtile:hover .pmstar{display:flex}
  .pmtile.thumb img{outline:2px solid #ffb400;outline-offset:1px;border-color:#ffb400}
  .pmribbon{position:absolute;bottom:0;left:0;right:0;background:#ffb400;color:#fff;font-size:9px;font-weight:800;text-align:center;line-height:14px;border-radius:0 0 6px 6px;letter-spacing:.5px}
+ .pmcap{position:absolute;bottom:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:0;background:var(--green);color:#fff;font-size:10px;line-height:1;cursor:pointer;display:none;align-items:center;justify-content:center;padding:0;box-shadow:0 1px 3px #0003;z-index:3}
+ .pmtile:hover .pmcap{display:flex}
+ .pmtile.hascap .pmcap{display:flex;background:var(--green)}
+ .pmtile:not(.hascap) .pmcap{background:#9aa3ad}
  .pmthumbbar{display:flex;align-items:center;gap:9px;margin-bottom:9px;padding:8px 10px;border:1px solid #ffe2a6;background:#fffaf0;border-radius:9px;font-size:11.5px;color:#7a5b00}
  .pmthumbbar .pmthumblbl{font-weight:800;color:#b87b00;white-space:nowrap}
  .pmthumbbar img{width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid #ffd47a}
@@ -322,6 +326,24 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .alertcard .am{font-size:14px;font-weight:600;color:#5a626c;line-height:1.6;white-space:pre-wrap}
  .alertcard .ab{margin-top:20px;display:flex;gap:10px}
  .alertcard .ab .btn{padding:12px}
+ /* 임시저장 완료 — 축하 팝업 */
+ .okbg{position:fixed;inset:0;background:rgba(20,24,31,.5);z-index:10001;display:flex;align-items:center;justify-content:center;padding:24px;animation:tin .18s ease}
+ .okcard{position:relative;overflow:hidden;background:#fff;border-radius:22px;width:min(372px,92vw);padding:36px 28px 26px;text-align:center;box-shadow:0 28px 80px rgba(0,0,0,.34);animation:okpop .42s cubic-bezier(.18,.9,.32,1.4) both}
+ @keyframes okpop{from{opacity:0;transform:translateY(10px) scale(.92)}to{opacity:1;transform:none}}
+ .okcard .okring{width:88px;height:88px;margin:2px auto 18px;position:relative}
+ .okcard .okring::before{content:"";position:absolute;inset:-6px;border-radius:50%;background:var(--green-soft);transform:scale(0);animation:okhalo .5s ease .05s both}
+ @keyframes okhalo{to{transform:scale(1)}}
+ .okcard .okring svg{position:relative;width:88px;height:88px}
+ .okcard .okc{fill:none;stroke:var(--green);stroke-width:5;stroke-dasharray:252;stroke-dashoffset:252;animation:okdraw .55s ease .12s forwards}
+ .okcard .okch{fill:none;stroke:var(--green);stroke-width:6;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:60;stroke-dashoffset:60;animation:okdraw .35s ease .5s forwards}
+ @keyframes okdraw{to{stroke-dashoffset:0}}
+ .okcard .okt{font-size:20px;font-weight:800;color:var(--ink);margin:0 0 8px;letter-spacing:-.3px}
+ .okcard .okm{font-size:14px;font-weight:600;color:#5a626c;line-height:1.6}
+ .okcard .oksec{margin-top:12px;display:inline-block;font-size:12px;font-weight:700;color:var(--green-d);background:var(--green-soft);padding:5px 12px;border-radius:var(--r-pill)}
+ .okcard .okb{margin-top:22px}
+ .okcard .okb .btn{padding:13px}
+ .okcf{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;opacity:0;animation:okfall 1.15s ease-out forwards}
+ @keyframes okfall{0%{opacity:0;transform:translateY(-10px) rotate(0)}12%{opacity:1}100%{opacity:0;transform:translateY(230px) rotate(420deg)}}
 </style></head><body><div id=toasts></div><div id=bgtasks></div>
 <svg width=0 height=0 style="position:absolute" aria-hidden=true><defs>
  <g id=i-write fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="M13.5 6.5l3 3"/></g>
@@ -375,6 +397,14 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <input type=text id=catinput placeholder="예: 디저트, 음료" autocomplete=off style="margin-top:12px;padding:10px 12px;border:1px solid #cdd3da;border-radius:9px;font-size:14px;width:100%">
   <div class=modalft><button class=btn id=catok style="flex:1">추가</button><button class="btn ghost" id=catcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
+<div id=capmodal class=modal style="display:none"><div class=modalbox style="width:min(460px,94vw)">
+  <div class=modalhd><span>📝 사진 세부 설명</span><button class=mx id=capx>✕</button></div>
+  <div class=muted>이 사진에 대해 글에 녹일 설명을 적어주세요. 초안 생성 때 이 내용이 그대로 반영돼요. (분류: <b id=caplabel></b>)</div>
+  <div style="margin-top:10px;text-align:center"><img id=capimg style="max-width:160px;max-height:160px;border-radius:9px;border:1px solid #e5e7eb;object-fit:cover"></div>
+  <textarea id=capinput placeholder="예: 가장 인상 깊었던 메뉴. 겉은 바삭하고 속은 촉촉했어요." style="min-height:110px;margin-top:10px;font-family:inherit;font-size:14px;line-height:1.5;background:#fff;border:1px solid #cdd3da;border-radius:9px;padding:10px 12px;width:100%;resize:vertical"></textarea>
+  <div class=muted style="margin-top:6px;font-size:11.5px">⌘/Ctrl+Enter 로 저장 · 비우고 저장하면 설명이 삭제돼요</div>
+  <div class=modalft><button class=btn id=capok style="flex:1">저장</button><button class="btn ghost" id=capcancel style="flex:0 0 100px">취소</button></div>
+</div></div>
 <div id=npmodal class=modal style="display:none"><div class=modalbox style="width:min(420px,92vw)">
   <div class=modalhd><span>✏️ 새 글 시작</span><button class=mx id=npx>✕</button></div>
   <div class=muted>지금 작성 중인 메모·사진 선택·분류가 모두 비워집니다. 새 글을 시작할까요?</div>
@@ -414,6 +444,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <input type=text id=tone placeholder="예: 친근한 반말로">
           <label class=f>필수 키워드 <span class=hint data-tip="본문에 꼭 들어갈 키워드를 쉼표로 구분해 적어주세요. 비우면 안 씁니다. 예: 강남맛집, 데이트코스">i</span></label>
           <input type=text id=keywords placeholder="예: 강남맛집, 데이트코스 (쉼표로 구분)">
+          <div class=muted id=kwnote style="display:none;margin-top:4px;color:#2563eb;line-height:1.4"></div>
           <label class=f>최소 글자 수 <span class=hint data-tip="본문이 이 글자 수(공백 제외) 이상이 되도록 써요. 비우면 1500자가 적용됩니다.">i</span></label>
           <input type=number id=minchars placeholder="1500" min=0 step=100>
           <div class=togrow>
@@ -509,6 +540,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <h2 class=title>설정</h2>
     <p class=desc>글쓰기 규칙을 관리합니다.</p>
     <div class=card id=rules></div>
+    <div class=card><h3>임시저장</h3><div id=draftset></div></div>
   </section>
 </main>
 <script>
@@ -554,6 +586,23 @@ function warnModal(title, items){
   bg.onclick=e=>{if(e.target===bg)close();};
   document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
   $('#alerthost').appendChild(bg);bg.querySelector('.btn').focus();}
+// 예/아니오 확인 모달(최초 1회 안내 등). onYes/onNo 콜백. 배경/Esc는 '아니오'로 닫힘.
+function confirmModal(title, desc, yesLabel, noLabel, onYes, onNo){
+  const bg=document.createElement('div');bg.className='alertbg';
+  bg.innerHTML=`<div class="alertcard info"><div class=ai>🗑️</div>
+    <div class=at>${title}</div>
+    <div class=am style="text-align:left;margin:6px 0;line-height:1.6;color:var(--sub);font-size:13px">${desc}</div>
+    <div class=ab style="display:flex;gap:8px;justify-content:center">
+      <button class="btn ghost" data-no style="width:auto;padding:9px 16px">${noLabel}</button>
+      <button class=btn data-yes style="width:auto;padding:9px 16px">${yesLabel}</button></div></div>`;
+  let done=false;
+  const fin=(fn)=>{if(done)return;done=true;bg.remove();if(fn)fn();};
+  bg.querySelector('[data-yes]').onclick=()=>fin(onYes);
+  bg.querySelector('[data-no]').onclick=()=>fin(onNo);
+  bg.onclick=e=>{if(e.target===bg)fin(onNo);};
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){document.removeEventListener('keydown',esc);fin(onNo);}});
+  $('#alerthost').appendChild(bg);bg.querySelector('[data-yes]').focus();
+}
 // 브라우저(크롬) 알림 — 유저가 다른 탭/창에 가 있어도 결과를 알린다. 권한은 저장 클릭 시 요청.
 function ensureNotify(){try{if('Notification'in window&&Notification.permission==='default')Notification.requestPermission();}catch(e){}}
 function notify(title, body){
@@ -562,6 +611,27 @@ function notify(title, body){
     const n=new Notification(title,{body:body||'',tag:'autoblog-publish',renotify:true});
     n.onclick=()=>{window.focus();n.close();};
   }catch(e){}
+}
+// 임시저장 완료 — 체크마크가 그려지고 색종이가 흩날리는 축하 팝업.
+function successModal(title, msg, badge){
+  const bg=document.createElement('div');bg.className='okbg';
+  const cols=['#03c75a','#ffd23f','#ff7a9c','#4f9dff','#9b6cff'];
+  let cf='';
+  for(let i=0;i<14;i++){
+    const c=cols[i%cols.length], left=6+Math.random()*88, delay=(Math.random()*.35).toFixed(2), dur=(.9+Math.random()*.5).toFixed(2);
+    cf+=`<span class=okcf style="left:${left}%;background:${c};animation-delay:${delay}s;animation-duration:${dur}s"></span>`;
+  }
+  bg.innerHTML=`<div class=okcard>${cf}
+    <div class=okring><svg viewBox="0 0 88 88"><circle class=okc cx=44 cy=44 r=40 /><path class=okch d="M27 45l11 11 23-25" /></svg></div>
+    <div class=okt>${String(title).replace(/</g,'&lt;')}</div>
+    <div class=okm>${msg}</div>
+    ${badge?`<div class=oksec>${String(badge).replace(/</g,'&lt;')}</div>`:''}
+    <div class=okb><button class=btn>확인</button></div></div>`;
+  const close=()=>bg.remove();
+  bg.querySelector('.btn').onclick=close;
+  bg.onclick=e=>{if(e.target===bg)close();};
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
+  $('#alerthost').appendChild(bg);bg.querySelector('.btn').focus();
 }
 // 실측 경과시간 카운터 — 가짜 %가 아니라 '진짜로 얼마나 걸리는지'를 보여줌.
 // requestAnimationFrame으로 0.1초 단위 표시가 바뀔 때만 갱신해 숫자가 자연스럽게 올라가고,
@@ -619,6 +689,7 @@ const FMT={emphasis:true,structure:true,stickers:true,stickerAll:false,sponsored
 let CATEGORY='';
 const LINKS=()=>($('#links').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
 const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:false,emoji:false};
+let PRUNE=true;  // 임시저장 시 같은 제목 이전 글 자동 정리(설정 토글)
 const RULE_META=[
  ['mobile_friendly','모바일 친화','문단을 2~3줄로 짧게, 여백 넉넉히(네이버 트래픽 대부분 모바일)'],
  ['authenticity','진정성','과장·상투구·AI식 표현 피하고 솔직·담백하게(단점도 자연스럽게)'],
@@ -742,8 +813,24 @@ async function importDraft(idx, title){
     $('#draftlist').style.display='none';
     stat.textContent = paths.length? `${paths.length}장 불러옴 (${sec}초) — 아래에서 분류하세요` : '가져올 사진이 없는 글이에요';
     if(paths.length) toast(`${paths.length}장 불러왔어요 (기존 사진 교체됨)`,'ok');
+    // 사진 불러오기 성공 + 불러온 글에 제목이 있으면 → 그 제목을 필수 키워드에 자동으로 넣어줌
+    if(paths.length) applyDraftTitleKeyword(title);
   }catch(e){ el.stop(); stat.textContent='가져오기 실패'; toast('사진을 못 가져왔어요 — '+e.message,'err'); }
   DRAFTBUSY=false;
+}
+// 불러온 글 제목을 필수 키워드 맨 앞에 넣어줌(중복이면 그대로). 노트로 사용자에게 알려줌.
+function applyDraftTitleKeyword(title){
+  const t=(title||'').trim(); if(!t||t==='(제목 없음)') return;
+  const kwEl=$('#keywords'), note=$('#kwnote'); if(!kwEl) return;
+  const cur=kwEl.value.split(',').map(s=>s.trim()).filter(Boolean);
+  const dup=cur.some(k=>k.toLowerCase()===t.toLowerCase());
+  if(!dup){ cur.unshift(t); kwEl.value=cur.join(', '); }
+  if(note){
+    note.textContent = dup
+      ? `📥 불러온 글 제목 "${t}"은(는) 이미 키워드에 있어요.`
+      : `📥 불러온 글 제목 "${t}"을(를) 필수 키워드에 자동으로 넣었어요. 필요 없으면 지워도 돼요.`;
+    note.style.display='block';
+  }
 }
 
 // 사진 분류·캡션 (수동 + ✨ AI 자동 추천). 결과는 PHOTOMETA(경로→{label,caption})에 저장.
@@ -811,6 +898,21 @@ function openCatModal(title,desc,cb){
 }
 function closeCatModal(){ $('#catmodal').style.display='none'; CATCB=null; }
 function catSubmit(){ const v=$('#catinput').value.trim(); if(!v){toast('이름을 입력하세요.','info');return;} const cb=CATCB; closeCatModal(); if(cb)cb(v); }
+let CAPPATH=null;  // 세부 설명 편집 중인 사진 경로(보드 타일 더블클릭)
+function openCapModal(path){
+  CAPPATH=path; const m=PHOTOMETA[path]||{};
+  $('#caplabel').textContent = m.label || '미분류';
+  $('#capimg').src = '/photo?path='+encodeURIComponent(path);
+  const inp=$('#capinput'); inp.value=m.caption||'';
+  $('#capmodal').style.display='flex'; setTimeout(()=>{inp.focus(); inp.select();},30);
+}
+function closeCapModal(){ $('#capmodal').style.display='none'; CAPPATH=null; }
+function capSubmit(){
+  if(CAPPATH){ const v=$('#capinput').value.trim();
+    (PHOTOMETA[CAPPATH]=PHOTOMETA[CAPPATH]||{}).caption=v; }
+  closeCapModal(); renderGrid(); renderPmeta();
+  toast('세부 설명을 저장했어요.','ok');
+}
 function addCategory(){  // 영구 분류 추가(파일 저장)
   openCatModal('새 분류 추가','이 리뷰 타입에 계속 쓸 분류예요(저장됨).', async name=>{
     if(allCats().includes(name)){ toast('이미 있는 분류예요.','info'); return; }
@@ -834,10 +936,12 @@ function removeSub(parent,sub){
 }
 function pmTile(path){
   const isT=path===THUMB;
-  return `<div class="pmtile${PMSEL.has(path)?' sel':''}${isT?' thumb':''}" data-path="${esc(path)}">`
+  const hasCap=!!((PHOTOMETA[path]||{}).caption||'').trim();
+  return `<div class="pmtile${PMSEL.has(path)?' sel':''}${isT?' thumb':''}${hasCap?' hascap':''}" data-path="${esc(path)}">`
     +`<img draggable=true src="/photo?path=${encodeURIComponent(path)}">`
     +`<button type=button class="pmstar${isT?' on':''}" title="${isT?'대표 썸네일 해제':'대표 썸네일로 지정 — 글 맨 위 첫 사진'}">★</button>`
     +(isT?'<span class=pmribbon>대표</span>':'')
+    +`<button type=button class=pmcap title="${hasCap?'세부 설명 편집 (더블클릭)':'세부 설명 추가 (더블클릭)'}">📝</button>`
     +`<button type=button class=pmx title="분류함에서 빼기(다시 더미로)">×</button></div>`;
 }
 function renderPmeta(){
@@ -887,11 +991,20 @@ function renderPmeta(){
   });
   $$('#pmeta .pmtile img').forEach(img=>{
     const path=img.closest('.pmtile').dataset.path;
+    let clickT=null;  // 단일클릭은 살짝 지연 — 더블클릭(세부 설명)이면 취소
     img.onmousedown=e=>{ if(e.shiftKey) e.preventDefault(); };
-    img.onclick=e=>{ e.stopPropagation(); photoSel(path,e); };
-    img.ondragstart=e=>{ PMDRAG=(PMSEL.has(path)&&PMSEL.size)?[...PMSEL]:[path];
+    img.onclick=e=>{ e.stopPropagation();
+      const mods={shiftKey:e.shiftKey,metaKey:e.metaKey,ctrlKey:e.ctrlKey};
+      if(clickT)clearTimeout(clickT);
+      clickT=setTimeout(()=>{ clickT=null; photoSel(path,mods); }, 230);
+    };
+    img.ondblclick=e=>{ e.stopPropagation(); if(clickT){clearTimeout(clickT);clickT=null;} openCapModal(path); };
+    img.ondragstart=e=>{ if(clickT){clearTimeout(clickT);clickT=null;} PMDRAG=(PMSEL.has(path)&&PMSEL.size)?[...PMSEL]:[path];
       e.dataTransfer.effectAllowed='move'; try{e.dataTransfer.setData('text/plain',path);}catch(_){}};
     img.ondragend=()=>{PMDRAG=null; $$('#pmeta .pmlane').forEach(l=>l.classList.remove('over'));};
+  });
+  $$('#pmeta .pmtile .pmcap').forEach(c=>{
+    c.onclick=e=>{ e.stopPropagation(); openCapModal(c.closest('.pmtile').dataset.path); };
   });
   $$('#pmeta .pmtile .pmx').forEach(x=>{
     x.onclick=e=>{ e.stopPropagation();
@@ -910,6 +1023,8 @@ function closeNP(){ $('#npmodal').style.display='none'; }
 function doNewPost(){  // 새 글: 입력·사진선택·분류·세부분류 비우기
   closeNP();
   $('#memo').value=''; $('#srcval').value=''; if(typeof setKind==='function')setKind('place',false);
+  { const kw=$('#keywords'); if(kw)kw.value=''; }
+  { const note=$('#kwnote'); if(note){note.textContent=''; note.style.display='none';} }
   SELP=[]; PHOTOMETA={}; THUMB=null; PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
   PLAN=null; const sv=$('#save'); if(sv)sv.disabled=true;
   const pv=$('#preview'); if(pv){ pv.className='doc empty'; pv.innerHTML='왼쪽에서 메모를 쓰고 [초안 생성]을 누르세요.'; }
@@ -1121,7 +1236,7 @@ $('#save').onclick=async()=>{if(!PLAN)return;
       notify('임시저장 완료 — 확인 필요', warns.join('\n'));
     }else{
       st(`임시저장 완료 ✓ ${sec}초 (네이버 글쓰기 › 저장 목록)`);
-      toast('임시저장 완료! 네이버 글쓰기 › 저장 목록에서 확인하세요.','ok');
+      successModal('임시저장 완료!', '네이버 <b>글쓰기 › 저장 목록</b>에서<br>확인하실 수 있어요.', `${sec}초 걸렸어요`);
       notify('임시저장 완료 ✓', '네이버 글쓰기 › 저장 목록에서 확인하세요.');
     }
   }catch(e){task.done(); st('임시저장 실패'); toast('임시저장 실패 — '+e.message,'err'); notify('임시저장 실패', e.message||'');}finally{BGSAVE=false; $('#save').disabled=false;}
@@ -1216,17 +1331,20 @@ $('#stickerall').onclick=function(){FMT.stickerAll=!FMT.stickerAll;
 
 // 글쓰기 설정(규칙·협찬·톤·카테고리) 서버 저장/복원 — 새로고침해도 유지
 async function savePrefs(){try{await fetch('/api/prefs',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,keywords:$('#keywords').value,minChars:$('#minchars').value,category:CATEGORY})});}catch(e){}}
+  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,minChars:$('#minchars').value,category:CATEGORY,pruneDrafts:PRUNE})});}catch(e){}}
 async function loadPrefs(){
+  let asked=true;
   try{const p=await (await fetch('/api/prefs')).json();
     if(p.rules)Object.assign(RULES,p.rules);
     if(p.fmt)Object.assign(FMT,p.fmt);
     if(typeof p.tone==='string')$('#tone').value=p.tone;
-    if(typeof p.keywords==='string')$('#keywords').value=p.keywords;
     if(p.minChars!=null)$('#minchars').value=p.minChars;
     if(typeof p.category==='string')setCategory(p.category);
+    if(typeof p.pruneDrafts==='boolean')PRUNE=p.pruneDrafts;
+    asked=!!p.pruneDraftsAsked;
   }catch(e){}
-  renderRules(); applyFmtState();
+  renderRules(); renderDraftSet(); applyFmtState();
+  if(!asked)askPrune();  // 최초 1회만: 자동 정리 켤지 물어봄
 }
 // 저장된 협찬/스티커 상태를 토글 UI에 반영(서식 칩은 제거됨)
 function applyFmtState(){
@@ -1242,6 +1360,25 @@ function renderRules(){const c=$('#rules'); c.innerHTML='';
     row.innerHTML=`<div><div class=t>${t}</div><div class=d>${d}</div></div><div class="sw ${RULES[k]?'on':''}"></div>`;
     row.querySelector('.sw').onclick=function(){RULES[k]=!RULES[k]; this.classList.toggle('on',RULES[k]); savePrefs();};
     c.appendChild(row);});
+}
+// 임시저장 정리 토글(설정)
+function renderDraftSet(){const c=$('#draftset'); if(!c)return; c.innerHTML='';
+  const row=document.createElement('div'); row.className='setrow';
+  row.innerHTML=`<div><div class=t>이전 임시저장 자동 정리</div>
+    <div class=d>새 글을 임시저장하면 <b>같은 제목</b>의 이전 임시저장 글을 삭제해 최신 1건만 남겨요. (네이버 임시저장 삭제는 복구 불가)</div></div>
+    <div class="sw ${PRUNE?'on':''}"></div>`;
+  row.querySelector('.sw').onclick=function(){PRUNE=!PRUNE; this.classList.toggle('on',PRUNE); savePrefs();};
+  c.appendChild(row);
+}
+// 최초 1회: 자동 정리를 켤지 물어본다(기본 켬). 어떤 선택이든 asked=true로 다시 안 묻는다.
+function askPrune(){
+  const apply=(on)=>{PRUNE=on; renderDraftSet();
+    fetch('/api/prefs',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({pruneDrafts:on,pruneDraftsAsked:true})}).catch(()=>{});
+    toast(on?'이전 임시저장 자동 정리를 켰어요. (설정에서 끌 수 있어요)':'자동 정리는 꺼둘게요. (설정에서 켤 수 있어요)','ok');};
+  confirmModal('이전 임시저장 글을 자동으로 정리할까요?',
+    '앞으로 새 글을 임시저장할 때마다, <b>같은 제목</b>의 이전 임시저장 글을 삭제해 최신 1건만 남겨둬요.<br>서로 다른 글은 건드리지 않고, 삭제는 복구되지 않아요. 설정에서 언제든 끌 수 있어요.',
+    '네, 자동 정리','아니요',()=>apply(true),()=>apply(false));
 }
 // provider별 메타: 라벨·키 발급처·플레이스홀더
 const PROV={
@@ -1481,6 +1618,9 @@ $('#npmodal').onclick=e=>{ if(e.target===$('#npmodal'))closeNP(); };
 $('#catok').onclick=catSubmit; $('#catx').onclick=closeCatModal; $('#catcancel').onclick=closeCatModal;
 $('#catinput').onkeydown=e=>{ if(e.key==='Enter')catSubmit(); else if(e.key==='Escape')closeCatModal(); };
 $('#catmodal').onclick=e=>{ if(e.target===$('#catmodal'))closeCatModal(); };
+$('#capok').onclick=capSubmit; $('#capx').onclick=closeCapModal; $('#capcancel').onclick=closeCapModal;
+$('#capinput').onkeydown=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))capSubmit(); else if(e.key==='Escape')closeCapModal(); };
+$('#capmodal').onclick=e=>{ if(e.target===$('#capmodal'))closeCapModal(); };
 </script></body></html>"""
 
 
@@ -1960,12 +2100,22 @@ def _make_handler(state: dict):
                 self._send(400, json.dumps({"error": "먼저 초안을 생성하세요"}).encode())
                 return
             category = (body.get("category") or "").strip() or None
-            pub = BlogPublisher(headless=False)
+            prune = bool(_load_prefs().get("pruneDrafts", True))  # 설정 토글(기본 켬)
+
+            # 임시저장(submit=False)은 사람 확인이 필요 없으니 평소엔 백그라운드(headless).
+            # 단, 저장된 세션이 만료돼 로그인이 필요하면 화면에 창을 띄워(headful) 직접 로그인하게 한다.
+            pub = BlogPublisher(headless=True)
             pub.start()
             try:
-                if not pub.wait_for_login():
-                    raise RuntimeError("네이버 로그인이 필요합니다")
-                warnings = pub.publish(result.plan, category=category, save=True, submit=False)
+                if not pub.is_logged_in():
+                    pub.close()
+                    pub = BlogPublisher(headless=False)
+                    pub.start()
+                    if not pub.wait_for_login():
+                        raise RuntimeError("네이버 로그인이 필요합니다")
+                warnings = pub.publish(
+                    result.plan, category=category, save=True, submit=False, prune_same_title=prune
+                )
             finally:
                 pub.close()
             self._send(200, json.dumps({"ok": True, "warnings": warnings or []}).encode())
@@ -2027,6 +2177,9 @@ _PREFS_DEFAULT = {
     "keywords": "",
     "minChars": DEFAULT_MIN_CHARS,
     "category": "",
+    # 임시저장 시 같은 제목의 이전 임시저장 글 자동 정리(기본 켬). asked는 최초 1회 안내 노출 여부.
+    "pruneDrafts": True,
+    "pruneDraftsAsked": False,
 }
 
 
@@ -2083,6 +2236,10 @@ def _save_prefs(body: dict) -> None:
             cur["minChars"] = DEFAULT_MIN_CHARS
     if "category" in body:
         cur["category"] = body.get("category") or ""
+    if "pruneDrafts" in body:
+        cur["pruneDrafts"] = bool(body.get("pruneDrafts"))
+    if "pruneDraftsAsked" in body:
+        cur["pruneDraftsAsked"] = bool(body.get("pruneDraftsAsked"))
     PREFS_PATH.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
