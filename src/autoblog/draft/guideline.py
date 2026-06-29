@@ -7,7 +7,19 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, Field
+
+# 글자 수 세기는 네이버 카운터(공백 제외) 기준 — 줄 단독 마커는 화면에 안 보이므로 제외한다.
+# [사진]/[사진:음식], [지도]/[지도:가게], [스티커:상황], [구분선], [인용구]/[/인용구] 등.
+_MARKER_RE = re.compile(r"\[/?(?:사진|지도|스티커|구분선|인용구)(?::[^\]]*)?\]")
+
+
+def count_chars(text: str) -> int:
+    """네이버 글자 수 세기(공백 제외) 기준 순수 텍스트 길이 — 마커·공백·줄바꿈 제외."""
+    body = _MARKER_RE.sub("", text)
+    return len(re.sub(r"\s", "", body))
 
 
 class Guidelines(BaseModel):
@@ -46,7 +58,11 @@ class Guidelines(BaseModel):
         if self.forbidden_expressions:
             lines.append(f"- 금지 표현(쓰지 말 것): {', '.join(self.forbidden_expressions)}")
         if self.min_chars:
-            lines.append(f"- 최소 글자 수: {self.min_chars}자 이상")
+            lines.append(
+                f"- 최소 글자 수: 순수 본문 텍스트만 {self.min_chars}자 이상"
+                "(네이버 글자 수 세기 프로그램 기준·공백 제외). "
+                "엔터(줄바꿈)와 [사진]·[지도]·[스티커]·[구분선]·[인용구] 같은 마커는 글자 수에 포함하지 마세요."
+            )
         if self.min_photos:
             lines.append(f"- 사진 최소 {self.min_photos}장(본문에 사진 자리 표시)")
         return "\n".join(lines)
@@ -64,7 +80,7 @@ def check_guidelines(
     """초안을 가이드라인과 자동 대조 → 체크리스트(반려 방지)."""
     results: list[CheckItem] = []
     text = draft
-    length = len(draft.replace(" ", "").replace("\n", ""))
+    length = count_chars(draft)
 
     for kw in guidelines.required_keywords:
         results.append(CheckItem(item=f"키워드 '{kw}'", ok=kw in text))
