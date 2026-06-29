@@ -88,6 +88,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .spin{width:13px;height:13px;border:2px solid #d6dade;border-top-color:var(--green);border-radius:50%;animation:sp .7s linear infinite;display:none}
  @keyframes sp{to{transform:rotate(360deg)}}
  .loading .spin{display:inline-block}
+ /* 타자기 효과: 한 글자씩 나오는 동안 깜빡이는 캐럿 표시(대기 문구용) */
+ .typing::after{content:'';display:inline-block;width:2px;height:1.02em;margin-left:2px;border-radius:1px;background:currentColor;vertical-align:text-bottom;animation:cur .8s step-end infinite}
+ @keyframes cur{50%{opacity:0}}
+ .spincount{color:var(--sub)}
  /* 수집 종류(맛집/상품) — 크게 잘 보이게 */
  .kindseg{display:flex;gap:8px;margin-top:8px}
  .kindseg button{flex:1;padding:12px;font-size:14px;font-weight:800;background:#fff;color:#9aa3ad;border:2px solid #e0e3e7;border-radius:11px;cursor:pointer;transition:.12s}
@@ -538,23 +542,40 @@ function centerAlert(msg,kind='err'){
 // 실측 경과시간 카운터 — 가짜 %가 아니라 '진짜로 얼마나 걸리는지'를 보여줌.
 // requestAnimationFrame으로 0.1초 단위 표시가 바뀔 때만 갱신해 숫자가 자연스럽게 올라가고,
 // 글자만 바꾸므로 스피너 회전이 끊기지 않는다. render(plainText, sec)로 갱신, stop()은 멈추고 총 초(소수1).
+// 타자기 효과: 문구를 한 글자씩 출력(대기 화면 공통). 같은 문구면 무시해 깜빡임 방지.
+function typeText(el, text){
+  if(!el) return;
+  text=text||'';
+  if(el._ttTarget===text) return;            // 인터벌이 같은 문구로 반복 호출해도 재시작 안 함
+  el._ttTarget=text;
+  if(el._ttTimer){clearInterval(el._ttTimer); el._ttTimer=null;}
+  el.classList.add('typing'); el.textContent=''; let i=0;
+  const step=()=>{ i++; el.textContent=text.slice(0,i);
+    if(i>=text.length){ clearInterval(el._ttTimer); el._ttTimer=null; el.classList.remove('typing'); } };
+  step(); el._ttTimer=setInterval(step, 26);  // 첫 글자 즉시, 이후 26ms 간격
+}
 function elapsed(label, render){
   const t0=Date.now();
   const fmt=s=>s<10?s.toFixed(1):Math.round(s);
   let raf, last=null;
   const tick=()=>{
     const s=(Date.now()-t0)/1000, shown=fmt(s);
-    if(shown!==last){ last=shown; render(`${label} ${shown}초 경과…`, s); }
+    if(shown!==last){ last=shown; render(label, `${shown}초 경과…`, s); }
     raf=requestAnimationFrame(tick);
   };
   tick();
   return {stop(){if(raf)cancelAnimationFrame(raf); return +((Date.now()-t0)/1000).toFixed(1);}};
 }
-// 컨테이너에 스피너를 한 번만 그리고 글자만 바꾸는 setter를 돌려준다(rAF로 자주 갱신해도 회전이 안 끊김).
+// 스피너 + 타자기 라벨 + 경과시간 카운터. 라벨은 처음 한 번만 한 글자씩 출력하고,
+// 타이핑이 끝난 뒤에야 카운터가 따라붙는다(타이핑 중엔 카운터 숨김).
 function spinRow(el){
-  el.innerHTML='<span class=loading><span class=spin></span></span> <span class=spintext></span>';
-  const txt=el.querySelector('.spintext');
-  return t=>{txt.textContent=t;};
+  el.innerHTML='<span class=loading><span class=spin></span></span> <span class=spintext></span><span class=spincount></span>';
+  const txt=el.querySelector('.spintext'), cnt=el.querySelector('.spincount');
+  let typed=false;
+  return (label, counter)=>{
+    if(!typed){ typed=true; typeText(txt, label); }
+    cnt.textContent = txt._ttTimer ? '' : (counter ? (' '+counter) : '');
+  };
 }
 // 수집 종류: 'place'(맛집·기본) | 'product'(상품). 입력으로 자동 추정하되 직접 고르면 고정.
 let SRCKIND='place', KINDMANUAL=false;
@@ -873,7 +894,7 @@ function doNewPost(){  // 새 글: 입력·사진선택·분류·세부분류 �
 }
 async function runAiCaption(){
   const btn=$('#aibtn'); if(!btn)return; btn.disabled=true; const old=btn.textContent;
-  const el=elapsed(`사진 ${SELP.length}장 분석 중…`, t=>btn.textContent=t);
+  const el=elapsed(`사진 ${SELP.length}장 분석 중…`, (label,counter)=>btn.textContent=label+(counter?' '+counter:''));
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,reviewType:SRCKIND};
     const r=await fetch('/api/photos/caption',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
@@ -892,16 +913,17 @@ const GENMSGS=[[0,'메모를 읽는 중…'],[18,'글을 쓰는 중…'],[50,'�
 function genLoading(){
   $('#preview').classList.add('empty');
   $('#preview').innerHTML=`<div class=genload><div class=genchar id=genchar>🐥</div>
-    <div class=genmsg id=genmsg>메모를 읽는 중…</div>
+    <div class=genmsg id=genmsg></div>
     <div class=genbar><div class=genfill id=genfill></div></div>
     <div class=genpct id=genpct>0%</div>
     <div class=gensub id=gensub>로컬 AI가 직접 글을 써요 · 보통 30~60초</div></div>`;
+  typeText($('#genmsg'), '메모를 읽는 중…');  // 첫 문구도 한 글자씩
   let pct=0, ci=0; GENT0=Date.now();
   GENTIMER=setInterval(()=>{
     pct+=Math.max(0.4,(96-pct)*0.035); if(pct>96)pct=96;
     const fl=$('#genfill'); if(!fl){clearInterval(GENTIMER);return;}
     fl.style.width=pct+'%'; $('#genpct').textContent=Math.floor(pct)+'%';
-    const m=GENMSGS.filter(x=>pct>=x[0]).pop(); if(m)$('#genmsg').textContent=m[1];
+    const m=GENMSGS.filter(x=>pct>=x[0]).pop(); if(m)typeText($('#genmsg'), m[1]);
     ci++; $('#genchar').textContent=GENCHARS[ci%GENCHARS.length];
     const sb=$('#gensub'); if(sb)sb.textContent=`로컬 AI가 직접 글을 써요 · ${Math.round((Date.now()-GENT0)/1000)}초 경과`;
   },700);
@@ -930,7 +952,7 @@ function expLoading(on){
   $('#ploading').style.display=on?'block':'none'; $('#pcontent').style.display=on?'none':'block';
   if(EXPTIMER){clearInterval(EXPTIMER);EXPTIMER=null;}
   if(on){$('#pmodal').style.display='flex'; let pct=0,ci=0;
-    $('#pfill').style.width='0%'; $('#ppct').textContent='0%'; $('#pmsg').textContent='자료를 준비하는 중…';
+    $('#pfill').style.width='0%'; $('#ppct').textContent='0%'; typeText($('#pmsg'),'자료를 준비하는 중…');
     // 진행바·스피너만 부드럽게 굴리고, 문구는 서버가 보내는 실제 단계로 갱신(expStage)
     EXPTIMER=setInterval(()=>{pct+=Math.max(1,(96-pct)*0.08); if(pct>96)pct=96;
       const fl=$('#pfill'); if(!fl){clearInterval(EXPTIMER);return;}
@@ -938,7 +960,7 @@ function expLoading(on){
       ci++; $('#pchar').textContent=EXPCHARS[ci%EXPCHARS.length];},650);
   }else{const fl=$('#pfill'); if(fl)fl.style.width='100%'; $('#ppct').textContent='100%';}
 }
-function expStage(msg){const m=$('#pmsg'); if(m&&msg)m.textContent=msg;}
+function expStage(msg){if(msg)typeText($('#pmsg'), msg);}
 $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
   $('#export').disabled=true; expLoading(true);
@@ -1049,10 +1071,11 @@ $('#catload').onclick=async()=>{
 // 백그라운드 작업 칩 — 코너에 스피너+경과시간을 띄우고, done()이 부드럽게 닫는다.
 function bgTask(label){
   const el=document.createElement('div'); el.className='bgtask';
-  el.innerHTML='<span class=spin></span><span class=bgtext></span>';
-  const txt=el.querySelector('.bgtext');
+  el.innerHTML='<span class=spin></span><span class=bgtext></span><span class=spincount></span>';
+  const txt=el.querySelector('.bgtext'), cnt=el.querySelector('.spincount');
   $('#bgtasks').appendChild(el);
-  const e=elapsed(label, t=>txt.textContent=t);
+  let typed=false;
+  const e=elapsed(label, (lbl,counter)=>{ if(!typed){typed=true; typeText(txt,lbl);} cnt.textContent=txt._ttTimer?'':(counter?' '+counter:''); });
   return {done(){const sec=e.stop(); el.classList.add('out'); setTimeout(()=>el.remove(),200); return sec;}};
 }
 let BGSAVE=false;
