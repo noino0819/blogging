@@ -69,8 +69,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .card h3{font-size:13px;margin:0 0 12px;color:#374151}
  label.f{display:block;font-size:12px;color:#6b7280;margin:14px 0 6px;font-weight:600}
  label.f:first-child{margin-top:0}
- input[type=text],textarea{width:100%;border:1px solid #d6dade;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;background:#fbfcfd}
- input[type=text]:focus,textarea:focus{outline:2px solid #03c75a33;border-color:var(--green)}
+ input[type=text],input[type=number],textarea{width:100%;border:1px solid #d6dade;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;background:#fbfcfd}
+ input[type=text]:focus,input[type=number]:focus,textarea:focus{outline:2px solid #03c75a33;border-color:var(--green)}
+ input[type=number]{-moz-appearance:textfield}
+ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
  textarea{min-height:130px;resize:vertical;line-height:1.6}
  .seg{display:flex;gap:6px}
  .seg button{flex:1;padding:9px;font-size:12px;background:#fff;color:#6b7280;border:1px solid #d6dade;border-radius:9px;cursor:pointer;font-weight:600}
@@ -539,6 +541,28 @@ function centerAlert(msg,kind='err'){
   bg.onclick=e=>{if(e.target===bg)close();};
   document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
   $('#alerthost').appendChild(bg);bg.querySelector('.btn').focus();}
+// 자동 삽입 실패 항목 목록을 꼭 봐야 하는 모달로 표시(유저가 직접 닫아야 함).
+function warnModal(title, items){
+  const lis=(items||[]).map(s=>'<li>'+String(s).replace(/</g,'&lt;')+'</li>').join('');
+  const bg=document.createElement('div');bg.className='alertbg';
+  bg.innerHTML=`<div class="alertcard info"><div class=ai>⚠️</div>
+    <div class=at>${title}</div>
+    <ul class=am style="text-align:left;margin:6px 0;padding-left:20px;line-height:1.6">${lis}</ul>
+    <div class=ab><button class=btn>확인</button></div></div>`;
+  const close=()=>bg.remove();
+  bg.querySelector('.btn').onclick=close;
+  bg.onclick=e=>{if(e.target===bg)close();};
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
+  $('#alerthost').appendChild(bg);bg.querySelector('.btn').focus();}
+// 브라우저(크롬) 알림 — 유저가 다른 탭/창에 가 있어도 결과를 알린다. 권한은 저장 클릭 시 요청.
+function ensureNotify(){try{if('Notification'in window&&Notification.permission==='default')Notification.requestPermission();}catch(e){}}
+function notify(title, body){
+  try{
+    if(!('Notification'in window)||Notification.permission!=='granted')return;
+    const n=new Notification(title,{body:body||'',tag:'autoblog-publish',renotify:true});
+    n.onclick=()=>{window.focus();n.close();};
+  }catch(e){}
+}
 // 실측 경과시간 카운터 — 가짜 %가 아니라 '진짜로 얼마나 걸리는지'를 보여줌.
 // requestAnimationFrame으로 0.1초 단위 표시가 바뀔 때만 갱신해 숫자가 자연스럽게 올라가고,
 // 글자만 바꾸므로 스피너 회전이 끊기지 않는다. render(plainText, sec)로 갱신, stop()은 멈추고 총 초(소수1).
@@ -1930,10 +1954,10 @@ def _make_handler(state: dict):
             try:
                 if not pub.wait_for_login():
                     raise RuntimeError("네이버 로그인이 필요합니다")
-                pub.publish(result.plan, category=category, save=True, submit=False)
+                warnings = pub.publish(result.plan, category=category, save=True, submit=False)
             finally:
                 pub.close()
-            self._send(200, b'{"ok":true}')
+            self._send(200, json.dumps({"ok": True, "warnings": warnings or []}).encode())
 
         def _list_drafts(self):
             """네이버 임시저장 글 목록을 읽어 [{idx,title,date}]로 반환."""
@@ -2223,12 +2247,15 @@ def _save_emphasis_config(data: dict) -> None:
 
     path = _EMPHASIS_CONFIG_PATH
     raw = path.read_text(encoding="utf-8") if path.exists() else ""
-    raw = re.sub(r"(?ms)^cycling_pool:\n(?:[ \t]+.*\n?)*", "", raw)
-    raw = re.sub(r"(?ms)^negative_pool:\n(?:[ \t]+.*\n?)*", "", raw)
-    raw = re.sub(r"(?ms)^fixed_map:\n(?:[ \t]+.*\n?)*", "", raw)
-    raw = re.sub(r"(?ms)^max_per_paragraph:.*\n?", "", raw)
-    raw = re.sub(r"(?ms)^min_per_paragraph:.*\n?", "", raw)
-    raw = re.sub(r"(?ms)^min_sentence_gap:.*\n?", "", raw)
+    # 밀도 블록 헤더 주석(중복 누적 방지) + 각 키 제거 후 끝에 다시 쓴다.
+    # 주의: (?m)만 — DOTALL(s)을 쓰면 .* 가 줄바꿈을 넘어 파일 끝까지 먹어 뒤 블록을 통째로 삭제한다.
+    raw = re.sub(r"\n*# 강조 배정 설정 \(서식 탭에서 편집\)[^\n]*\n", "\n", raw)
+    raw = re.sub(r"(?m)^cycling_pool:\n(?:[ \t]+.*\n?)*", "", raw)
+    raw = re.sub(r"(?m)^negative_pool:\n(?:[ \t]+.*\n?)*", "", raw)
+    raw = re.sub(r"(?m)^fixed_map:\n(?:[ \t]+.*\n?)*", "", raw)
+    raw = re.sub(r"(?m)^max_per_paragraph:.*\n?", "", raw)
+    raw = re.sub(r"(?m)^min_per_paragraph:.*\n?", "", raw)
+    raw = re.sub(r"(?m)^min_sentence_gap:.*\n?", "", raw)
     body = {}
     if cfg.cycling_pool:
         body["cycling_pool"] = cfg.cycling_pool
@@ -2290,7 +2317,7 @@ def _save_emphasis_style(preset_id, style: dict) -> None:
     path = _EMPHASIS_CONFIG_PATH
     raw = path.read_text(encoding="utf-8") if path.exists() else ""
     raw = re.sub(r"\n*# 색\(강조\)별 글자색[^\n]*\n", "\n", raw)
-    raw = re.sub(r"(?ms)^styles:\n(?:[ \t]+.*\n?)*", "", raw)
+    raw = re.sub(r"(?m)^styles:\n(?:[ \t]+.*\n?)*", "", raw)
     block = ""
     if styles:
         # 빈 속성은 빼고 깔끔히 덤프(색마다 설정한 값만).
@@ -2329,7 +2356,7 @@ def _save_emphasis_preset_tag(preset_id, tag: str) -> None:
     raw = path.read_text(encoding="utf-8") if path.exists() else ""
     # 기존 preset_tags 블록(헤더 주석 + 매핑) 제거 후 끝에 다시 쓴다.
     raw = re.sub(r"\n*# 프리셋\(강조색\)별 태그[^\n]*\n", "\n", raw)
-    raw = re.sub(r"(?ms)^preset_tags:\n(?:[ \t]+.*\n?)*", "", raw)
+    raw = re.sub(r"(?m)^preset_tags:\n(?:[ \t]+.*\n?)*", "", raw)
     block = ""
     if pt:
         body = yaml.safe_dump({"preset_tags": dict(sorted(pt.items()))},

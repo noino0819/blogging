@@ -26,3 +26,6 @@ styles:
     text_color: '#be123c'
     background_color: '#ffe4e6'
     bold: true
+
+# 강조 배정 설정 (서식 탭에서 편집) — 순환 풀, 고정 매핑, 밀도 규칙
+min_per_paragraph: 1
