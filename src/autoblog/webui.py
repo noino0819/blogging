@@ -642,9 +642,9 @@ function warnModal(title, items){
   document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
   $('#alerthost').appendChild(bg);bg.querySelector('.btn').focus();}
 // 예/아니오 확인 모달(최초 1회 안내 등). onYes/onNo 콜백. 배경/Esc는 '아니오'로 닫힘.
-function confirmModal(title, desc, yesLabel, noLabel, onYes, onNo){
+function confirmModal(title, desc, yesLabel, noLabel, onYes, onNo, icon){
   const bg=document.createElement('div');bg.className='alertbg';
-  bg.innerHTML=`<div class="alertcard info"><div class=ai>🗑️</div>
+  bg.innerHTML=`<div class="alertcard info"><div class=ai>${icon||'🗑️'}</div>
     <div class=at>${title}</div>
     <div class=am style="text-align:left;margin:6px 0;line-height:1.6;color:var(--sub);font-size:13px">${desc}</div>
     <div class=ab style="display:flex;gap:8px;justify-content:center">
@@ -1290,29 +1290,48 @@ function bgTask(label){
   const e=elapsed(label, (lbl,counter)=>{ if(!typed){typed=true; typeText(txt,lbl);} cnt.textContent=txt._ttTimer?'':(counter?' '+counter:''); });
   return {done(){const sec=e.stop(); el.classList.add('out'); setTimeout(()=>el.remove(),200); return sec;}};
 }
-let BGSAVE=false;
-$('#save').onclick=async()=>{if(!PLAN)return;
-  if(BGSAVE){toast('이미 백그라운드에서 임시저장 중이에요. 잠시만요.','info');return;}
+// 임시저장은 '쏘고 넘어가는' 방식 — 누르면 뒤(백그라운드)로 보내고, 바로 새 글로 갈지 묻는다.
+// 연속으로 눌러도 막지 않고 쌓이며, 서버가 한 건씩 순서대로 처리한다(대기열).
+let SAVE_QUEUE=0;  // 진행 중/대기 중인 임시저장 건수
+function updateSaveHint(){
+  if(SAVE_QUEUE>0) st(`백그라운드 임시저장 ${SAVE_QUEUE}건 진행 중… 다른 작업 계속하셔도 돼요.`);
+}
+// 한 건을 백그라운드로 게시. 지금 화면 상태와 무관하게 '누른 그 글'을 저장한다
+// (제목·카테고리는 클릭 시점 값으로 고정해 넘긴다).
+function fireSave(title, category){
+  SAVE_QUEUE++; updateSaveHint();
+  const task=bgTask(`'${title}' 임시저장 중…`);
+  fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category})})
+    .then(async r=>{
+      const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'알 수 없는 오류');
+      const sec=task.done();
+      const warns=d.warnings||[];
+      if(warns.length){
+        warnModal(`'${title}' 임시저장됨 — 일부 항목 확인 필요`,
+          warns.concat(['네이버 글쓰기 › 저장 목록에서 글을 열어 직접 보완해 주세요.']));
+        notify('임시저장 완료 — 확인 필요', warns.join('\n'));
+      }else{
+        toast(`'${title}' 임시저장 완료 ✓ (${sec}초) — 네이버 글쓰기 › 저장 목록`,'ok');
+        notify('임시저장 완료 ✓', `'${title}' — 네이버 글쓰기 › 저장 목록`);
+      }
+    })
+    .catch(e=>{ task.done(); toast(`'${title}' 임시저장 실패 — ${e.message}`,'err'); notify('임시저장 실패', e.message||'');
+      if(PLAN) $('#save').disabled=false; })  // 글을 그대로 두고 있으면 다시 저장(재시도) 가능
+    .finally(()=>{ SAVE_QUEUE--; updateSaveHint(); if(SAVE_QUEUE===0) st('임시저장 대기열이 모두 끝났어요 ✓'); });
+}
+$('#save').onclick=()=>{
+  if(!PLAN)return;
   ensureNotify();  // 유저 클릭(제스처) 시점에 알림 권한 요청 — 자리 비워도 결과 알림 받게
-  BGSAVE=true; $('#save').disabled=true;
-  st('백그라운드에서 임시저장 중… 다른 작업을 계속하셔도 돼요.');
-  const task=bgTask('네이버에 임시저장 중…');
-  try{const r=await fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category:CATEGORY})});
-    const d=await r.json();
-    if(!r.ok){throw new Error(d.error||'알 수 없는 오류');}
-    const sec=task.done();
-    const warns=d.warnings||[];
-    if(warns.length){
-      st(`임시저장 완료 ✓ ${sec}초 — 일부 항목은 자동 삽입에 실패했어요`);
-      warnModal('임시저장은 됐지만, 아래 항목은 빠졌어요',
-        warns.concat(['네이버 글쓰기 › 저장 목록에서 글을 열어 직접 보완해 주세요.']));
-      notify('임시저장 완료 — 확인 필요', warns.join('\n'));
-    }else{
-      st(`임시저장 완료 ✓ ${sec}초 (네이버 글쓰기 › 저장 목록)`);
-      successModal('임시저장 완료!', '네이버 <b>글쓰기 › 저장 목록</b>에서<br>확인하실 수 있어요.', `${sec}초 걸렸어요`);
-      notify('임시저장 완료 ✓', '네이버 글쓰기 › 저장 목록에서 확인하세요.');
-    }
-  }catch(e){task.done(); st('임시저장 실패'); toast('임시저장 실패 — '+e.message,'err'); notify('임시저장 실패', e.message||'');}finally{BGSAVE=false; $('#save').disabled=false;}
+  const title=PLAN.title||'제목 없음';
+  // 1) 저장을 즉시 백그라운드 대기열로 보낸다(기다리지 않음).
+  fireSave(title, CATEGORY);
+  // 2) 같은 글 중복 저장 방지 — 다음 [초안 생성]/[받아온 글]에서 다시 활성화된다.
+  $('#save').disabled=true;
+  // 3) 바로 "새 글 쓸까요?" 확인 — 확인하면 폼을 비우고 다음 글로 넘어간다.
+  confirmModal('임시저장을 시작했어요',
+    '저장은 뒤에서 진행돼요. 새 글을 작성할까요?<br><span style="color:var(--sub)">지금 메모·사진·미리보기는 비워집니다.</span>',
+    '새 글 작성', '이 글 유지', doNewPost, null, '📝');
 };
 
 // 스티커 탭
@@ -2302,6 +2321,9 @@ def _make_handler(state: dict):
         def _publish(self, body):
             from autoblog.publish.editor import BlogPublisher
 
+            # 게시할 플랜은 '요청이 들어온 시점'의 초안으로 고정한다(락 대기 전에 스냅샷).
+            # 유저가 저장을 누른 뒤 곧바로 새 글을 써서 state["last"]가 바뀌어도,
+            # 이 요청은 방금 누른 그 글을 저장한다(연속 저장이 안 섞이게).
             result = state.get("last")
             if not result:
                 self._send(400, json.dumps({"error": "먼저 초안을 생성하세요"}).encode())
@@ -2309,22 +2331,25 @@ def _make_handler(state: dict):
             category = (body.get("category") or "").strip() or None
             prune = bool(_load_prefs().get("pruneDrafts", True))  # 설정 토글(기본 켬)
 
-            # 임시저장(submit=False)은 사람 확인이 필요 없으니 평소엔 백그라운드(headless).
-            # 단, 저장된 세션이 만료돼 로그인이 필요하면 화면에 창을 띄워(headful) 직접 로그인하게 한다.
-            pub = BlogPublisher(headless=True)
-            pub.start()
-            try:
-                if not pub.is_logged_in():
+            # 연속으로 저장을 눌러도 한 건씩 순서대로 처리한다(대기열). 락을 못 잡으면
+            # 앞 건이 끝날 때까지 이 스레드가 대기 → 헤드리스 브라우저가 하나만 뜬다.
+            with state["publish_lock"]:
+                # 임시저장(submit=False)은 사람 확인이 필요 없으니 평소엔 백그라운드(headless).
+                # 단, 저장된 세션이 만료돼 로그인이 필요하면 화면에 창을 띄워(headful) 직접 로그인하게 한다.
+                pub = BlogPublisher(headless=True)
+                pub.start()
+                try:
+                    if not pub.is_logged_in():
+                        pub.close()
+                        pub = BlogPublisher(headless=False)
+                        pub.start()
+                        if not pub.wait_for_login():
+                            raise RuntimeError("네이버 로그인이 필요합니다")
+                    warnings = pub.publish(
+                        result.plan, category=category, save=True, submit=False, prune_same_title=prune
+                    )
+                finally:
                     pub.close()
-                    pub = BlogPublisher(headless=False)
-                    pub.start()
-                    if not pub.wait_for_login():
-                        raise RuntimeError("네이버 로그인이 필요합니다")
-                warnings = pub.publish(
-                    result.plan, category=category, save=True, submit=False, prune_same_title=prune
-                )
-            finally:
-                pub.close()
             self._send(200, json.dumps({"ok": True, "warnings": warnings or []}).encode())
 
         def _list_drafts(self):
@@ -3021,6 +3046,9 @@ def serve_ui(host: str = "127.0.0.1", port: int = 8770) -> ThreadingHTTPServer:
         "last": None,
         "thumbs": {},
         "label": {"running": False, "done": 0, "total": 0},
+        # 임시저장을 한 건씩 순서대로 처리하는 직렬화 락(여러 건을 연속으로 눌러도
+        # 헤드리스 브라우저/세션이 동시에 뜨지 않게 한 번에 하나만 게시한다).
+        "publish_lock": threading.Lock(),
     }
     ThreadingHTTPServer.request_queue_size = 128  # 동시 요청(이미지 다발) 대비 backlog 확대
     ThreadingHTTPServer.allow_reuse_address = True
