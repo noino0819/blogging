@@ -219,6 +219,7 @@ class EmphasisConfig(BaseModel):
     # 색(프리셋ID)마다 글자색·배경·굵게·폰트·크기를 UI(서식 탭)에서 직접 편집. 있으면 파워 단축키/내장보다 우선.
     styles: dict[int, EmphasisStyle] = Field(default_factory=dict)
     max_per_paragraph: int | None = None  # (옵션) 문단당 강조 개수 상한
+    min_per_paragraph: int | None = None  # (옵션) 문단당 강조 개수 하한 — 프롬프트 지시로만 강제(후처리는 못 늘림)
     min_sentence_gap: int | None = None  # (옵션) 강조 간 최소 문장 간격
 
     def tag_pools(self) -> dict[str, list[int]]:
@@ -317,7 +318,15 @@ def build_emphasis_instruction(config: "EmphasisConfig | None" = None) -> str:
     config = config or EmphasisConfig()
     pools = config.tag_pools()
     lanes = [t for t in pools if pools[t]] or ["강조"]  # 색이 배정된 갈래만
-    max_p = config.max_per_paragraph or 2
+    min_p = config.min_per_paragraph
+    max_p = config.max_per_paragraph
+    # 분량 안내 — 하한(min) 설정이 있으면 "문단마다 N개 이상"을 명시(강조가 빠진 문단이 없도록).
+    if min_p and max_p:
+        amount = f"한 문단에 {min_p}~{max_p}군데(문단마다 최소 {min_p}군데는 꼭)"
+    elif min_p:
+        amount = f"한 문단마다 최소 {min_p}군데 이상(강조가 하나도 없는 문단이 없게)"
+    else:
+        amount = f"한 문단에 최대 {max_p or 2}군데(강조가 없는 문단도 있을 수 있음)"
     menu = "\n".join(f"  · {t} — {LANE_DESC.get(t, t)}" for t in lanes)
     ex1 = f"<<{lanes[0]}:비주얼이 진짜 미쳤어요>>"
     neg = next((t for t in lanes if t in ("부정", "주의")), None)
@@ -326,7 +335,7 @@ def build_emphasis_instruction(config: "EmphasisConfig | None" = None) -> str:
     return (
         "[강조 표시] 각 문단에서 독자가 주목했으면 하는 핵심 어구를 네가 직접 판단해 "
         "색을 입힙니다 — 권장이 아니라 반드시 사용하세요.\n"
-        f"분량: 한 문단에 최대 {max_p}군데(강조가 없는 문단도 있을 수 있음), 글 전체에서 5군데 이상.\n"
+        f"분량: {amount}, 글 전체에서 5군데 이상.\n"
         "방법: 강조할 짧은 어구(문장 전체 말고 핵심 한두 단어~한 구절)를 골라 << >> 로 감싸고, "
         "콜론 앞에 그 어구의 성격에 맞는 갈래를 적습니다 → <<갈래:어구>>\n"
         "갈래(어구 성격에 맞는 것 하나로):\n"
