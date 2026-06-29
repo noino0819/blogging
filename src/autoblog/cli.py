@@ -325,10 +325,9 @@ def ui(
 
 @app.command()
 def doctor():
-    """환경 점검 — API 키/Ollama 설정 여부 + 검색 API 라이브 호출."""
+    """환경 점검 — API 키 설정 여부 + 검색 API 라이브 호출."""
     from autoblog.collect.place import ping_search_api
-
-    import requests
+    from autoblog.config import provider_for_model
 
     env = load_env()
     typer.echo(f"네이버 검색 API : {'설정됨' if env.has_naver_api else '미설정 (.env)'}")
@@ -336,17 +335,20 @@ def doctor():
     typer.echo(f"검색 API 라이브 : {'OK' if ok else msg}")
 
     cfg = load_models_config()
-    vision_model = cfg.effective().vision
-    try:
-        tags = requests.get(f"{env.ollama_host}/api/tags", timeout=3).json()
-        installed = {m["name"] for m in tags.get("models", [])}
-        typer.echo(f"Ollama         : OK ({env.ollama_host})")
-        has_vision = vision_model in installed
-        typer.echo(
-            f"비전 모델       : {'OK' if has_vision else f'미설치 (ollama pull {vision_model})'} [{vision_model}]"
-        )
-    except requests.RequestException:
-        typer.echo(f"Ollama         : 미실행 ({env.ollama_host}) — ollama serve")
+    eff = cfg.effective()
+    key_for = {
+        "anthropic": ("ANTHROPIC_API_KEY", env.anthropic_api_key),
+        "openai": ("OPENAI_API_KEY", env.openai_api_key),
+        "gemini": ("GEMINI_API_KEY", env.gemini_api_key),
+    }
+    for label, model in (("텍스트 모델", eff.text), ("비전 모델", eff.vision)):
+        prov = provider_for_model(model)
+        env_name, val = key_for.get(prov, (None, None))
+        if env_name is None:
+            status = "미지원 모델 — API(claude/gpt/gemini)로 설정 필요"
+        else:
+            status = "OK" if val else f"키 미설정 ({env_name})"
+        typer.echo(f"{label}      : {status} [{model}]")
 
 
 stickers_app = typer.Typer(help="스티커 카탈로그 — 불러오기/라벨링/검수")

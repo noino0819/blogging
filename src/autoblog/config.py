@@ -21,7 +21,7 @@ load_dotenv(REPO_ROOT / ".env")
 
 
 def provider_for_model(model: str) -> str:
-    """모델명으로 텍스트 생성 제공자 판별. 그 외(로컬)는 'ollama'.
+    """모델명으로 제공자 판별. API 전용이라 그 외는 'unknown'(미지원).
 
     라우팅의 단일 출처 — llm.provider_for도 이걸 쓴다.
     """
@@ -32,7 +32,7 @@ def provider_for_model(model: str) -> str:
         return "gemini"
     if m.startswith(("gpt", "o1", "o3", "o4")):
         return "openai"
-    return "ollama"
+    return "unknown"
 
 
 class ModelPreset(BaseModel):
@@ -41,8 +41,8 @@ class ModelPreset(BaseModel):
     text: str
     note: str = ""
     concurrent_load: bool = False
-    # 텍스트 생성 라우팅: "ollama"(로컬) | "anthropic"(Claude) | "openai"(GPT) | "gemini"(Gemini)
-    provider: str = "ollama"
+    # 텍스트 생성 라우팅(API 전용): "anthropic"(Claude) | "openai"(GPT) | "gemini"(Gemini)
+    provider: str = "gemini"
 
 
 class Selection(BaseModel):
@@ -109,7 +109,6 @@ class Env(BaseModel):
     naver_client_id: str | None = None
     naver_client_secret: str | None = None
     naver_blog_id: str | None = None  # 게시 대상 블로그 ID (한 번 받아 .env에 저장)
-    ollama_host: str = "http://127.0.0.1:11434"
     anthropic_api_key: str | None = None  # Claude API 키(.env ANTHROPIC_API_KEY)
     openai_api_key: str | None = None  # OpenAI(GPT) API 키(.env OPENAI_API_KEY)
     gemini_api_key: str | None = None  # Google Gemini API 키(.env GEMINI_API_KEY)
@@ -125,7 +124,6 @@ def load_env() -> Env:
         naver_client_id=os.getenv("NAVER_CLIENT_ID"),
         naver_client_secret=os.getenv("NAVER_CLIENT_SECRET"),
         naver_blog_id=os.getenv("NAVER_BLOG_ID"),
-        ollama_host=os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),

@@ -1,27 +1,26 @@
 """Vision LLM 연동 (기획서 §3.2, §5).
 
-이미지형 상품 상세설명/사진을 로컬 Vision 모델(Ollama)로 이해해 구조화한다.
+이미지형 상품 상세설명/사진을 Vision 모델(Gemini API)로 이해해 구조화한다.
 일반 OCR(Tesseract) 대신 Vision LLM을 쓰는 이유: 이미지 맥락을 이해해
 재질·크기·사용법·주의사항 등으로 정리하기 위함.
 
+API 전용 — Gemini만 지원한다(로컬 Ollama 미지원).
 모델명은 코드에 박지 않고 config/models.yaml(프리셋 vision)에서 읽는다.
 세로로 긴 상세 이미지는 조각으로 분할해 OCR 품질을 높인 뒤 결과를 합친다.
 """
 
 from __future__ import annotations
 
-import base64
 import json
 
-import requests
 from pydantic import BaseModel
 
 from autoblog.collect.fact_card import ProductSpec
-from autoblog.config import load_env, load_models_config
+from autoblog.config import load_models_config
 
 
 class VisionUnavailable(RuntimeError):
-    """Vision 모델이 연동되지 않았거나(미설치/서버다운) 사용할 수 없을 때."""
+    """Vision 모델이 연동되지 않았거나(키 미설정/패키지 미설치) 사용할 수 없을 때."""
 
 
 def default_vision_model() -> str:
@@ -29,8 +28,18 @@ def default_vision_model() -> str:
     return load_models_config().effective().vision
 
 
-def _encode_image(data: bytes) -> str:
-    return base64.b64encode(data).decode("ascii")
+def vision_json(prompt: str, images: list[bytes], model: str) -> str:
+    """이미지+프롬프트 → Gemini 비전 호출(JSON 강제) → 응답 텍스트.
+
+    llm.vision_chat(Gemini API)을 감싸 비전 호출의 단일 진입점. 키 미설정·패키지
+    미설치·미지원 모델 등은 VisionUnavailable로 변환해 호출부 계약을 유지한다.
+    """
+    from autoblog.llm import LLMUnavailable, vision_chat
+
+    try:
+        return vision_chat(prompt, images, model, fmt="json")
+    except LLMUnavailable as exc:
+        raise VisionUnavailable(str(exc)) from exc
 
 
 def _split_tall_image(path: str, max_aspect: float = 2.0) -> list[bytes]:
@@ -58,69 +67,6 @@ def _split_tall_image(path: str, max_aspect: float = 2.0) -> list[bytes]:
         crop.save(buf, format="PNG")
         tiles.append(buf.getvalue())
     return tiles
-
-
-def _downscale_bytes(data: bytes, max_dim: int) -> bytes:
-    """이미지 bytes를 긴 변 max_dim으로 축소한 PNG bytes(재시도용). 이미 작으면 그대로."""
-    from io import BytesIO
-
-    from PIL import Image
-
-    img = Image.open(BytesIO(data)).convert("RGB")
-    img.thumbnail((max_dim, max_dim))
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    return buf.getvalue()
-
-
-def _is_context_error(resp) -> bool:
-    """Ollama 400 응답이 '컨텍스트 초과' 류인지(이미지가 커서 토큰이 넘친 경우)."""
-    if resp.status_code != 400:
-        return False
-    body = resp.text or ""
-    return "exceed_context_size" in body or "context size" in body or "context length" in body
-
-
-# 컨텍스트 초과 시 이미지를 점점 줄여 재시도할 긴 변(px) 단계. None=원본 그대로 먼저.
-_VISION_DOWNSCALE_STEPS = (None, 1280, 1024, 768, 512)
-
-
-def _ollama_vision(prompt: str, images: list[bytes], model: str, num_ctx: int = 8192) -> str:
-    """Ollama chat API에 이미지+프롬프트 → 응답 텍스트(JSON 강제).
-
-    이미지는 비전 토큰을 많이 먹어 기본 컨텍스트(4096)를 쉽게 넘긴다(라이브: 사진 1장
-    4132토큰 → 400 exceed_context_size). 1차로 num_ctx를 키워 보내고, 그래도 용량
-    초과(400)가 나면 이미지를 단계적으로 축소해 자동 재시도한다(다 줄여도 실패 시 마지막
-    400을 그대로 raise → 상위에서 '기타' 처리).
-    """
-    env = load_env()
-
-    def _post(imgs: list[bytes]):
-        payload = {
-            "model": model,
-            "stream": False,
-            "format": "json",
-            "options": {"temperature": 0, "num_ctx": num_ctx},
-            "messages": [
-                {"role": "user", "content": prompt, "images": [_encode_image(b) for b in imgs]}
-            ],
-        }
-        try:
-            return requests.post(f"{env.ollama_host}/api/chat", json=payload, timeout=300)
-        except requests.RequestException as exc:
-            raise VisionUnavailable(f"Ollama 연결 실패({env.ollama_host}): {exc}") from exc
-
-    resp = None
-    for max_dim in _VISION_DOWNSCALE_STEPS:
-        imgs = images if max_dim is None else [_downscale_bytes(b, max_dim) for b in images]
-        resp = _post(imgs)
-        if resp.status_code == 404:
-            raise VisionUnavailable(f"모델 미설치: {model} (ollama pull {model})")
-        if _is_context_error(resp):
-            continue  # 용량 초과 → 더 작게 재시도
-        break
-    resp.raise_for_status()
-    return resp.json().get("message", {}).get("content", "")
 
 
 class ProductDetail(BaseModel):
@@ -162,7 +108,7 @@ def extract_product_detail(
     specs: dict[str, str] = {}
     for path in image_paths:
         for tile in _split_tall_image(path):
-            detail = _parse_detail(_ollama_vision(prompt, [tile], model))
+            detail = _parse_detail(vision_json(prompt, [tile], model))
             if detail.text:
                 texts.append(detail.text)
             for pt in detail.selling_points:
@@ -241,7 +187,7 @@ def classify_photos(
     )
     result: dict[str, str] = {}
     for path in image_paths:
-        content = _ollama_vision(prompt, [_downscale_image(path)], model)
+        content = vision_json(prompt, [_downscale_image(path)], model)
         try:
             label = json.loads(content).get("label", "기타")
         except json.JSONDecodeError:

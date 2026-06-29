@@ -1,72 +1,36 @@
 presets:
-  4gb:
-    label: 4GB (GTX 1650)
-    vision: moondream:1.8b
-    text: qwen2.5:3b
-    note: 한글 OCR 약함, 상품 리뷰 비권장
-    concurrent_load: false
-  8gb:
-    label: 8GB (2070S·3060Ti) — 권장 시작점
-    vision: qwen2.5vl:7b
-    text: qwen2.5:7b
-    note: 권장 시작점
-    concurrent_load: false
-  12gb:
-    label: 12GB (3060·4070) — 가성비 최고
-    vision: qwen2.5vl:7b
-    text: qwen2.5:14b
-    note: 글 품질 큰 향상, 가성비 최고
-    concurrent_load: false
-  16gb:
-    label: 16GB+ (4080·4090)
-    vision: qwen3vl:8b
-    text: qwen2.5:14b
-    note: 동시 로드 가능, 전환 대기 없음
-    concurrent_load: true
-  apple_18gb:
-    label: Apple Silicon 16~24GB (M-Pro 등)
-    vision: qwen2.5vl:7b
-    text: qwen2.5:14b
-    note: 개발 기본. 14b가 7b보다 일관성 크게 우수(7b는 붕괴/환각). 순차 로드
-    concurrent_load: false
-  apple_32gb:
-    label: Apple Silicon 32GB+ (M-Max 등)
-    vision: qwen2.5vl:7b
-    text: qwen2.5:14b
-    note: 동시 로드 여유
+  gemini:
+    label: Gemini API (정확·유료)
+    provider: gemini
+    text: gemini-2.5-pro
+    vision: gemini-2.5-flash
+    note: 지시 정확. GEMINI_API_KEY 필요. 토큰당 과금.
     concurrent_load: true
   claude:
     label: Claude API (정확·유료)
     provider: anthropic
     text: claude-opus-4-8
-    vision: qwen2.5vl:7b
-    note: 지시 정확히 따름(마커 잘 나옴). ANTHROPIC_API_KEY 필요. 토큰당 과금.
+    vision: gemini-2.5-flash
+    note: 지시 정확히 따름(마커 잘 나옴). ANTHROPIC_API_KEY 필요. 비전은 Gemini.
     concurrent_load: true
   claude_sonnet:
     label: Claude API — Sonnet (저렴)
     provider: anthropic
     text: claude-sonnet-4-6
-    vision: qwen2.5vl:7b
-    note: Opus보다 저렴, 충분히 정확. ANTHROPIC_API_KEY 필요.
+    vision: gemini-2.5-flash
+    note: Opus보다 저렴, 충분히 정확. ANTHROPIC_API_KEY 필요. 비전은 Gemini.
     concurrent_load: true
   gpt:
     label: OpenAI API — GPT (정확·유료)
     provider: openai
     text: gpt-4o
-    vision: qwen2.5vl:7b
-    note: 지시 정확. OPENAI_API_KEY 필요. 토큰당 과금. (비전은 로컬 유지)
+    vision: gemini-2.5-flash
+    note: 지시 정확. OPENAI_API_KEY 필요. 비전은 Gemini.
     concurrent_load: true
-  gemini:
-    label: Gemini API (정확·유료)
-    provider: gemini
-    text: gemini-2.5-pro
-    vision: qwen2.5vl:7b
-    note: 지시 정확. GEMINI_API_KEY 필요. 토큰당 과금. (비전은 로컬 유지)
-    concurrent_load: true
-default: apple_18gb
+default: gemini
 selection:
-  text: qwen2.5:14b
-  vision: qwen2.5vl:7b
+  text: gemini-2.5-pro
+  vision: gemini-2.5-flash
 # 사진 '✨ AI 자동 추천'(온디맨드)에 쓰는 멀티모달 모델.
 # Gemini Flash 권장 — 글 1개당 호출 1번(사진 전부 한 번에)이라 매우 저렴(글당 수 원).
 # GEMINI_API_KEY 필요. 메모·메뉴·가게설명을 함께 넣어 '데미소스 돈까스'처럼 맥락으로 유추합니다.

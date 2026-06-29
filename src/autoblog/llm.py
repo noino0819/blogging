@@ -1,17 +1,16 @@
-"""Ollama 텍스트 LLM 호출 공통 (초안 작성·문체 추출 등).
+"""텍스트 LLM 호출 공통 (초안 작성·문체 추출 등).
 
+API 전용 — Claude/GPT/Gemini만 지원한다(로컬 Ollama 미지원).
 모델명은 config/models.yaml(프리셋 text)에서 읽는다. 비전은 vision.py 참고.
 """
 
 from __future__ import annotations
 
-import requests
-
 from autoblog.config import load_env, load_models_config, provider_for_model
 
 
 class LLMUnavailable(RuntimeError):
-    """텍스트 모델이 연동되지 않았거나(미설치/서버다운) 사용할 수 없을 때."""
+    """텍스트 모델이 연동되지 않았거나(키 미설정/패키지 미설치) 사용할 수 없을 때."""
 
 
 def default_text_model() -> str:
@@ -19,7 +18,7 @@ def default_text_model() -> str:
 
 
 def provider_for(model: str) -> str:
-    """모델명으로 API 제공자 판별(라우팅용). 그 외는 로컬 Ollama."""
+    """모델명으로 API 제공자 판별(라우팅용)."""
     return provider_for_model(model)
 
 
@@ -136,7 +135,7 @@ def _vision_gemini(prompt: str, images: list[bytes], model: str, *, fmt: str | N
 def vision_chat(prompt: str, images: list[bytes], model: str, *, fmt: str | None = None) -> str:
     """이미지(여러 장)+프롬프트 멀티모달 호출 → 응답 텍스트.
 
-    현재 Gemini만 지원(사진 자동 추천용). 로컬(Ollama) 비전은 vision.py 참고.
+    Gemini API 전용. 비전 기능 래퍼는 vision.py 참고.
     """
     if provider_for(model) == "gemini":
         return _vision_gemini(prompt, images, model, fmt=fmt)
@@ -157,8 +156,9 @@ def chat(
     """텍스트 LLM 호출 → 응답 텍스트.
 
     messages: [{"role": "system"|"user"|"assistant", "content": "..."}].
-    모델명 접두사로 라우팅(claude→Claude, gpt/o*→GPT, gemini→Gemini, 그 외→Ollama).
-    fmt="json"이면 JSON 응답 강제.
+    모델명 접두사로 라우팅(claude→Claude, gpt/o*→GPT, gemini→Gemini).
+    API 전용 — 그 외 모델명은 미지원. fmt="json"이면 JSON 응답 강제.
+    temperature/timeout은 호환을 위해 받지만 API 경로에서는 사용하지 않는다.
     """
     model = model or default_text_model()
     provider = provider_for(model)
@@ -168,20 +168,7 @@ def chat(
         return _chat_openai(messages, model, fmt=fmt)
     if provider == "gemini":
         return _chat_gemini(messages, model, fmt=fmt)
-    env = load_env()
-    payload: dict = {
-        "model": model,
-        "stream": False,
-        "options": {"temperature": temperature},
-        "messages": messages,
-    }
-    if fmt:
-        payload["format"] = fmt
-    try:
-        resp = requests.post(f"{env.ollama_host}/api/chat", json=payload, timeout=timeout)
-    except requests.RequestException as exc:
-        raise LLMUnavailable(f"Ollama 연결 실패({env.ollama_host}): {exc}") from exc
-    if resp.status_code == 404:
-        raise LLMUnavailable(f"모델 미설치: {model} (ollama pull {model})")
-    resp.raise_for_status()
-    return resp.json().get("message", {}).get("content", "")
+    raise LLMUnavailable(
+        f"텍스트 생성은 API 모델만 지원합니다(현재 model: {model!r}). "
+        "config/models.yaml 의 selection.text 를 claude-*/gpt-*/gemini-* 로 설정하세요."
+    )

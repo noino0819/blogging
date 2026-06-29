@@ -3,7 +3,7 @@
 스티커는 Smart Editor DOM에 의미(감정/상황) 라벨이 없고 (팩코드, 인덱스) 좌표뿐이라
 ([[smart-editor-publish]]), 다음 4단계로 "상황에 맞는 스티커"를 구현한다:
   1) pull   — 에디터에서 각 스티커를 element 스크린샷으로 떠 모은다(editor.pull_stickers).
-  2) label  — 비전 모델(qwen2.5vl)이 이미지를 보고 감정/상황 태그를 자동 생성(검수 옵션).
+  2) label  — 비전 모델(Gemini API)이 이미지를 보고 감정/상황 태그를 자동 생성(검수 옵션).
   3) review — 유저가 config/stickers.yaml에서 태그·즐겨쓰기를 직접 수정(자동 라벨 위 우선).
   4) resolve— 초안의 [스티커:상황] 마커를 (팩,인덱스)로 해석(StickerPicker).
 
@@ -351,10 +351,10 @@ def label_sticker(image_path: str, model: str | None = None) -> list[str]:
 
     작은 스티커는 업스케일해 한글 OCR 정확도를 높이고, mood+상황 태그를 합쳐 반환.
     """
-    from autoblog.vision import _ollama_vision, default_vision_model
+    from autoblog.vision import default_vision_model, vision_json
 
     model = model or default_vision_model()
-    content = _ollama_vision(STICKER_LABEL_PROMPT, [_upscaled_png(image_path)], model)
+    content = vision_json(STICKER_LABEL_PROMPT, [_upscaled_png(image_path)], model)
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
