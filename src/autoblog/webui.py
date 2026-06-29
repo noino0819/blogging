@@ -406,6 +406,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <button type=button class="btn ghost" id=photobtn style="width:100%;justify-content:center;gap:8px">📷 사진 추가·분류 <span class=muted id=photosum>사진 없음</span></button>
           <label class=f>문체 톤 <span class=hint data-tip="비우면 기본 톤으로 써요. 예: 친근한 반말로 / 담백하고 차분하게">i</span></label>
           <input type=text id=tone placeholder="예: 친근한 반말로">
+          <label class=f>필수 키워드 <span class=hint data-tip="본문에 꼭 들어갈 키워드를 쉼표로 구분해 적어주세요. 비우면 안 씁니다. 예: 강남맛집, 데이트코스">i</span></label>
+          <input type=text id=keywords placeholder="예: 강남맛집, 데이트코스 (쉼표로 구분)">
+          <label class=f>최소 글자 수 <span class=hint data-tip="본문이 이 글자 수(공백 제외) 이상이 되도록 써요. 비우면 1500자가 적용됩니다.">i</span></label>
+          <input type=number id=minchars placeholder="1500" min=0 step=100>
           <div class=togrow>
             <div class=tl>협찬 글 <span class=hint data-tip="켜면 즐겨찾기 스티커 중 고른 고지 스티커가 본문 맨 위에 들어가고, 아래 쿠팡파트너스 링크가 본문 중간중간 카드로 분산 삽입됩니다.">i</span></div>
             <div class=sw id=sponsw></div>
@@ -910,7 +914,7 @@ $('#gen').onclick=async()=>{
   if(!$('#memo').value.trim()){st('경험 메모를 입력하세요.');return;}
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,keywords:$('#keywords').value,minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES};
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
@@ -938,7 +942,7 @@ $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
   $('#export').disabled=true; expLoading(true);
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,keywords:$('#keywords').value,minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES};
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
@@ -1144,12 +1148,14 @@ $('#stickerall').onclick=function(){FMT.stickerAll=!FMT.stickerAll;
 
 // 글쓰기 설정(규칙·협찬·톤·카테고리) 서버 저장/복원 — 새로고침해도 유지
 async function savePrefs(){try{await fetch('/api/prefs',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,category:CATEGORY})});}catch(e){}}
+  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,keywords:$('#keywords').value,minChars:$('#minchars').value,category:CATEGORY})});}catch(e){}}
 async function loadPrefs(){
   try{const p=await (await fetch('/api/prefs')).json();
     if(p.rules)Object.assign(RULES,p.rules);
     if(p.fmt)Object.assign(FMT,p.fmt);
     if(typeof p.tone==='string')$('#tone').value=p.tone;
+    if(typeof p.keywords==='string')$('#keywords').value=p.keywords;
+    if(p.minChars!=null)$('#minchars').value=p.minChars;
     if(typeof p.category==='string')setCategory(p.category);
   }catch(e){}
   renderRules(); applyFmtState();
@@ -1670,6 +1676,7 @@ def _make_handler(state: dict):
             photo_meta = body.get("photoMeta") if isinstance(body.get("photoMeta"), dict) else {}
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
+            guidelines = _build_guidelines(body)
             dkeys, qkeys = _enabled_variant_keys()  # '서식'에서 고른 종류만 프롬프트에 안내
             text = build_export_prompt(
                 body.get("memo", ""),
@@ -1679,6 +1686,7 @@ def _make_handler(state: dict):
                 photo_meta=photo_meta,
                 style=StyleProfile(tone=tone) if tone else None,
                 rules=rules,
+                guidelines=guidelines,
                 emphasis=bool(body.get("emphasis")),
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
@@ -1752,6 +1760,7 @@ def _make_handler(state: dict):
             photo_meta = body.get("photoMeta") if isinstance(body.get("photoMeta"), dict) else {}
             tone = (body.get("tone") or "").strip() or None
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
+            guidelines = _build_guidelines(body)
             dv, qv = _enabled_variants()  # 활성 종류 중 첫 번째를 기본 적용(다중 중 우선)
             dkeys, qkeys = _enabled_variant_keys()  # 프롬프트에 안내할 고른 종류 전체
             result = run_pipeline(
@@ -1762,6 +1771,7 @@ def _make_handler(state: dict):
                 photo_meta=photo_meta,
                 style=StyleProfile(tone=tone) if tone else None,
                 rules=rules,
+                guidelines=guidelines,
                 emphasis=bool(body.get("emphasis")),
                 structure=bool(body.get("structure")),
                 stickers=bool(body.get("stickers")),
@@ -1886,6 +1896,8 @@ PREVIEW_DIR = REPO_ROOT / "config" / "editor_previews"
 PREFS_PATH = REPO_ROOT / "config" / "ui_prefs.json"
 
 # 글쓰기 화면 기본 설정(서버가 기준). 새 키가 추가돼도 저장본 위에 머지된다.
+DEFAULT_MIN_CHARS = 1500  # 글자 수를 따로 안 넣으면 기본 최소 글자 수
+
 _PREFS_DEFAULT = {
     "rules": {
         "mobile_friendly": True, "authenticity": True,
@@ -1897,8 +1909,31 @@ _PREFS_DEFAULT = {
         "sponsored": False, "sponsorSticker": "",
     },
     "tone": "",
+    "keywords": "",
+    "minChars": DEFAULT_MIN_CHARS,
     "category": "",
 }
+
+
+def _build_guidelines(body: dict):
+    """요청 body의 키워드·글자수 입력으로 Guidelines를 만든다(둘 다 비어도 글자수 기본 적용).
+
+    keywords: 쉼표/줄바꿈으로 구분한 필수 키워드. minChars: 최소 글자 수(빈 값이면 1500).
+    """
+    import re
+
+    from autoblog.draft.guideline import Guidelines
+
+    raw_kw = body.get("keywords") or ""
+    keywords = [k.strip() for k in re.split(r"[,\n]", raw_kw) if k.strip()]
+    raw_min = body.get("minChars")
+    try:
+        min_chars = int(raw_min)
+    except (TypeError, ValueError):
+        min_chars = DEFAULT_MIN_CHARS
+    if min_chars <= 0:
+        min_chars = DEFAULT_MIN_CHARS
+    return Guidelines(required_keywords=keywords, min_chars=min_chars)
 
 
 def _load_prefs() -> dict:
@@ -1924,6 +1959,13 @@ def _save_prefs(body: dict) -> None:
             cur[k].update(body[k])
     if "tone" in body:
         cur["tone"] = body.get("tone") or ""
+    if "keywords" in body:
+        cur["keywords"] = body.get("keywords") or ""
+    if "minChars" in body:
+        try:
+            cur["minChars"] = int(body.get("minChars"))
+        except (TypeError, ValueError):
+            cur["minChars"] = DEFAULT_MIN_CHARS
     if "category" in body:
         cur["category"] = body.get("category") or ""
     PREFS_PATH.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -182,12 +182,30 @@ class BlogPublisher:
                 self._page.keyboard.press("Escape")
                 _ = exc
         if save:
+            # 임시저장에도 카테고리가 반영되도록, 발행 레이어에서 카테고리만 고르고 레이어를 닫는다.
+            # (submit이면 아래 발행 분기에서 카테고리를 고르므로 중복 적용하지 않는다.)
+            if category and not submit:
+                self._apply_category_for_draft(category)
             self.save_draft()
         if submit:
             if category:
                 self._open_publish_layer()
                 self.select_category(category)
             self._submit()
+
+    def _apply_category_for_draft(self, category: str):
+        """발행하지 않고 카테고리만 선택해 임시저장에 반영한다.
+
+        발행 레이어를 열어 카테고리를 고른 뒤, Esc로 레이어만 닫는다(발행 X).
+        카테고리 적용에 실패해도 본문 임시저장은 그대로 진행한다(보조 기능).
+        """
+        try:
+            self._open_publish_layer()
+            self.select_category(category)
+            self._page.keyboard.press("Escape")  # 발행하지 않고 레이어만 닫기
+            self._page.wait_for_timeout(500)
+        except Exception:  # noqa: BLE001 - 카테고리는 보조, 실패해도 저장 진행
+            self._page.keyboard.press("Escape")
 
     def save_draft(self):
         """임시저장."""

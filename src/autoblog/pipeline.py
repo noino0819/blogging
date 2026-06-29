@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from autoblog.collect.fact_card import CardType, FactCard
 from autoblog.draft.generate import DraftRequest, DraftResult, generate_draft
+from autoblog.draft.guideline import Guidelines
 from autoblog.draft.rules import CommonRules
 from autoblog.draft.style import StyleProfile
 from autoblog.publish.plan import PublishPlan, build_publish_plan, load_structure_styles
@@ -149,6 +150,7 @@ def build_export_prompt(
     photos: list[str] | None = None,
     style: StyleProfile | None = None,
     rules: CommonRules | None = None,
+    guidelines: Guidelines | None = None,
     base_prompt: str | None = None,
     emphasis: bool = False,
     structure: bool = False,
@@ -189,6 +191,7 @@ def build_export_prompt(
         base_prompt=base_prompt,
         style=style,
         rules=rules,
+        guidelines=guidelines,
         emphasis=emphasis,
         structure=structure,
         divider_variants=divider_variants or [],
@@ -289,6 +292,7 @@ def run_pipeline(
     photos: list[str] | None = None,
     style: StyleProfile | None = None,
     rules: CommonRules | None = None,
+    guidelines: Guidelines | None = None,
     base_prompt: str | None = None,
     template_text: str | None = None,
     emphasis: bool = False,
@@ -339,6 +343,7 @@ def run_pipeline(
         template_text=template_text,
         style=style,
         rules=rules,
+        guidelines=guidelines,
         emphasis=emphasis,
         structure=structure,
         divider_variants=divider_variants or [],
