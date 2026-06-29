@@ -993,8 +993,27 @@ class BlogPublisher:
                 page.wait_for_timeout(200)
             page.click(size_sel)
             page.wait_for_timeout(300)
+            # '작게' 버튼 클릭 뒤엔 포커스가 그 툴바 버튼에 남는다. 이 상태로 다음 블록을
+            # 타이핑하면 글자가 본문이 아닌 허공으로 들어가 그 블록이 통째로 사라진다.
+            # 사진 선택을 풀고 본문 끝에 새 문단을 만들어 커서를 본문으로 되돌린다.
+            self._focus_body_end()
         except Exception:
             page.keyboard.press("Escape")  # 크기 변경 실패해도 사진은 남김
+            self._focus_body_end()
+
+    def _focus_body_end(self):
+        """사진/객체 선택을 풀고 본문 끝에 빈 문단을 만들어 커서를 본문으로 되돌린다.
+
+        객체(이미지) 선택 상태에서 곧바로 타이핑하면 글자가 본문에 안 들어가고 사라진다.
+        '본문 추가' 버튼으로 끝에 새 문단을 만들고 거기에 포커스를 둔다(인용구 탈출과 동일)."""
+        page = self._page
+        page.keyboard.press("Escape")  # 객체 선택 해제
+        page.wait_for_timeout(150)
+        try:
+            page.click(SMART_EDITOR["canvas_bottom_button"])
+            page.wait_for_timeout(250)
+        except Exception:
+            page.click(SMART_EDITOR["content_component"])  # 폴백: 본문 컴포넌트 클릭
 
     def _submit(self):
         self._page.click(SMART_EDITOR["publish_button"])
