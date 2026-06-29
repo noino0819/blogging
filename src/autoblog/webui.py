@@ -397,6 +397,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=dropzone id=dropzone>📷 사진을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*" multiple hidden></div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
     <button type=button class="btn ghost" id=draftload style="white-space:nowrap">📥 임시저장에서 불러오기</button>
+    <button type=button class="btn ghost" id=draftrefresh title="네이버에서 목록 새로고침" style="display:none;padding:9px 11px">🔄</button>
     <span class=muted id=draftstat></span>
   </div>
   <div class=draftlist id=draftlist style="display:none"></div>
@@ -823,33 +824,49 @@ async function handleFiles(files){
 }
 
 // 네이버 임시저장 글에서 사진 불러오기: 목록 조회 → 글 선택 → 본문 사진 다운로드 → PHOTOS에 추가
-let DRAFTBUSY=false;
+// DRAFTS=한 번 조회한 목록 캐시. 📥 버튼은 이 캐시를 펼침/접음만(재조회 X), 🔄로만 네이버 재조회.
+let DRAFTBUSY=false, DRAFTS=null;
+// 캐시된 목록을 #draftlist에 렌더(데이터만; 표시 여부는 호출부에서 토글).
+function renderDraftList(){
+  const list=$('#draftlist'); list.innerHTML='';
+  (DRAFTS||[]).forEach(dr=>{
+    const row=document.createElement('div'); row.className='ditem';
+    row.innerHTML=`<span class=dt>${(dr.title||'(제목 없음)')}</span><span class=dd>${dr.date||''}</span>`;
+    row.onclick=()=>importDraft(dr.idx, dr.title);
+    list.appendChild(row);
+  });
+}
+// 네이버에서 목록을 새로 가져와 캐시에 채운다. 성공 시 목록을 펼쳐 보여준다.
+async function fetchDrafts(){
+  if(DRAFTBUSY) return; DRAFTBUSY=true;
+  const list=$('#draftlist'), stat=$('#draftstat');
+  const el=elapsed('네이버에서 목록 불러오는 중…', spinRow(stat));
+  try{
+    const r=await fetch('/api/drafts',{method:'POST'});
+    const d=await r.json();
+    if(!r.ok){ throw new Error(d.error||'목록을 불러오지 못했어요'); }
+    const sec=el.stop();
+    DRAFTS=d.drafts||[];
+    $('#draftrefresh').style.display='inline-block';  // 한 번 조회하면 새로고침 버튼 노출
+    if(!DRAFTS.length){ stat.textContent=`임시저장된 글이 없어요. (${sec}초)`; list.style.display='none'; DRAFTBUSY=false; return; }
+    stat.textContent=`${DRAFTS.length}건 (${sec}초) — 사진을 가져올 글을 선택하세요`;
+    renderDraftList(); list.style.display='block';
+  }catch(e){ el.stop(); stat.textContent='불러오기 실패'; toast('임시저장 목록을 못 불러왔어요 — '+e.message,'err'); }
+  DRAFTBUSY=false;
+}
 function setupDraftImport(){
   const btn=$('#draftload'); if(!btn) return;
   btn.onclick=async()=>{
-    const list=$('#draftlist'), stat=$('#draftstat');
-    if(list.style.display==='block'){ list.style.display='none'; return; }  // 토글로 닫기
-    if(DRAFTBUSY) return; DRAFTBUSY=true;
-    const el=elapsed('네이버에서 목록 불러오는 중…', spinRow(stat));
-    try{
-      const r=await fetch('/api/drafts',{method:'POST'});
-      const d=await r.json();
-      if(!r.ok){ throw new Error(d.error||'목록을 불러오지 못했어요'); }
-      const sec=el.stop();
-      const drafts=d.drafts||[];
-      if(!drafts.length){ stat.textContent=`임시저장된 글이 없어요. (${sec}초)`; DRAFTBUSY=false; return; }
-      stat.textContent=`${drafts.length}건 (${sec}초) — 사진을 가져올 글을 선택하세요`;
-      list.innerHTML='';
-      drafts.forEach(dr=>{
-        const row=document.createElement('div'); row.className='ditem';
-        row.innerHTML=`<span class=dt>${(dr.title||'(제목 없음)')}</span><span class=dd>${dr.date||''}</span>`;
-        row.onclick=()=>importDraft(dr.idx, dr.title);
-        list.appendChild(row);
-      });
-      list.style.display='block';
-    }catch(e){ el.stop(); stat.textContent='불러오기 실패'; toast('임시저장 목록을 못 불러왔어요 — '+e.message,'err'); }
-    DRAFTBUSY=false;
+    const list=$('#draftlist');
+    if(list.style.display==='block'){ list.style.display='none'; return; }  // 펼쳐져 있으면 접기
+    if(DRAFTS!==null){  // 캐시가 있으면 재조회 없이 즉시 펼침(글 불러온 뒤에도 그대로 유지)
+      if(DRAFTS.length){ renderDraftList(); list.style.display='block'; }
+      else { $('#draftstat').textContent='임시저장된 글이 없어요. (🔄로 새로고침)'; }
+      return;
+    }
+    await fetchDrafts();  // 첫 조회만 네이버 호출
   };
+  const ref=$('#draftrefresh'); if(ref) ref.onclick=()=>fetchDrafts();
 }
 async function importDraft(idx, title){
   if(DRAFTBUSY) return; DRAFTBUSY=true;
@@ -865,7 +882,7 @@ async function importDraft(idx, title){
     PHOTOS=paths.slice(); SELP=[]; PHOTOMETA={}; THUMB=null;
     PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
     renderGrid(); renderPmeta(); updatePhotoSummary();
-    $('#draftlist').style.display='none';
+    // 목록은 캐시로 그대로 둔다(접지 않음) — 재조회 없이 바로 다른 글을 이어서 고를 수 있게.
     stat.textContent = paths.length? `${paths.length}장 불러옴 (${sec}초) — 아래에서 분류하세요` : '가져올 사진이 없는 글이에요';
     if(paths.length) toast(`${paths.length}장 불러왔어요 (기존 사진 교체됨)`,'ok');
     // 사진 불러오기 성공 + 불러온 글에 제목이 있으면 → 그 제목을 필수 키워드에 자동으로 넣어줌
