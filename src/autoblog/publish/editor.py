@@ -147,11 +147,19 @@ class BlogPublisher:
                 pass
 
     def publish(
-        self, plan: PublishPlan, *, category: str | None = None, save: bool = True, submit: bool = False
+        self,
+        plan: PublishPlan,
+        *,
+        category: str | None = None,
+        save: bool = True,
+        submit: bool = False,
+        prune_same_title: bool = True,
     ) -> list[str]:
         """게시 플랜을 에디터에 주입. 기본은 임시저장만, submit=True면 발행까지.
 
         category가 주어지면 발행 레이어에서 해당 카테고리를 선택한다(유저별 동적).
+        prune_same_title=True면 임시저장 직후, 같은 제목의 이전 임시저장 글을 자동 정리한다
+        (최근 1건=방금 저장한 글만 남김. 삭제는 복구 불가라 제목 완전일치로만 한정).
         자동 삽입에 실패해 본문에서 빠진 항목(예: 검색 결과 없는 지도)이 있으면 사람이
         읽을 수 있는 경고 메시지 목록으로 반환한다(유저가 나중에 직접 보완하도록 안내용)."""
         warnings: list[str] = []
@@ -198,6 +206,14 @@ class BlogPublisher:
             if category and not submit:
                 self._apply_category_for_draft(category)
             self.save_draft()
+            # 임시저장 직후: 같은 제목의 이전 임시저장 글 정리(최근 1건만 남김).
+            # 정리는 보조 기능이라 실패해도 본문 저장은 그대로 둔다(warnings는 '빠진 항목'
+            # 용이라 여기 성공 메시지를 섞지 않는다).
+            if prune_same_title:
+                try:
+                    self.delete_drafts_by_title(plan.title)
+                except Exception:  # noqa: BLE001 - 정리 실패는 저장 결과에 영향 없음
+                    pass
         if submit:
             if category:
                 self._open_publish_layer()
@@ -234,9 +250,8 @@ class BlogPublisher:
             self._page.wait_for_selector(SMART_EDITOR["draft_list"], timeout=8000)
             self._page.wait_for_timeout(600)
 
-    def list_drafts(self) -> list[dict]:
-        """임시저장 글 목록을 [{idx, title, date}]로 반환."""
-        self._open_draft_list()
+    def _read_draft_items(self) -> list[dict]:
+        """현재 열린 임시저장 목록의 li들을 [{idx, title, date}]로 읽는다(팝업이 열려있다고 가정)."""
         return self._page.eval_on_selector_all(
             SMART_EDITOR["draft_list"] + " li",
             """els => els.map((e, i) => ({
@@ -245,6 +260,46 @@ class BlogPublisher:
                 date: ((e.querySelector('[class*=date]') || {}).innerText || '').trim(),
             }))""",
         )
+
+    def list_drafts(self) -> list[dict]:
+        """임시저장 글 목록을 [{idx, title, date}]로 반환."""
+        self._open_draft_list()
+        return self._read_draft_items()
+
+    def delete_drafts_by_title(self, title: str) -> int:
+        """제목이 title과 정확히 같은 임시저장 글을, 가장 최근 1건만 남기고 모두 삭제한다.
+
+        '새 글을 임시저장한 뒤 같은 제목의 이전 버전을 정리'하는 용도. 삭제는 복구 불가라
+        제목 완전일치로만 한정하며(불일치면 아무것도 안 지움 — 안전한 실패), 가장 최근(날짜
+        최대) 1건은 방금 저장한 글로 보고 남긴다. 삭제한 건수를 반환한다.
+
+        삭제마다 목록 li 인덱스가 바뀌므로 매 회 다시 읽고, 가장 오래된 일치 항목부터 지운다.
+        """
+        page = self._page
+        norm = (title or "").strip()
+        if not norm:
+            return 0
+        self._open_draft_list()
+        deleted = 0
+        # 무한루프 방지: 같은 제목이 아무리 많아도 목록 전체 건수 이상은 돌지 않는다.
+        for _ in range(len(self._read_draft_items()) + 1):
+            items = self._read_draft_items()
+            matches = [d for d in items if (d.get("title") or "").strip() == norm]
+            if len(matches) <= 1:
+                break  # 최근 1건만 남으면(또는 없으면) 종료
+            matches.sort(key=lambda d: d.get("date") or "")  # 날짜 오름차순 → [0]이 가장 오래된 것
+            target_idx = matches[0]["idx"]
+            del_buttons = page.query_selector_all(SMART_EDITOR["draft_item_delete"])
+            if target_idx >= len(del_buttons):
+                break  # 목록과 버튼 수가 어긋나면 안전하게 중단
+            del_buttons[target_idx].click()
+            page.wait_for_timeout(500)
+            confirm = page.query_selector(SMART_EDITOR["draft_delete_confirm"])  # '삭제하시겠습니까' 확인
+            if confirm and confirm.is_visible():
+                confirm.click()
+            page.wait_for_timeout(900)  # 목록 갱신 대기
+            deleted += 1
+        return deleted
 
     def import_draft_photos(self, idx: int, dest_dir: Path) -> list[str]:
         """idx번 임시저장 글을 에디터에 로드해 본문 사진을 dest_dir에 내려받고 로컬 경로 목록을 반환.
