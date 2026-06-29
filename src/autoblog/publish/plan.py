@@ -194,6 +194,7 @@ class PublishBlock(BaseModel):
     emphases: list[StyledSpan] = Field(default_factory=list)
     image_path: str | None = None
     image_label: str = ""
+    image_size: str | None = None  # 이미지 표시 크기 힌트: "small"(협찬 고지 사진 등). None=기본
     variant: int = 1  # 구분선/인용구 종류(1=기본)
     sticker_pack: str | None = None  # 스티커 팩 코드(picker 해석 결과)
     sticker_index: int | None = None  # 스티커 data-index
@@ -449,15 +450,17 @@ def build_publish_plan(
         if ref:
             blocks.insert(0, PublishBlock(kind="sticker", sticker_pack=ref[0], sticker_index=ref[1]))
 
-    # 협찬 고지 사진 — '협찬' 라벨 사진은 본문 '첫 이미지'로 끌어올린다(인트로보다 위 최상단).
-    # 마커([사진:협찬])를 어디에 넣었든, 또 대표 썸네일이 따로 지정됐든 항상 가장 먼저 등장하게 보장한다.
+    # 협찬 고지 사진 — '협찬' 라벨 사진은 본문 '내용의 가장 맨 위'(인트로·헤더보다 위, 블록 0)로
+    # 끌어올리고 가장 작은 크기로 표시한다. 마커([사진:협찬])를 어디에 넣었든, 또 대표 썸네일이
+    # 따로 지정됐든 항상 맨 처음에 등장하게 보장한다.
     spon_paths = {ph.path for ph in photos if ph.label == SPONSOR_PHOTO_LABEL}
     if spon_paths:
-        img_idx = [i for i, b in enumerate(blocks) if b.kind == "image"]
-        first = img_idx[0] if img_idx else None
-        cur = next((i for i in img_idx if blocks[i].image_path in spon_paths), None)
-        if first is not None and cur is not None and cur != first:
-            blocks.insert(first, blocks.pop(cur))
+        spon_blocks = [b for b in blocks if b.kind == "image" and b.image_path in spon_paths]
+        if spon_blocks:
+            for b in spon_blocks:
+                b.image_size = "small"  # 협찬 고지 이미지는 가장 작게
+            ids = {id(b) for b in spon_blocks}
+            blocks = spon_blocks + [b for b in blocks if id(b) not in ids]
 
     # 대표 썸네일 — 지정 사진을 본문 '첫 이미지'로 끌어올린다(네이버 대표 사진=글의 첫 이미지).
     # 마커가 어디에 박히든 썸네일이 가장 먼저 등장하게 하되, 협찬 고지 사진보다는 뒤에 둔다.
