@@ -120,6 +120,13 @@ def build_user_prompt(card: FactCard, experience_memo: str, template_text: str |
             "예: [사진:음식] 을 넣고 그 아래 문단에서 음식을 묘사, [사진:외관] 을 넣고 그 아래에서 가게 첫인상을 묘사. "
             "라벨을 모르겠으면 그냥 [사진] 으로 두면 됩니다. 같은 라벨 사진이 여러 장이면 그만큼 마커를 반복하세요."
         )
+        if "협찬" in labels:
+            parts.append(
+                "# 협찬 사진 배치 (필수)\n"
+                "'협찬' 라벨 사진은 협찬 고지 이미지입니다. 본문 맨 처음(제목·헤더 다음, 인트로보다도 위)에 "
+                "[사진:협찬] 을 한 줄 단독으로 가장 먼저 넣어 최상단에 배치하세요. "
+                "다른 어떤 사진·문단보다 앞서야 하며, 협찬 사진에는 따로 설명 문단을 붙이지 않아도 됩니다."
+            )
         captioned = [p for p in card.photos if p.caption]
         if captioned:
             parts.append(

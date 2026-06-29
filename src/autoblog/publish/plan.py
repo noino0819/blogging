@@ -21,6 +21,8 @@ from autoblog.publish.stickers import StickerPicker
 PHOTO_MARKER = "[사진]"
 # [사진] / [사진:음식] — 라벨로 어떤 사진을 그 자리에 놓을지 지정 가능
 _PHOTO_RE = re.compile(r"^\[사진(?::(.+?))?\]$")
+# 협찬 고지 사진 라벨 — 이 라벨이 붙은 사진은 본문 '첫 이미지'로 끌어올린다(최상단 고지).
+SPONSOR_PHOTO_LABEL = "협찬"
 QUOTE_CLOSE = "[/인용구]"
 # [구분선] / [구분선:2], [인용구] / [인용구:3] — 종류(variant) 선택 가능
 _DIVIDER_RE = re.compile(r"^\[구분선(?::(\d+))?\]$")
@@ -447,11 +449,21 @@ def build_publish_plan(
         if ref:
             blocks.insert(0, PublishBlock(kind="sticker", sticker_pack=ref[0], sticker_index=ref[1]))
 
-    # 대표 썸네일 — 지정 사진을 본문 '첫 이미지'로 끌어올린다(네이버 대표 사진=글의 첫 이미지).
-    # 마커가 어디에 박히든, 썸네일은 항상 가장 먼저 등장하는 사진이 되도록 보장한다.
-    thumb_path = next((ph.path for ph in photos if ph.thumbnail), None)
-    if thumb_path:
+    # 협찬 고지 사진 — '협찬' 라벨 사진은 본문 '첫 이미지'로 끌어올린다(인트로보다 위 최상단).
+    # 마커([사진:협찬])를 어디에 넣었든, 또 대표 썸네일이 따로 지정됐든 항상 가장 먼저 등장하게 보장한다.
+    spon_paths = {ph.path for ph in photos if ph.label == SPONSOR_PHOTO_LABEL}
+    if spon_paths:
         img_idx = [i for i, b in enumerate(blocks) if b.kind == "image"]
+        first = img_idx[0] if img_idx else None
+        cur = next((i for i in img_idx if blocks[i].image_path in spon_paths), None)
+        if first is not None and cur is not None and cur != first:
+            blocks.insert(first, blocks.pop(cur))
+
+    # 대표 썸네일 — 지정 사진을 본문 '첫 이미지'로 끌어올린다(네이버 대표 사진=글의 첫 이미지).
+    # 마커가 어디에 박히든 썸네일이 가장 먼저 등장하게 하되, 협찬 고지 사진보다는 뒤에 둔다.
+    thumb_path = next((ph.path for ph in photos if ph.thumbnail and ph.path not in spon_paths), None)
+    if thumb_path:
+        img_idx = [i for i, b in enumerate(blocks) if b.kind == "image" and b.image_path not in spon_paths]
         first = img_idx[0] if img_idx else None
         cur = next((i for i in img_idx if blocks[i].image_path == thumb_path), None)
         if first is not None and cur is not None and cur != first:
