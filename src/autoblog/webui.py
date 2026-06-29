@@ -1105,6 +1105,7 @@ function bgTask(label){
 let BGSAVE=false;
 $('#save').onclick=async()=>{if(!PLAN)return;
   if(BGSAVE){toast('이미 백그라운드에서 임시저장 중이에요. 잠시만요.','info');return;}
+  ensureNotify();  // 유저 클릭(제스처) 시점에 알림 권한 요청 — 자리 비워도 결과 알림 받게
   BGSAVE=true; $('#save').disabled=true;
   st('백그라운드에서 임시저장 중… 다른 작업을 계속하셔도 돼요.');
   const task=bgTask('네이버에 임시저장 중…');
@@ -1112,8 +1113,18 @@ $('#save').onclick=async()=>{if(!PLAN)return;
     const d=await r.json();
     if(!r.ok){throw new Error(d.error||'알 수 없는 오류');}
     const sec=task.done();
-    st(`임시저장 완료 ✓ ${sec}초 (네이버 글쓰기 › 저장 목록)`); toast('임시저장 완료! 네이버 글쓰기 › 저장 목록에서 확인하세요.','ok');
-  }catch(e){task.done(); st('임시저장 실패'); toast('임시저장 실패 — '+e.message,'err');}finally{BGSAVE=false; $('#save').disabled=false;}
+    const warns=d.warnings||[];
+    if(warns.length){
+      st(`임시저장 완료 ✓ ${sec}초 — 일부 항목은 자동 삽입에 실패했어요`);
+      warnModal('임시저장은 됐지만, 아래 항목은 빠졌어요',
+        warns.concat(['네이버 글쓰기 › 저장 목록에서 글을 열어 직접 보완해 주세요.']));
+      notify('임시저장 완료 — 확인 필요', warns.join('\n'));
+    }else{
+      st(`임시저장 완료 ✓ ${sec}초 (네이버 글쓰기 › 저장 목록)`);
+      toast('임시저장 완료! 네이버 글쓰기 › 저장 목록에서 확인하세요.','ok');
+      notify('임시저장 완료 ✓', '네이버 글쓰기 › 저장 목록에서 확인하세요.');
+    }
+  }catch(e){task.done(); st('임시저장 실패'); toast('임시저장 실패 — '+e.message,'err'); notify('임시저장 실패', e.message||'');}finally{BGSAVE=false; $('#save').disabled=false;}
 };
 
 // 스티커 탭

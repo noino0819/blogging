@@ -148,11 +148,13 @@ class BlogPublisher:
 
     def publish(
         self, plan: PublishPlan, *, category: str | None = None, save: bool = True, submit: bool = False
-    ):
+    ) -> list[str]:
         """게시 플랜을 에디터에 주입. 기본은 임시저장만, submit=True면 발행까지.
 
         category가 주어지면 발행 레이어에서 해당 카테고리를 선택한다(유저별 동적).
-        """
+        자동 삽입에 실패해 본문에서 빠진 항목(예: 검색 결과 없는 지도)이 있으면 사람이
+        읽을 수 있는 경고 메시지 목록으로 반환한다(유저가 나중에 직접 보완하도록 안내용)."""
+        warnings: list[str] = []
         self.open_write_page()
         self._type_title(plan.title)
         self._page.click(SMART_EDITOR["content_component"])
@@ -171,7 +173,16 @@ class BlogPublisher:
             elif block.kind == "sticker" and block.sticker_pack is not None:
                 self._insert_sticker(block.sticker_pack, block.sticker_index or 0)
             elif block.kind == "place" and block.text:
-                self._insert_place(block.text, address=block.place_address)
+                try:
+                    ok = self._insert_place(block.text, address=block.place_address)
+                except Exception as exc:  # noqa: BLE001 - 지도는 보조, 실패해도 본문 유지
+                    self._page.keyboard.press("Escape")
+                    ok, _ = False, exc
+                if not ok:
+                    warnings.append(
+                        f"지도(장소) 자동 삽입 실패: ‘{block.text}’ — 네이버 장소 검색 결과가 없어 "
+                        "건너뛰었어요. 에디터에서 직접 ‘장소’를 추가해 주세요."
+                    )
             elif block.kind == "link" and block.link_url:
                 self._insert_link(block.link_url)
         # 본문 입력을 모두 마친 뒤 강조 서식 적용(커서 간섭 방지)
@@ -192,6 +203,7 @@ class BlogPublisher:
                 self._open_publish_layer()
                 self.select_category(category)
             self._submit()
+        return warnings
 
     def _apply_category_for_draft(self, category: str):
         """발행하지 않고 카테고리만 선택해 임시저장에 반영한다.
