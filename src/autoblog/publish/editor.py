@@ -379,14 +379,31 @@ class BlogPublisher:
         return result
 
     def select_category(self, name: str):
-        """카테고리를 이름(텍스트)으로 선택. 레이어/드롭다운이 열려있다고 가정."""
+        """카테고리를 이름(텍스트)으로 선택. 레이어/드롭다운이 열려있다고 가정.
+
+        세부(하위) 카테고리는 라벨 innerText가 '하위 카테고리\\n<이름>' 형태라
+        get_by_text(name, exact=True)로는 매칭 노드가 클릭 불가(타임아웃)해 빗나간다.
+        그래서 옵션 스코프 안에서 get_categories_detailed와 동일한 규칙(마지막 줄 trim)으로
+        라벨 인덱스를 찾아 그 라벨을 직접 클릭한다 — 최상위·세부 모두 동작."""
         # 드롭다운이 닫혀 있으면 연다
         try:
             self._page.click(SMART_EDITOR["category_button"], timeout=2000)
             self._page.wait_for_timeout(600)
         except Exception:
             pass
-        self._page.get_by_text(name, exact=True).first.click()
+        idx = self._page.evaluate(
+            """(target) => {
+            const scope = document.querySelector('[class*=option_category]') || document;
+            const labels = [...scope.querySelectorAll('label[class*=radio_label]')];
+            return labels.findIndex(el => (el.innerText||'').trim().split('\\n').pop().trim() === target);
+        }""",
+            name,
+        )
+        if idx < 0:
+            raise RuntimeError(f"카테고리를 찾지 못했습니다: {name}")
+        label = self._page.locator('[class*=option_category] label[class*=radio_label]').nth(idx)
+        label.scroll_into_view_if_needed()
+        label.click()
         self._page.wait_for_timeout(500)
 
     # --- 에디터 조작 ---
