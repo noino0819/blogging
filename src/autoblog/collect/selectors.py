@@ -31,6 +31,11 @@ SMART_EDITOR = {
     "content_component": ".se-component.se-text",
     "image_upload_button": ".se-toolbar-item-image button",  # 사진 추가 버튼
     "image_file_input": "input[type=file]",  # 파일 input
+    # 사진 크기 — 삽입한 이미지를 선택하면 뜨는 크기 컨트롤. 협찬 고지 사진을 '가장 작게'에 사용.
+    # 라이브 캡처로 채울 것(scripts/probe_image_resize.py). image_size_menu는 메뉴를 먼저 펼쳐야
+    # 할 때만, image_size_smallest는 가장 작은 크기 항목. 비어 있으면 크기 변경을 건너뜀.
+    "image_size_menu": "",
+    "image_size_smallest": "",
     "divider_button": "button.se-insert-horizontal-line-default-toolbar-button",  # 구분선
     "quote_button": "button.se-insert-quotation-default-toolbar-button",  # 인용구
     # 스티커: 툴바 버튼 → 우측 사이드바 패널(팩 탭 + 스티커 그리드). (팩코드,인덱스)로 삽입.
