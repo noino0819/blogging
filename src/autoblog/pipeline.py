@@ -23,6 +23,16 @@ _SCRAPE_CACHE: dict[str, FactCard] = {}
 def clear_scrape_cache() -> None:
     """수집 캐시 비우기(강제 새로고침용)."""
     _SCRAPE_CACHE.clear()
+
+
+def cached_place_card(place_url: str | None) -> FactCard | None:
+    """이미 수집해 캐시에 있는 가게 카드만 반환(없으면 None — 실시간 재수집 안 함).
+
+    붙여넣기 경로에서 [지도] 마커용 가게명·주소를 채울 때, 예상치 못한 스크래핑
+    (느림·차단)을 트리거하지 않으려고 캐시 조회 전용으로 쓴다."""
+    if not place_url:
+        return None
+    return _SCRAPE_CACHE.get("place:" + place_url)
 from autoblog.draft.generate import DraftRequest, DraftResult, generate_draft
 from autoblog.draft.guideline import Guidelines
 from autoblog.draft.rules import CommonRules

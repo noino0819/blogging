@@ -976,7 +976,7 @@ $('#iapply').onclick=async()=>{
   if(!text){toast('붙여넣은 글이 비어 있어요.','info');return;}
   $('#iapply').disabled=true;
   try{
-    const body={text,photos:SELP,photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS()};
+    const body={text,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS()};
     const r=await fetch('/api/import-draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){toast('가져오기 실패: '+(d.error||''),'err');return;}
@@ -1835,7 +1835,7 @@ def _make_handler(state: dict):
 
         def _import_draft(self, body):
             """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱 → 게시 플랜(생성과 동일 흐름)."""
-            from autoblog.pipeline import plan_from_text
+            from autoblog.pipeline import _place_info, cached_place_card, plan_from_text
 
             text = (body.get("text") or "").strip()
             if not text:
@@ -1843,6 +1843,14 @@ def _make_handler(state: dict):
                 return
             photos = [p for p in (body.get("photos") or []) if p]
             photo_meta = body.get("photoMeta") if isinstance(body.get("photoMeta"), dict) else {}
+            # 플레이스 URL이 있으면 세션 캐시에 수집된 가게 카드에서 [지도] 마커용
+            # 가게명·도로명 주소를 채운다(생성 경로와 동일). 캐시에 없으면 None → [지도:가게명] 폴백.
+            place_query = place_address = None
+            srcval, src = self._resolve_src(body)
+            if src == "place" and srcval:
+                card = cached_place_card(srcval)
+                if card is not None:
+                    _, place_query, place_address = _place_info(card)
             dv, qv = _enabled_variants()
             result = plan_from_text(
                 text,
@@ -1854,6 +1862,8 @@ def _make_handler(state: dict):
                 sticker_favorites_only=not bool(body.get("stickerAll")),
                 divider_variant=dv[0],
                 quote_variant=qv[0],
+                place_query=place_query,
+                place_address=place_address,
                 sponsored=bool(body.get("sponsored")),
                 sponsor_links=_links(body),
                 sponsor_sticker=(body.get("sponsorSticker") or "").strip(),
