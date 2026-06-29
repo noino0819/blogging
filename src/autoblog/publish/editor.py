@@ -715,6 +715,8 @@ class BlogPublisher:
         page.mouse.down()
         page.mouse.move(rect["x"] + rect["w"] - 1, y, steps=6)
         page.mouse.up()
+        # SE 선택은 iframe 안에 있어 top-frame window.getSelection()으로 관측되지 않는다
+        # (프로브 확인됨). 폴링 신호가 없어 고정 settle 대기를 유지한다.
         page.wait_for_timeout(200)
         return True
 
