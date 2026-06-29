@@ -594,7 +594,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <h2 class=title>설정</h2>
     <p class=desc>글쓰기 규칙을 관리합니다.</p>
     <div class=card id=rules></div>
-    <div class=card><h3>임시저장</h3><div id=draftset></div></div>
+    <div class=card><h3>임시저장</h3><div id=draftset></div><div id=savedebug></div></div>
   </section>
 </main>
 <script>
@@ -745,6 +745,7 @@ let CATEGORY='';
 const LINKS=()=>($('#links').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
 const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:false,emoji:false};
 let PRUNE=true;  // 임시저장 시 같은 제목 이전 글 자동 정리(설정 토글)
+let SAVEDBG=false;  // 디버그: 임시저장 시 브라우저를 화면에 띄워 작업 과정을 직접 본다(headful)
 const RULE_META=[
  ['mobile_friendly','모바일 친화','문단을 2~3줄로 짧게, 여백 넉넉히(네이버 트래픽 대부분 모바일)'],
  ['authenticity','진정성','과장·상투구·AI식 표현 피하고 솔직·담백하게(단점도 자연스럽게)'],
@@ -1423,7 +1424,7 @@ $('#stickerall').onclick=function(){FMT.stickerAll=!FMT.stickerAll;
 
 // 글쓰기 설정(규칙·협찬·톤·카테고리) 서버 저장/복원 — 새로고침해도 유지
 async function savePrefs(){try{await fetch('/api/prefs',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,personaId:PERSONA_ID,minChars:$('#minchars').value,category:CATEGORY,pruneDrafts:PRUNE})});}catch(e){}}
+  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,personaId:PERSONA_ID,minChars:$('#minchars').value,category:CATEGORY,pruneDrafts:PRUNE,saveDebug:SAVEDBG})});}catch(e){}}
 async function loadPrefs(){
   let asked=true;
   try{const p=await (await fetch('/api/prefs')).json();
@@ -1434,9 +1435,10 @@ async function loadPrefs(){
     if(p.minChars!=null)$('#minchars').value=p.minChars;
     if(typeof p.category==='string')setCategory(p.category);
     if(typeof p.pruneDrafts==='boolean')PRUNE=p.pruneDrafts;
+    if(typeof p.saveDebug==='boolean')SAVEDBG=p.saveDebug;
     asked=!!p.pruneDraftsAsked;
   }catch(e){}
-  renderRules(); renderDraftSet(); applyFmtState();
+  renderRules(); renderDraftSet(); renderSaveDebug(); applyFmtState();
   if(!asked)askPrune();  // 최초 1회만: 자동 정리 켤지 물어봄
 }
 // 저장된 협찬/스티커 상태를 토글 UI에 반영(서식 칩은 제거됨)
@@ -1461,6 +1463,16 @@ function renderDraftSet(){const c=$('#draftset'); if(!c)return; c.innerHTML='';
     <div class=d>새 글을 임시저장하면 <b>같은 제목</b>의 이전 임시저장 글을 삭제해 최신 1건만 남겨요. (네이버 임시저장 삭제는 복구 불가)</div></div>
     <div class="sw ${PRUNE?'on':''}"></div>`;
   row.querySelector('.sw').onclick=function(){PRUNE=!PRUNE; this.classList.toggle('on',PRUNE); savePrefs();};
+  c.appendChild(row);
+}
+// 디버그: 임시저장 과정을 화면에 띄워 직접 본다(headful 브라우저)
+function renderSaveDebug(){const c=$('#savedebug'); if(!c)return; c.innerHTML='';
+  const row=document.createElement('div'); row.className='setrow';
+  row.innerHTML=`<div><div class=t>임시저장 과정 직접 보기 <span class=muted style="font-weight:400">(디버그)</span></div>
+    <div class=d>임시저장 시 브라우저 창을 <b>화면에 띄워</b> 입력·저장 과정을 눈으로 봐요. 평소엔 꺼두면 백그라운드(숨김)로 조용히 처리돼요.</div></div>
+    <div class="sw ${SAVEDBG?'on':''}"></div>`;
+  row.querySelector('.sw').onclick=function(){SAVEDBG=!SAVEDBG; this.classList.toggle('on',SAVEDBG); savePrefs();
+    toast(SAVEDBG?'다음 임시저장부터 브라우저 창을 띄워 보여줄게요.':'임시저장을 다시 백그라운드(숨김)로 처리할게요.','info');};
   c.appendChild(row);
 }
 // 최초 1회: 자동 정리를 켤지 물어본다(기본 켬). 어떤 선택이든 asked=true로 다시 안 묻는다.
@@ -2329,14 +2341,17 @@ def _make_handler(state: dict):
                 self._send(400, json.dumps({"error": "먼저 초안을 생성하세요"}).encode())
                 return
             category = (body.get("category") or "").strip() or None
-            prune = bool(_load_prefs().get("pruneDrafts", True))  # 설정 토글(기본 켬)
+            prefs = _load_prefs()
+            prune = bool(prefs.get("pruneDrafts", True))  # 설정 토글(기본 켬)
+            # 디버그 토글이 켜져 있으면 저장 과정을 화면에 띄워(headful) 직접 보게 한다(기본 끔=백그라운드).
+            headless = not bool(prefs.get("saveDebug", False))
 
             # 연속으로 저장을 눌러도 한 건씩 순서대로 처리한다(대기열). 락을 못 잡으면
-            # 앞 건이 끝날 때까지 이 스레드가 대기 → 헤드리스 브라우저가 하나만 뜬다.
+            # 앞 건이 끝날 때까지 이 스레드가 대기 → 브라우저가 하나만 뜬다.
             with state["publish_lock"]:
                 # 임시저장(submit=False)은 사람 확인이 필요 없으니 평소엔 백그라운드(headless).
                 # 단, 저장된 세션이 만료돼 로그인이 필요하면 화면에 창을 띄워(headful) 직접 로그인하게 한다.
-                pub = BlogPublisher(headless=True)
+                pub = BlogPublisher(headless=headless)
                 pub.start()
                 try:
                     if not pub.is_logged_in():
@@ -2413,6 +2428,8 @@ _PREFS_DEFAULT = {
     # 임시저장 시 같은 제목의 이전 임시저장 글 자동 정리(기본 켬). asked는 최초 1회 안내 노출 여부.
     "pruneDrafts": True,
     "pruneDraftsAsked": False,
+    # 디버그: 임시저장 시 브라우저를 화면에 띄워(headful) 작업 과정을 직접 본다(기본 끔=백그라운드).
+    "saveDebug": False,
 }
 
 
@@ -2500,6 +2517,8 @@ def _save_prefs(body: dict) -> None:
         cur["pruneDrafts"] = bool(body.get("pruneDrafts"))
     if "pruneDraftsAsked" in body:
         cur["pruneDraftsAsked"] = bool(body.get("pruneDraftsAsked"))
+    if "saveDebug" in body:
+        cur["saveDebug"] = bool(body.get("saveDebug"))
     PREFS_PATH.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
