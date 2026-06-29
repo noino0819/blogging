@@ -144,9 +144,10 @@ class BlogPublisher:
     def open_write_page(self):
         url = NAVER_LOGIN["write_url"].format(blog_id=self.blog_id)
         self._page.goto(url, wait_until="domcontentloaded")
-        self._page.wait_for_timeout(4000)
-        self._dismiss_draft_popup()
+        # 고정 4초 대신 '에디터 본문이 떴다'는 실제 준비 신호를 기다린다(보통 더 빠름).
         self._page.wait_for_selector(SMART_EDITOR["content_component"], timeout=20000)
+        self._page.wait_for_timeout(600)  # 진입 팝업(이어쓰기)이 렌더될 짧은 여유
+        self._dismiss_draft_popup()
 
     def _dismiss_draft_popup(self):
         """진입 시 뜨는 팝업/오버레이 닫기(이어쓰기 팝업 취소 + 도움말 패널 닫기)."""
@@ -742,7 +743,11 @@ class BlogPublisher:
         """
         page = self._page
         page.click(toolbar_button)
-        page.wait_for_timeout(350)
+        # 팔레트가 뜨는 즉시 진행(고정 350ms 대신). 못 뜨면 짧게만 기다리고 폴백으로.
+        try:
+            page.wait_for_selector(".se-color-palette", state="visible", timeout=2000)
+        except Exception:
+            page.wait_for_timeout(350)
         tgt = self._parse_hex(hex_color)
         if tgt is not None:
             best, best_d = None, None
