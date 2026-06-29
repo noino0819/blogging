@@ -923,21 +923,22 @@ $('#gen').onclick=async()=>{
     if(d.debug)showLog(d.debug);
   }catch(e){genDone(false); st('오류: '+e); toast('초안 생성 오류: '+e,'err');}finally{$('#gen').disabled=false;}
 };
-// 프롬프트 내보내기: 모달 안에서 진행바 보여주고, 합쳐진 프롬프트 표시·복사
+// 프롬프트 내보내기: 모달 안에서 진행바 + 실제 단계 메시지 보여주고, 합쳐진 프롬프트 표시·복사
 let EXPTIMER=null;
-const EXPCHARS=['🧩','✍️','🔗','📋','💭'], EXPMSGS=[[0,'자료를 모으는 중…'],[45,'내 프롬프트와 합치는 중…'],[80,'마무리 중…']];
+const EXPCHARS=['🧩','✍️','🔗','📋','💭'];
 function expLoading(on){
   $('#ploading').style.display=on?'block':'none'; $('#pcontent').style.display=on?'none':'block';
   if(EXPTIMER){clearInterval(EXPTIMER);EXPTIMER=null;}
   if(on){$('#pmodal').style.display='flex'; let pct=0,ci=0;
-    $('#pfill').style.width='0%'; $('#ppct').textContent='0%'; $('#pmsg').textContent=EXPMSGS[0][1];
+    $('#pfill').style.width='0%'; $('#ppct').textContent='0%'; $('#pmsg').textContent='자료를 준비하는 중…';
+    // 진행바·스피너만 부드럽게 굴리고, 문구는 서버가 보내는 실제 단계로 갱신(expStage)
     EXPTIMER=setInterval(()=>{pct+=Math.max(1,(96-pct)*0.08); if(pct>96)pct=96;
       const fl=$('#pfill'); if(!fl){clearInterval(EXPTIMER);return;}
       fl.style.width=pct+'%'; $('#ppct').textContent=Math.floor(pct)+'%';
-      const m=EXPMSGS.filter(x=>pct>=x[0]).pop(); if(m)$('#pmsg').textContent=m[1];
       ci++; $('#pchar').textContent=EXPCHARS[ci%EXPCHARS.length];},650);
   }else{const fl=$('#pfill'); if(fl)fl.style.width='100%'; $('#ppct').textContent='100%';}
 }
+function expStage(msg){const m=$('#pmsg'); if(m&&msg)m.textContent=msg;}
 $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
   $('#export').disabled=true; expLoading(true);
@@ -945,9 +946,18 @@ $('#export').onclick=async()=>{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,keywords:$('#keywords').value,minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES};
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    const d=await r.json();
-    if(!r.ok){closePM(); toast('프롬프트 생성 실패: '+(d.error||''),'err');return;}
-    $('#ptext').value=d.prompt; expLoading(false);
+    if(!r.body){closePM(); toast('프롬프트 생성 실패','err');return;}
+    // NDJSON 스트림: {stage} 단계 갱신, 마지막에 {prompt} 또는 {error}
+    const reader=r.body.getReader(), dec=new TextDecoder(); let buf='', prompt=null, err=null;
+    for(;;){const {value,done}=await reader.read();
+      if(value){buf+=dec.decode(value,{stream:true}); let nl;
+        while((nl=buf.indexOf('\n'))>=0){const line=buf.slice(0,nl).trim(); buf=buf.slice(nl+1);
+          if(!line)continue; let ev; try{ev=JSON.parse(line);}catch(_){continue;}
+          if(ev.stage)expStage(ev.stage); if(ev.prompt!=null)prompt=ev.prompt; if(ev.error)err=ev.error;}}
+      if(done)break;}
+    if(err){closePM(); toast('프롬프트 생성 실패: '+err,'err');return;}
+    if(prompt==null){closePM(); toast('프롬프트 생성 실패','err');return;}
+    $('#ptext').value=prompt; expLoading(false);
   }catch(e){closePM(); toast('프롬프트 오류: '+e,'err');}finally{$('#export').disabled=false;}
 };
 $('#pcopy').onclick=async()=>{const t=$('#ptext');
@@ -1323,10 +1333,12 @@ function renderEmphasis(e){
   const cfg = e.config || {};
   h += `<div style="margin-top:18px;padding:14px;border:1px solid #e7edf3;border-radius:14px;background:#fcfdff">
     <div class=sub-h style="margin-bottom:10px">강조 밀도</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div><div style="font-weight:700;margin-bottom:4px;font-size:13px">문단당 최소 강조</div><input class=epconf data-key="min_per_paragraph" value="${esc(cfg.min_per_paragraph||'')}" placeholder="0" style="width:100%;padding:9px 11px;border:1px solid #d6dade;border-radius:10px;background:#fff"></div>
       <div><div style="font-weight:700;margin-bottom:4px;font-size:13px">문단당 최대 강조</div><input class=epconf data-key="max_per_paragraph" value="${esc(cfg.max_per_paragraph||'')}" placeholder="2" style="width:100%;padding:9px 11px;border:1px solid #d6dade;border-radius:10px;background:#fff"></div>
       <div><div style="font-weight:700;margin-bottom:4px;font-size:13px">최소 문장 간격</div><input class=epconf data-key="min_sentence_gap" value="${esc(cfg.min_sentence_gap||'')}" placeholder="1" style="width:100%;padding:9px 11px;border:1px solid #d6dade;border-radius:10px;background:#fff"></div>
     </div>
+    <div class=muted style="margin-top:8px;font-size:12px">문단당 최소 강조를 1 이상으로 두면 <b>모든 문단에 강조를 그만큼 넣으라고</b> LLM에게 안내돼요(아래 안내문에 반영). 최대만 두면 강조 없는 문단도 허용돼요.</div>
     <div style="margin-top:12px"><button class=btn data-action="save-emphasis-config" style="width:auto;padding:9px 16px">저장</button></div>
   </div>`;
   // 가시성 — LLM에게 실제로 들어가는 강조 지시문(어떻게 쓰이는지 그대로 보여줌)
@@ -1365,6 +1377,7 @@ $('#emph').addEventListener('change',async e=>{
 $('#emph').addEventListener('click',async e=>{const btn=e.target.closest('[data-action="save-emphasis-config"]'); if(!btn)return;
   const root=$('#emph');
   const cfg={
+    min_per_paragraph: root.querySelector('[data-key="min_per_paragraph"]').value.trim() || null,
     max_per_paragraph: root.querySelector('[data-key="max_per_paragraph"]').value.trim() || null,
     min_sentence_gap: root.querySelector('[data-key="min_sentence_gap"]').value.trim() || null,
   };
@@ -1480,6 +1493,22 @@ def _make_handler(state: dict):
         def _json_body(self):
             length = int(self.headers.get("Content-Length", 0))
             return json.loads(self.rfile.read(length) or b"{}")
+
+        def _stream_begin(self, code=200):
+            """NDJSON 스트리밍 응답 시작 — 진행 상태를 한 줄씩 흘려보낸다.
+
+            HTTP/1.0(기본) + Connection: close라 Content-Length 없이 EOF로 종료한다.
+            클라이언트는 줄 단위 JSON({stage}/{prompt}/{error})을 읽어 상태를 갱신한다.
+            """
+            self.send_response(code)
+            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+
+        def _stream_write(self, obj):
+            self.wfile.write((json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8"))
+            self.wfile.flush()
 
         def do_GET(self):
             try:
@@ -1678,23 +1707,40 @@ def _make_handler(state: dict):
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
             guidelines = _build_guidelines(body)
             dkeys, qkeys = _enabled_variant_keys()  # '서식'에서 고른 종류만 프롬프트에 안내
-            text = build_export_prompt(
-                body.get("memo", ""),
-                place_url=srcval if src == "place" else None,
-                product=srcval if src == "product" else None,
-                photos=photos or None,
-                photo_meta=photo_meta,
-                style=StyleProfile(tone=tone) if tone else None,
-                rules=rules,
-                guidelines=guidelines,
-                emphasis=bool(body.get("emphasis")),
-                structure=bool(body.get("structure")),
-                stickers=bool(body.get("stickers")),
-                sticker_favorites_only=not bool(body.get("stickerAll")),
-                divider_variants=dkeys,
-                quote_variants=qkeys,
-            )
-            self._send(200, json.dumps({"prompt": text}).encode())
+
+            # 진행 상태를 스트리밍으로 흘려보내며 수집·조립(수집 캐시 재사용으로 반복 호출 빠름)
+            self._stream_begin()
+            self._stream_write({"stage": "자료를 준비하는 중…"})
+
+            def progress(msg):
+                try:
+                    self._stream_write({"stage": msg})
+                except (BrokenPipeError, OSError):
+                    pass  # 클라이언트가 끊어도 수집은 계속 진행
+
+            try:
+                text = build_export_prompt(
+                    body.get("memo", ""),
+                    place_url=srcval if src == "place" else None,
+                    product=srcval if src == "product" else None,
+                    photos=photos or None,
+                    photo_meta=photo_meta,
+                    style=StyleProfile(tone=tone) if tone else None,
+                    rules=rules,
+                    guidelines=guidelines,
+                    emphasis=bool(body.get("emphasis")),
+                    structure=bool(body.get("structure")),
+                    stickers=bool(body.get("stickers")),
+                    sticker_favorites_only=not bool(body.get("stickerAll")),
+                    divider_variants=dkeys,
+                    quote_variants=qkeys,
+                    use_cache=True,
+                    progress=progress,
+                )
+            except Exception as exc:  # noqa: BLE001 — 오류도 스트림으로 전달
+                self._stream_write({"error": str(exc)})
+                return
+            self._stream_write({"prompt": text})
 
         def _caption_photos(self, body):
             """온디맨드 '✨ AI 자동 추천' — 사진 맥락 캡션 → [{path,label,caption}]."""
@@ -1783,6 +1829,7 @@ def _make_handler(state: dict):
                 sponsored=bool(body.get("sponsored")),
                 sponsor_links=_links(body),
                 sponsor_sticker=(body.get("sponsorSticker") or "").strip(),
+                use_cache=True,  # 같은 URL 재수집 방지(export/캡션과 캐시 공유)
             )
             self._send_plan(result)
 
@@ -2102,11 +2149,13 @@ def _emphasis_preview() -> dict:
             "negative_pool": cfg.negative_pool,
             "fixed_map": cfg.fixed_map,
             "max_per_paragraph": cfg.max_per_paragraph,
+            "min_per_paragraph": cfg.min_per_paragraph,
             "min_sentence_gap": cfg.min_sentence_gap,
         },
         # LLM에게 실제로 들어가는 강조 지시문(가시성 — 어떻게 쓰이는지 그대로 보여줌)
         "instruction": build_emphasis_instruction(cfg),
         "max_per_paragraph": cfg.max_per_paragraph,
+        "min_per_paragraph": cfg.min_per_paragraph,
         "min_sentence_gap": cfg.min_sentence_gap,
     }
 
@@ -2134,6 +2183,8 @@ def _save_emphasis_config(data: dict) -> None:
         cfg.fixed_map = fixed
     if "max_per_paragraph" in data:
         cfg.max_per_paragraph = int(data["max_per_paragraph"]) if data.get("max_per_paragraph") not in (None, "") else None
+    if "min_per_paragraph" in data:
+        cfg.min_per_paragraph = int(data["min_per_paragraph"]) if data.get("min_per_paragraph") not in (None, "") else None
     if "min_sentence_gap" in data:
         cfg.min_sentence_gap = int(data["min_sentence_gap"]) if data.get("min_sentence_gap") not in (None, "") else None
 
@@ -2143,6 +2194,7 @@ def _save_emphasis_config(data: dict) -> None:
     raw = re.sub(r"(?ms)^negative_pool:\n(?:[ \t]+.*\n?)*", "", raw)
     raw = re.sub(r"(?ms)^fixed_map:\n(?:[ \t]+.*\n?)*", "", raw)
     raw = re.sub(r"(?ms)^max_per_paragraph:.*\n?", "", raw)
+    raw = re.sub(r"(?ms)^min_per_paragraph:.*\n?", "", raw)
     raw = re.sub(r"(?ms)^min_sentence_gap:.*\n?", "", raw)
     body = {}
     if cfg.cycling_pool:
@@ -2153,6 +2205,8 @@ def _save_emphasis_config(data: dict) -> None:
         body["fixed_map"] = cfg.fixed_map
     if cfg.max_per_paragraph is not None:
         body["max_per_paragraph"] = cfg.max_per_paragraph
+    if cfg.min_per_paragraph is not None:
+        body["min_per_paragraph"] = cfg.min_per_paragraph
     if cfg.min_sentence_gap is not None:
         body["min_sentence_gap"] = cfg.min_sentence_gap
     block = ""

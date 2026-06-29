@@ -9,9 +9,20 @@ CLI `post` 명령이 이 흐름을 호출한다. 게시(BlogPublisher)는 부수
 
 from __future__ import annotations
 
+from typing import Callable
+
 from pydantic import BaseModel
 
 from autoblog.collect.fact_card import CardType, FactCard
+
+# 세션 동안 같은 URL/검색어의 스크래핑 결과를 재사용(네이버 지도/상품 재수집 방지).
+# 키: "place:<url>" 또는 "product:<검색어>". 값은 사진 부착 전의 순수 수집 카드.
+_SCRAPE_CACHE: dict[str, FactCard] = {}
+
+
+def clear_scrape_cache() -> None:
+    """수집 캐시 비우기(강제 새로고침용)."""
+    _SCRAPE_CACHE.clear()
 from autoblog.draft.generate import DraftRequest, DraftResult, generate_draft
 from autoblog.draft.guideline import Guidelines
 from autoblog.draft.rules import CommonRules
@@ -42,23 +53,52 @@ def collect_card(
     product: str | None = None,
     photos: list[str] | None = None,
     photo_meta: dict[str, dict] | None = None,
+    *,
+    use_cache: bool = False,
+    progress: Callable[[str], None] | None = None,
 ) -> FactCard:
     """수집: 플레이스 URL 또는 상품 검색어 → 사실 카드. 사진 있으면 카드에 채움.
 
     photo_meta(경로→{label,caption})를 주면 그 값으로 채우고 Vision 호출을 건너뛴다
     (webui: 수동 분류·AI 자동 추천 결과). None이면 기존처럼 로컬 Vision 자동 분류(CLI 등).
+    use_cache=True면 같은 URL/검색어의 수집 결과를 세션 캐시에서 재사용한다(webui 세션).
+    progress(msg)를 주면 단계별 상태 메시지를 전달한다(예: '네이버 지도에서…').
     """
+
+    def _say(msg: str) -> None:
+        if progress:
+            progress(msg)
+
     if place_url:
-        from autoblog.collect.place import collect_place_from_url
+        key = "place:" + place_url
+        cached = _SCRAPE_CACHE.get(key) if use_cache else None
+        if cached is not None:
+            _say("저장해둔 가게 정보를 재사용하는 중…")
+            card = cached.model_copy(deep=True)
+        else:
+            _say("네이버 지도에서 가게 정보를 가져오는 중…")
+            from autoblog.collect.place import collect_place_from_url
 
-        card = collect_place_from_url(place_url)
+            card = collect_place_from_url(place_url)
+            if use_cache and not card.is_fallback:  # 실패 카드는 캐시하지 않음(다음에 재시도)
+                _SCRAPE_CACHE[key] = card.model_copy(deep=True)
     elif product:
-        from autoblog.collect.product import collect_product
+        key = "product:" + product
+        cached = _SCRAPE_CACHE.get(key) if use_cache else None
+        if cached is not None:
+            _say("저장해둔 상품 정보를 재사용하는 중…")
+            card = cached.model_copy(deep=True)
+        else:
+            _say("스마트스토어에서 상품 정보를 가져오는 중…")
+            from autoblog.collect.product import collect_product
 
-        card = collect_product(product)
+            card = collect_product(product)
+            if use_cache and not card.is_fallback:
+                _SCRAPE_CACHE[key] = card.model_copy(deep=True)
     else:
         card = FactCard(type=CardType.place)
     if photos:
+        _say("사진을 정리하는 중…")
         if photo_meta is not None:
             from autoblog.collect.photos import attach_photos
 
@@ -130,7 +170,7 @@ def caption_photos(
     card = None
     try:  # 메뉴·가게설명을 맥락으로 쓰려고 정보만 수집(사진 분류는 안 함)
         if place_url or product:
-            card = collect_card(place_url=place_url, product=product)
+            card = collect_card(place_url=place_url, product=product, use_cache=True)
     except Exception:  # noqa: BLE001 — 수집 실패해도 메모만으로 캡션 진행
         card = None
     from autoblog.vision import smart_caption_photos
@@ -160,24 +200,32 @@ def build_export_prompt(
     divider_variants: list[str] | None = None,
     quote_variants: list[str] | None = None,
     photo_meta: dict[str, dict] | None = None,
+    use_cache: bool = False,
+    progress: Callable[[str], None] | None = None,
 ) -> str:
     """수집(선택)→프롬프트 조립까지만 하고, 다른 챗봇에 붙여넣을 단일 텍스트로 반환.
 
     run_pipeline과 동일한 지시문(강조/구조/스티커/규칙)을 넣되 LLM은 호출하지 않는다.
     system을 지시문으로, user를 입력 자료로 묶어 그대로 복사-붙여넣기 가능하게 만든다.
     photo_meta(경로→{label,caption})를 주면 사진을 그 값으로 채운다(Vision 분류 생략).
+    use_cache=True면 같은 URL의 수집 결과를 재사용한다. progress(msg)로 단계 상태 전달.
     """
     from autoblog.draft.generate import build_prompt
 
     if card is None:
         try:
-            card = collect_card(place_url, product, photos, photo_meta=photo_meta)
+            card = collect_card(
+                place_url, product, photos, photo_meta=photo_meta,
+                use_cache=use_cache, progress=progress,
+            )
         except Exception:  # noqa: BLE001 — 수집 실패해도 내보내기는 메모만으로 진행
             card = (
                 collect_card(photos=photos, photo_meta=photo_meta)
                 if photos
                 else FactCard(type=CardType.place)
             )
+    if progress:
+        progress("내 프롬프트와 입력 자료를 합치는 중…")
     labels: list[str] = []
     if stickers:
         if sticker_catalog is None:
@@ -310,15 +358,21 @@ def run_pipeline(
     sponsor_sticker: str = "",
     model: str | None = None,
     photo_meta: dict[str, dict] | None = None,
+    use_cache: bool = False,
+    progress: Callable[[str], None] | None = None,
 ) -> PipelineResult:
     """수집→초안(강조/구조/스티커 마커 자동)→게시 플랜까지 한 번에 조립.
 
     card를 직접 주면 수집을 건너뛴다(테스트/재사용). stickers=True면 카탈로그 라벨을
     초안에 주입하고 같은 카탈로그로 picker를 만들어 플랜에서 스티커를 해석한다.
     photo_meta(경로→{label,caption})를 주면 사진을 그 값으로 채우고 Vision 분류를 건너뛴다.
+    use_cache=True면 같은 URL의 수집 결과를 재사용한다(webui 세션).
     """
     if card is None:
-        card = collect_card(place_url, product, photos, photo_meta=photo_meta)
+        card = collect_card(
+            place_url, product, photos, photo_meta=photo_meta,
+            use_cache=use_cache, progress=progress,
+        )
 
     catalog = None
     labels: list[str] = []
