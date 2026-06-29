@@ -57,6 +57,23 @@ _RANGE_RECT_JS = """(t) => {
   return null;
 }"""
 
+# 색 팔레트에 떠 있는 프리셋 스와치(.se-color-palette)들의 RGB와 화면 중심좌표.
+# 목표색과 일치하는 스와치를 '실제 마우스 클릭'해 색을 넣으면 '더보기 hex 입력'(~1.4s)
+# 대비 ~0.3s로 끝나고 저장도 유지된다(라이브 검증됨). 숨은 스와치(rect 0)는 제외.
+_SWATCH_DUMP_JS = r"""
+() => {
+  const out = [];
+  for (const el of document.querySelectorAll('.se-color-palette')) {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    const m = getComputedStyle(el).backgroundColor.match(/\d+/g);
+    if (!m || m.length < 3) continue;
+    out.push({r: +m[0], g: +m[1], b: +m[2], x: r.x + r.width / 2, y: r.y + r.height / 2});
+  }
+  return out;
+}
+"""
+
 
 class EditorNotImplemented(NotImplementedError):
     """로그인 후 셀렉터 확정 전까지 미구현인 단계."""
@@ -700,11 +717,44 @@ class BlogPublisher:
         page.wait_for_timeout(200)
         return True
 
+    @staticmethod
+    def _parse_hex(hex_color: str) -> tuple[int, int, int] | None:
+        v = (hex_color or "").strip().lstrip("#")
+        if len(v) == 3:
+            v = "".join(c * 2 for c in v)
+        if len(v) != 6:
+            return None
+        try:
+            return int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16)
+        except ValueError:
+            return None
+
+    # 스와치를 '같은 색'으로 인정하는 RGB 제곱거리 상한(채널당 ~3 차이 ≈ ΔE 수준).
+    # 파워단축키 색은 대부분 SE 프리셋의 정확한 멤버(거리 0)라 거의 항상 스와치로 끝난다.
+    _SWATCH_MATCH_MAX = 30
+
     def _apply_color(self, toolbar_button: str, hex_color: str):
-        """글자색/배경색 버튼 → 더보기 → hex 입력 → 확인 (네이티브, 저장 유지)."""
+        """선택 텍스트에 글자색/배경색 적용.
+
+        1순위(빠름): 색 팔레트에서 목표색과 일치하는 프리셋 스와치를 직접 클릭(~0.3s).
+        2순위(폴백): 일치 스와치가 없으면 '더보기 → hex 입력 → 확인'으로 임의 hex를
+                     정확히 적용(~1.4s). 둘 다 네이티브 명령이라 저장까지 유지된다.
+        """
         page = self._page
         page.click(toolbar_button)
         page.wait_for_timeout(350)
+        tgt = self._parse_hex(hex_color)
+        if tgt is not None:
+            best, best_d = None, None
+            for s in page.evaluate(_SWATCH_DUMP_JS):
+                d = (s["r"] - tgt[0]) ** 2 + (s["g"] - tgt[1]) ** 2 + (s["b"] - tgt[2]) ** 2
+                if best_d is None or d < best_d:
+                    best, best_d = s, d
+            if best is not None and best_d <= self._SWATCH_MATCH_MAX:
+                page.mouse.click(best["x"], best["y"])  # 실제 클릭이어야 SE가 선택에 반영
+                page.wait_for_timeout(250)
+                return
+        # 폴백: 더보기 → hex 입력 → 확인
         page.click(SMART_EDITOR["color_more_button"])
         page.wait_for_timeout(350)
         inp = page.query_selector(SMART_EDITOR["color_hex_input"])
