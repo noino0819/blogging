@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -13,11 +14,43 @@ import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-# 레포 루트 = 이 파일 기준 ../../.. (src/autoblog/config.py → repo)
+# 레포 루트 = 이 파일 기준 ../../.. (src/autoblog/config.py → repo). dev에서만 의미.
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_DIR = REPO_ROOT / "config"
 
-load_dotenv(REPO_ROOT / ".env")
+
+def _is_frozen() -> bool:
+    """PyInstaller 등으로 묶여 실행 중인지."""
+    return getattr(sys, "frozen", False)
+
+
+def _user_data_dir(app: str = "autoblog") -> Path:
+    """OS별 쓰기 가능한 유저 데이터 디렉터리."""
+    if sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    elif os.name == "nt":
+        base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share")
+    return base / app
+
+
+# 패키징 인지 경로 — 자산(읽기전용)과 유저 데이터(쓰기)를 분리한다.
+#  ASSET_DIR     : 앱에 번들되는 읽기전용 자산. frozen이면 PyInstaller 추출 폴더(_MEIPASS).
+#  USER_DATA_DIR : 세션/업로드/설정 등 쓰기. frozen이면 OS 유저 데이터 폴더.
+# dev(비frozen)에선 둘 다 REPO_ROOT → 기존 경로와 100% 동일(개발 동작 불변).
+if _is_frozen():
+    ASSET_DIR = Path(getattr(sys, "_MEIPASS", REPO_ROOT))
+    USER_DATA_DIR = _user_data_dir()
+else:
+    ASSET_DIR = REPO_ROOT
+    USER_DATA_DIR = REPO_ROOT
+
+CONFIG_DIR = ASSET_DIR / "config"            # 읽기전용 자산(프롬프트/폰트/yaml)
+DATA_DIR = USER_DATA_DIR / "data"            # 쓰기: 세션/업로드/스티커
+USER_CONFIG_DIR = USER_DATA_DIR / "config"   # 쓰기 설정: ui_prefs/categories
+ENV_PATH = USER_DATA_DIR / ".env"
+
+load_dotenv(ENV_PATH)
 
 
 def provider_for_model(model: str) -> str:
@@ -132,7 +165,8 @@ def load_env() -> Env:
 
 def save_env_value(key: str, value: str, path: Path | None = None) -> None:
     """`.env`에 키=값을 추가/갱신(한 번 받은 설정을 영속화). 캐시도 무효화."""
-    path = path or (REPO_ROOT / ".env")
+    path = path or ENV_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     found = False
     if path.exists():

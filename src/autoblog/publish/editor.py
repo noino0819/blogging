@@ -18,13 +18,13 @@ import re
 from pathlib import Path
 
 from autoblog.collect.selectors import NAVER_LOGIN, SMART_EDITOR
-from autoblog.config import REPO_ROOT
+from autoblog.config import DATA_DIR, USER_DATA_DIR
 from autoblog.publish.emphasis import EmphasisStyle
 from autoblog.publish.plan import PublishBlock, PublishPlan
 
 # 로그인 세션을 storage_state(JSON)로 저장해 재사용.
 # (persistent context는 세션 쿠키 NID_AUT를 닫을 때 버려 매번 로그인됨 → storage_state로 해결)
-STATE_PATH = REPO_ROOT / "data" / "naver_state.json"
+STATE_PATH = DATA_DIR / "naver_state.json"
 
 # 본문에서 특정 텍스트의 화면 좌표(Range rect)를 구하는 JS.
 # SE는 프로그램적 Range 선택을 색상 적용에 반영하지 않으므로, 좌표를 받아
@@ -1216,8 +1216,8 @@ class BlogPublisher:
                         except Exception:
                             continue
                 rel = (
-                    str(img_path.relative_to(REPO_ROOT))
-                    if img_path.is_relative_to(REPO_ROOT)
+                    str(img_path.relative_to(USER_DATA_DIR))
+                    if img_path.is_relative_to(USER_DATA_DIR)
                     else str(img_path)
                 )
                 results.append(Sticker(pack=pack, index=idx, animated=item["animated"], image=rel))

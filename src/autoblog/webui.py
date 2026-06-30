@@ -14,15 +14,15 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from autoblog.config import REPO_ROOT
+from autoblog.config import CONFIG_DIR, DATA_DIR, REPO_ROOT, USER_CONFIG_DIR, USER_DATA_DIR
 
 PHOTO_DIR = REPO_ROOT / "test"  # 유저 사진/영상 폴더(테스트용)
 _IMG_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 from autoblog.collect.photos import VIDEO_EXT as _VID_EXT  # noqa: E402  영상 확장자(단일 출처)
 from autoblog.collect.photos import is_video  # noqa: E402
 _MEDIA_EXT = _IMG_EXT | _VID_EXT
-UPLOAD_DIR = REPO_ROOT / "data" / "uploads"  # 유저가 올린 사진/영상
-FONTS_DIR = REPO_ROOT / "config" / "fonts"  # 에디터 웹폰트(로컬 서빙, 미리보기용)
+UPLOAD_DIR = DATA_DIR / "uploads"  # 유저가 올린 사진/영상
+FONTS_DIR = CONFIG_DIR / "fonts"  # 에디터 웹폰트(번들 자산, 로컬 서빙)
 # 미리보기에서 실제 글씨체로 보이게 — 에디터와 같은 se-* 패밀리명 사용
 _FONT_FAMILIES = [
     "nanumgothic", "nanummyeongjo", "nanumbarungothic", "nanumsquare",
@@ -2496,9 +2496,9 @@ def _make_handler(state: dict):
     return Handler
 
 
-FORMAT_CONFIG_PATH = REPO_ROOT / "config" / "format.yaml"
-PREVIEW_DIR = REPO_ROOT / "config" / "editor_previews"
-PREFS_PATH = REPO_ROOT / "config" / "ui_prefs.json"
+FORMAT_CONFIG_PATH = USER_CONFIG_DIR / "format.yaml"  # 유저가 서식 저장 → 쓰기
+PREVIEW_DIR = CONFIG_DIR / "editor_previews"  # 번들 자산(읽기전용)
+PREFS_PATH = USER_CONFIG_DIR / "ui_prefs.json"  # 유저 설정 → 쓰기
 
 # 글쓰기 화면 기본 설정(서버가 기준). 새 키가 추가돼도 저장본 위에 머지된다.
 DEFAULT_MIN_CHARS = 1500  # 글자 수를 따로 안 넣으면 기본 최소 글자 수
@@ -2668,7 +2668,7 @@ def _enabled_variants() -> tuple[list[int], list[int]]:
 
 def _editor_options() -> dict:
     """라이브 캡처한 에디터 실제 옵션(config/editor_options.json). 없으면 빈 dict."""
-    p = REPO_ROOT / "config" / "editor_options.json"
+    p = CONFIG_DIR / "editor_options.json"
     try:
         return json.loads(p.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -2977,7 +2977,7 @@ def _set_llm_key(provider: str, key: str) -> None:
     load_env.cache_clear()
 
 
-CATEGORIES_PATH = REPO_ROOT / "config" / "categories.json"
+CATEGORIES_PATH = USER_CONFIG_DIR / "categories.json"  # 유저 분류 저장 → 쓰기
 
 
 def _load_categories() -> list:
@@ -3055,7 +3055,7 @@ def _sticker_image(ref: str) -> Path | None:
     if not s or not s.image:
         return None
     p = Path(s.image)
-    return p if p.is_absolute() else REPO_ROOT / p
+    return p if p.is_absolute() else USER_DATA_DIR / p
 
 
 def _catalog_summary() -> dict:

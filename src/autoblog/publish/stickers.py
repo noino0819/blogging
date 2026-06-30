@@ -19,10 +19,10 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-from autoblog.config import CONFIG_DIR, REPO_ROOT
+from autoblog.config import DATA_DIR, USER_CONFIG_DIR, USER_DATA_DIR
 
-STICKER_CONFIG_PATH = CONFIG_DIR / "stickers.yaml"
-STICKER_DATA_DIR = REPO_ROOT / "data" / "stickers"
+STICKER_CONFIG_PATH = USER_CONFIG_DIR / "stickers.yaml"  # 유저가 태그/즐겨찾기 수정 → 쓰기
+STICKER_DATA_DIR = DATA_DIR / "stickers"
 
 # 네이버가 누구에게나 기본 제공하는 팩(직접 구매·추가한 게 아님) — 카탈로그 잡음이라
 # UI에서 토글로 숨길 수 있게 한다(stickers 뷰의 "기본 이모티콘 숨기기").
@@ -403,7 +403,7 @@ def label_catalog(
     total = len(targets)
     for done, i in enumerate(targets, 1):
         s = working[i]
-        img = s.image if Path(s.image).is_absolute() else str(REPO_ROOT / s.image)
+        img = s.image if Path(s.image).is_absolute() else str(USER_DATA_DIR / s.image)
         try:
             tags = label_sticker(img, model)
         except Exception:  # noqa: BLE001 - 라벨링 실패해도 카탈로그는 유지

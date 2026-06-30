@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from autoblog.config import REPO_ROOT
+from autoblog.config import USER_DATA_DIR
 from autoblog.publish.stickers import (
     StickerCatalog,
     load_sticker_catalog,
@@ -175,7 +175,7 @@ def _make_handler(state: dict):
 
 def _resolve_image(image: str) -> Path:
     p = Path(image)
-    return p if p.is_absolute() else REPO_ROOT / p
+    return p if p.is_absolute() else USER_DATA_DIR / p
 
 
 def serve_review(
