@@ -523,7 +523,7 @@ class BlogPublisher:
         앵커로만 쓴다. text/divider 블록을 해당 앵커(사진 k 뒤 / 영상 뒤 / 맨 앞 사진 위)에 끼워
         넣는다. 영상은 절대 건드리지 않아 그대로 보존되고, 저장하면 같은 글이 갱신된다(삭제 없음).
         image 블록↔원본 사진은 image_path(=photo_paths의 다운로드 순=문서 순)로 매핑하고, 없으면
-        등장 순서로 폴백한다. 제목·인용구·스티커·구분선까지 넣는다(아직 미지원: 링크/장소는 경고로 남김).
+        등장 순서로 폴백한다. 제목·인용구·스티커·구분선·링크·지도까지 모두 넣는다(일반 게시와 동일).
         한 사진 앵커에 여러 블록이 붙을 때는 '역순 삽입'으로 순서를 보존한다(아래 루프 주석 참고).
 
         글 식별: draft_title을 주면(권장) 발행 직전에 제목+날짜로 목록에서 idx를 '다시' 찾는다
@@ -577,7 +577,7 @@ class BlogPublisher:
             elif block.kind == "video":
                 flush_group()
                 cur_anchor = ("video",)
-            elif block.kind in ("text", "divider", "quote", "sticker"):
+            elif block.kind in ("text", "divider", "quote", "sticker", "place", "link"):
                 cur.append(block)
             else:
                 warnings.append(
@@ -603,6 +603,22 @@ class BlogPublisher:
                 elif block.kind == "sticker":
                     self._insert_sticker(
                         block.sticker_pack, block.sticker_index or 0, at_end=False
+                    )
+                elif block.kind == "place" and block.text:
+                    try:  # 지도(장소) 카드 — 커서 위치에 삽입. 검색 결과 없으면 False
+                        ok = self._insert_place(block.text, address=block.place_address)
+                    except Exception:  # noqa: BLE001 - 지도는 보조, 실패해도 본문 유지
+                        page.keyboard.press("Escape")
+                        ok = False
+                    if not ok:
+                        warnings.append(
+                            f"지도(장소) 자동 삽입 실패: ‘{block.text}’ — 네이버 장소 검색 결과가 없어 "
+                            "건너뛰었어요. 에디터에서 직접 ‘장소’를 추가해 주세요."
+                        )
+                elif block.kind == "link" and block.link_url:
+                    # at_anchor=True: 본문 끝이 아니라 앵커(사진 뒤)에 카드 삽입
+                    self._insert_link(
+                        block.link_url, keep_url_text=block.keep_url_text, at_anchor=True
                     )
         # 본문 입력 후 강조 적용(커서 간섭 방지 — 기존 publish와 동일한 후처리 패스)
         for span in emphases:
@@ -805,8 +821,26 @@ class BlogPublisher:
         다음 단락으로 이어받으므로 글 전체가 center면 그대로 유지된다(left로 되돌리지 않음)."""
         if block.align and block.align != "left":
             self._apply_align(block.align)
-        self._page.keyboard.type(block.text, delay=4)
+        self._type_with_keycaps(block.text)
         self._page.keyboard.press("Enter")
+
+    # 키캡 이모지(1️⃣ = 숫자+U+FE0F+U+20E3 결합)는 한 글자씩 치면 결합이 깨져 '1' 따로,
+    # 빈 네모(⃣) 따로 들어간다. 통째로 insert_text 하면 브라우저가 한 덩어리로 받아 안 깨진다.
+    _KEYCAP_RE = re.compile(r"[0-9](?:️)?⃣")
+
+    def _type_with_keycaps(self, text: str):
+        """키캡 이모지 구간만 insert_text로 통째 넣고, 나머지는 기존대로 한 글자씩 친다.
+
+        키캡 외 구간은 \\n을 그대로 넘겨 기존 keyboard.type의 문단(Enter) 처리를 유지한다.
+        키캡은 변이 선택자(U+FE0F)를 붙인 표준형으로 정규화해 컬러 이모지로 또렷이 렌더한다."""
+        pos = 0
+        for m in self._KEYCAP_RE.finditer(text):
+            if m.start() > pos:
+                self._page.keyboard.type(text[pos : m.start()], delay=4)
+            self._page.keyboard.insert_text(m.group()[0] + "️⃣")
+            pos = m.end()
+        if pos < len(text):
+            self._page.keyboard.type(text[pos:], delay=4)
 
     def _insert_place(self, query: str, address: str | None = None) -> bool:
         """SE 네이티브 '장소' 카드 삽입: 가게명 검색 → 수집 주소와 가장 잘 맞는 결과 '추가' → '확인'.
@@ -846,7 +880,7 @@ class BlogPublisher:
         page.wait_for_timeout(1500)
         return True
 
-    def _insert_link(self, url: str, keep_url_text: bool = False) -> bool:
+    def _insert_link(self, url: str, keep_url_text: bool = False, at_anchor: bool = False) -> bool:
         """SE 링크 카드(oglink) 삽입 — 본문에 URL을 합성 paste 이벤트로 붙여넣어 카드 생성.
 
         툴바 '링크'(글감검색) 버튼은 외부 URL을 "글감을 가져올 수 없습니다"로 거부하므로 못 쓴다.
@@ -857,13 +891,17 @@ class BlogPublisher:
 
         keep_url_text=True면 그 'URL 텍스트 줄'을 지우지 않고 카드와 함께 남긴다 — 협찬/체험단
         플랫폼 크롤러가 발행글 HTML에서 '지정 캠페인 URL 문자열'을 찾아 인식하는데, oglink 카드의
-        href는 네이버 리다이렉트로 감싸져 원본 URL이 안 보일 수 있어 텍스트로도 남겨둬야 잡힌다."""
+        href는 네이버 리다이렉트로 감싸져 원본 URL이 안 보일 수 있어 텍스트로도 남겨둬야 잡힌다.
+
+        at_anchor=True(in-place)면 본문 끝으로 가지 않고 '현재 커서'(앵커가 잡아둔 사진 뒤 빈
+        문단)에 그대로 붙여넣는다 — 일반 게시는 끝에 몰아 넣으면 되지만 in-place는 위치가 중요."""
         page = self._page
-        page.click(SMART_EDITOR["content_component"])
-        page.wait_for_timeout(300)
-        page.keyboard.press("End")
-        page.keyboard.press("Enter")  # 직전 문단과 안 섞이게 새 줄에서
-        page.wait_for_timeout(200)
+        if not at_anchor:
+            page.click(SMART_EDITOR["content_component"])
+            page.wait_for_timeout(300)
+            page.keyboard.press("End")
+            page.keyboard.press("Enter")  # 직전 문단과 안 섞이게 새 줄에서
+            page.wait_for_timeout(200)
 
         before = page.evaluate("()=>document.querySelectorAll('.se-component.se-oglink').length")
         dispatched = page.evaluate(
