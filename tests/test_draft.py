@@ -107,6 +107,39 @@ def test_forbidden_phrase_softened():
     assert "추천" in enforce_format("여기 강력 추천 드려요")
 
 
+def test_product_checklist_box_preserved():
+    # 상품 리뷰(allow_checklist=True): 1️⃣~ 핵심요약·✅ 체크리스트·🌟·👉는 보존되고
+    # 긴 박스 줄도 쪼개지지 않는다. 기본(맛집) 모드에서는 ✅/🌟이 제거된다.
+    from autoblog.draft.postprocess import enforce_format
+
+    raw = (
+        "제목 한 줄\n인트로!\n\n"
+        "1️⃣ 첫인상: 100% 재활용 가능한 폴리에틸렌이라 아주 착한 소재예요\n\n"
+        "🌟 이런 분들께 추천해요\n✅ 깔끔하게 휴대하고 싶은 분\n👉 구매처: 공식 스토어"
+    )
+    prod = enforce_format(raw, allow_checklist=True)
+    # 키캡 결합문자(⃣ U+20E3)·✅·🌟·👉가 살아 있어야 한다(변이 선택자 FE0F는 빠질 수 있음)
+    assert "⃣" in prod and "✅" in prod and "🌟" in prod and "👉" in prod
+    assert "!" not in prod and ".ᐟ" in prod  # 느낌표는 상품 모드에서도 치환
+    # 긴 핵심요약 줄이 한 줄로 유지(쪼개지지 않음)
+    assert "첫인상: 100% 재활용 가능한 폴리에틸렌이라 아주 착한 소재예요" in prod
+
+    base = enforce_format(raw, allow_checklist=False)
+    assert "✅" not in base and "🌟" not in base  # 맛집 모드는 기존대로 제거
+
+
+def test_load_base_prompt_product_card():
+    # 상품 카드면 product.md(상품 리뷰 베이스)를 고른다.
+    from autoblog.collect.fact_card import CardType, FactCard
+    from autoblog.collect.fact_card import ProductFacts
+
+    prod = FactCard(type=CardType.product, product=ProductFacts(name="테스트 파우치"))
+    base = load_base_prompt(card=prod)
+    assert "상품" in base and "역할 설정" in base
+    # 카드 없음/맛집이면 기본(default.md)
+    assert "맛집·카페·여행" in load_base_prompt()
+
+
 def test_structure_markers_survive_postprocess():
     # [구분선]/[인용구] 마커는 postprocess(enforce_format)를 거쳐도 보존돼야
     # 게시 플랜이 블록으로 파싱할 수 있다([사진] 마커와 동일 형태).

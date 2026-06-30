@@ -67,7 +67,7 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
     generate_draft가 쓰는 것과 동일한 조립 로직. 외부 챗봇에 붙여넣을 프롬프트
     내보내기에도 재사용한다(같은 지시문이 들어가도록 단일 출처 유지).
     """
-    base = req.base_prompt or load_base_prompt()
+    base = req.base_prompt or load_base_prompt(card=req.fact_card)
     system = build_system_prompt(base, req.style, req.guidelines, req.rules)
     if req.emphasis:
         system = f"{system}\n\n{build_emphasis_instruction(load_emphasis_config())}"
@@ -110,6 +110,7 @@ def generate_draft(
             model=model,
         ).strip()
     text = raw
+    is_product = req.fact_card.product is not None  # 상품 리뷰: 나열 박스(✅/1️⃣~) 보존
     debug = {"system": system, "user": user, "raw": raw, "model": model or ""}
 
     # 강조 마킹 추출(포맷 후처리 전에 — 줄바꿈이 <<>>를 깨지 않도록)
@@ -126,7 +127,7 @@ def generate_draft(
                 span.text = enforce_format(span.text, wrap=False)
 
     if req.postprocess:
-        text = enforce_format(text)
+        text = enforce_format(text, allow_checklist=is_product)
 
     checklist: list[CheckItem] = []
     if req.guidelines and not req.guidelines.is_empty():
