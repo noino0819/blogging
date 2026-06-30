@@ -554,7 +554,11 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <h2 class=title>프롬프트</h2>
     <p class=desc>초안 생성에 쓰이는 베이스 프롬프트를 직접 수정할 수 있어요. 저장하면 다음 생성부터 반영됩니다.</p>
     <div class=card>
-      <h3>베이스 프롬프트 <span class=muted style="font-weight:400">— config/prompts/default.md</span></h3>
+      <h3>베이스 프롬프트 <span class=muted id=prompthdr style="font-weight:400">— config/prompts/default.md</span></h3>
+      <div class=seg id=promptkindseg style="max-width:260px;margin-bottom:10px">
+        <button type=button data-k=place class=on>🍜 맛집</button>
+        <button type=button data-k=product>🛍️ 상품</button>
+      </div>
       <textarea id=promptedit class=promptarea placeholder="불러오는 중…"></textarea>
       <div style="margin-top:10px;display:flex;align-items:center;gap:12px">
         <button class=btn id=promptsave style="width:auto;padding:9px 18px">저장</button>
@@ -1677,14 +1681,21 @@ $('#emph').addEventListener('click',async e=>{const btn=e.target.closest('[data-
   catch(e){toast('저장 오류','err');}
   finally{btn.disabled=false;}
 });
-async function loadPrompt(){try{const p=await (await fetch('/api/prompt')).json();
+let PROMPTKIND='place';  // 편집 중인 베이스 프롬프트 종류(맛집=default.md / 상품=product.md)
+async function loadPrompt(){try{const p=await (await fetch('/api/prompt?kind='+PROMPTKIND)).json();
   $('#promptedit').value=p.base_raw||'';
+  $('#prompthdr').textContent='— '+(p.path||'config/prompts/default.md');
+  $('#promptstat').textContent='';
   $('#promptlayers').innerHTML='<div class=promptbox>'+p.layers.map(([t,b])=>`<details><summary>${esc(t)}</summary><pre>${esc(b)}</pre></details>`).join('')+'</div>';
 }catch(e){$('#promptlayers').innerHTML='<div class=muted>로드 실패</div>';}}
+function setPromptKind(k){if(k===PROMPTKIND)return; PROMPTKIND=k;
+  $$('#promptkindseg button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
+  loadPrompt();}
+$$('#promptkindseg button').forEach(b=>b.onclick=()=>setPromptKind(b.dataset.k));
 $('#promptsave').onclick=async()=>{
   $('#promptsave').disabled=true; $('#promptstat').textContent='저장 중…';
-  try{const r=await fetch('/api/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({base:$('#promptedit').value})});
-    $('#promptstat').textContent=r.ok?'저장됨 ✓ 다음 생성부터 반영돼요':'저장 실패';
+  try{const r=await fetch('/api/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({base:$('#promptedit').value,kind:PROMPTKIND})});
+    $('#promptstat').textContent=r.ok?('저장됨 ✓ ('+(PROMPTKIND==='product'?'상품':'맛집')+') 다음 생성부터 반영돼요'):'저장 실패';
   }catch(e){$('#promptstat').textContent='오류';}finally{$('#promptsave').disabled=false;}
 };
 async function loadVariants(){try{const f=await (await fetch('/api/format')).json();
@@ -1957,7 +1968,8 @@ def _make_handler(state: dict):
             elif u.path == "/api/emphasis":
                 self._send(200, json.dumps(_emphasis_preview()).encode())
             elif u.path == "/api/prompt":
-                self._send(200, json.dumps(_prompt_preview()).encode())
+                kind = (parse_qs(u.query).get("kind", ["place"])[0] or "place")
+                self._send(200, json.dumps(_prompt_preview(kind)).encode())
             elif u.path == "/api/categories":
                 self._send(200, json.dumps({"categories": _load_categories()}).encode())
             elif u.path == "/api/photo_categories":
@@ -2021,7 +2033,8 @@ def _make_handler(state: dict):
                     _set_sticker_tags(body.get("ref", ""), body.get("tags", []))
                     self._send(200, b'{"ok":true}')
                 elif path == "/api/prompt":
-                    _save_prompt(self._json_body().get("base", ""))
+                    pbody = self._json_body()
+                    _save_prompt(pbody.get("base", ""), (pbody.get("kind") or "place"))
                     self._send(200, b'{"ok":true}')
                 elif path == "/api/prefs":
                     _save_prefs(self._json_body())
@@ -2911,9 +2924,19 @@ def _save_emphasis_preset_tag(preset_id, tag: str) -> None:
     path.write_text(raw.rstrip("\n") + "\n" + block, encoding="utf-8")
 
 
-def _prompt_preview() -> dict:
-    """초안 생성에 쓰이는 프롬프트(편집용 raw default.md + 우리가 얹는 마커 지시문 레이어)."""
-    from autoblog.draft.prompts import DEFAULT_PROMPT_PATH
+def _prompt_path_for(kind: str):
+    """kind('product'|'place') → 편집 대상 베이스 프롬프트 파일 경로."""
+    from autoblog.draft.prompts import DEFAULT_PROMPT_PATH, PRODUCT_PROMPT_PATH
+
+    return PRODUCT_PROMPT_PATH if kind == "product" else DEFAULT_PROMPT_PATH
+
+
+def _prompt_preview(kind: str = "place") -> dict:
+    """초안 생성에 쓰이는 프롬프트(편집용 raw 베이스 + 우리가 얹는 마커 지시문 레이어).
+
+    kind='product'면 상품 베이스(product.md), 그 외엔 맛집 베이스(default.md)를 보여준다.
+    마커 레이어(강조/구조/스티커)는 두 종류 공통이라 kind와 무관하게 동일하다.
+    """
     from autoblog.publish.emphasis import build_emphasis_instruction, load_emphasis_config
     from autoblog.publish.plan import build_structure_instruction
     from autoblog.publish.stickers import build_sticker_instruction, load_sticker_catalog
@@ -2926,16 +2949,17 @@ def _prompt_preview() -> dict:
     sticker_instr = build_sticker_instruction(load_sticker_catalog().labels())
     if sticker_instr:  # 보유 스티커 라벨이 있을 때만(감정·구분선 스티커 안내)
         layers.append(["스티커 (스티커 켤 때)", sticker_instr])
+    path = _prompt_path_for(kind)
     return {
-        "base_raw": DEFAULT_PROMPT_PATH.read_text(encoding="utf-8"),
+        "base_raw": path.read_text(encoding="utf-8"),
         "layers": layers,
+        "kind": "product" if kind == "product" else "place",
+        "path": f"config/prompts/{path.name}",
     }
 
 
-def _save_prompt(text: str) -> None:
-    from autoblog.draft.prompts import DEFAULT_PROMPT_PATH
-
-    DEFAULT_PROMPT_PATH.write_text(text, encoding="utf-8")
+def _save_prompt(text: str, kind: str = "place") -> None:
+    _prompt_path_for(kind).write_text(text, encoding="utf-8")
 
 
 def _models_info() -> dict:
