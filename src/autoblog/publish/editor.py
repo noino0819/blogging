@@ -497,7 +497,18 @@ class BlogPublisher:
             return True
         page.click(SMART_EDITOR["title_component"])
         page.wait_for_timeout(200)
-        page.keyboard.press("End")
+        # 제목이 두 줄로 접히면 키보드 'End'는 시각 줄 끝(제목 중간)에 멈춰, 뒤이은 Enter가 본문으로
+        # 못 넘어가고 본문 글자가 제목 안에 박힌다(전체선택+Enter는 선택분 삭제로 제목이 날아감).
+        # 그래서 선택을 만들지 않고 JS로 캐럿을 제목 '논리적 끝'에 둔 뒤 Enter로 본문에 진입한다.
+        page.evaluate(
+            """(sel)=>{const comp=document.querySelector(sel);
+              if(!comp) return false;
+              const ed=comp.querySelector('[contenteditable=true]')||comp;
+              ed.focus();
+              const r=document.createRange(); r.selectNodeContents(ed); r.collapse(false);
+              const s=getSelection(); s.removeAllRanges(); s.addRange(r); return true;}""",
+            SMART_EDITOR["title_component"],
+        )
         page.keyboard.press("Enter")
         page.wait_for_timeout(300)
         return True
@@ -790,7 +801,7 @@ class BlogPublisher:
     def _type_title(self, title: str, clear: bool = False):
         self._page.click(SMART_EDITOR["title_component"])
         if clear:  # in-place: 불러온 글의 기존 제목을 전체 선택해 지우고 새로 쓴다
-            self._page.keyboard.press("Meta+a")
+            self._page.keyboard.press("ControlOrMeta+a")
             self._page.keyboard.press("Delete")
             self._page.wait_for_timeout(150)
         self._page.keyboard.type(title, delay=8)
