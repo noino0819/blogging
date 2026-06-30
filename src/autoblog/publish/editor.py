@@ -227,6 +227,8 @@ class BlogPublisher:
             except Exception as exc:  # noqa: BLE001 - 강조는 보조라 실패해도 본문 유지
                 self._page.keyboard.press("Escape")
                 _ = exc
+        # 저장 직전: 중앙정렬이 빠진 문단을 DOM에서 검증해 자동복구(왼쪽정렬 사진 상속/무음 실패 대비).
+        self._heal_alignment_if_uniform(plan, warnings)
         if save:
             # 임시저장에도 카테고리가 반영되도록, 발행 레이어에서 카테고리만 고르고 레이어를 닫는다.
             # (submit이면 아래 발행 분기에서 카테고리를 고르므로 중복 적용하지 않는다.)
@@ -580,6 +582,8 @@ class BlogPublisher:
                 self._apply_emphasis(span.text, span.style)
             except Exception:  # noqa: BLE001
                 page.keyboard.press("Escape")
+        # 저장 직전: 중앙정렬 검증·자동복구(in-place는 사진 앵커마다 사진 정렬을 상속해 특히 취약).
+        self._heal_alignment_if_uniform(plan, warnings)
         if save:
             if category:
                 self._apply_category_for_draft(category)
@@ -915,17 +919,104 @@ class BlogPublisher:
         # 첫 결과가 더 그럴듯하면 첫 결과. 임계 미만이면 0으로 폴백.
         return best_i if best_score >= 0.5 else 0
 
+    # 커서가 놓인 문단의 '현재 정렬'을 정렬 툴바 버튼 클래스에서 읽는 JS.
+    # SE는 커서 문단의 정렬을 se-align-{left|center|right}-toolbar-button 클래스로 반영한다(라이브 검증됨).
+    _CURRENT_ALIGN_JS = (
+        "()=>{const b=document.querySelector('li.se-toolbar-item-align button');"
+        "if(!b)return '';const m=b.className.toString().match(/se-align-(\\w+)-toolbar-button/);"
+        "return m?m[1]:'';}"
+    )
+
+    def _current_align(self) -> str:
+        """커서가 놓인 문단의 현재 정렬(left/center/right). 못 읽으면 ''."""
+        try:
+            return self._page.evaluate(self._CURRENT_ALIGN_JS) or ""
+        except Exception:  # noqa: BLE001
+            return ""
+
     def _apply_align(self, value: str):
-        """현재 단락 정렬(left/center/right/justify). 선택 없이 커서 위치 단락에 적용."""
+        """현재 단락 정렬(left/center/right/justify). 선택 없이 커서 위치 단락에 적용.
+
+        드롭다운 클릭이 타이밍에 따라 빈손으로 끝나(옵션 미렌더) 정렬이 조용히 안 걸리는 일이
+        있었다 → 적용 후 툴바 상태로 검증하고, 어긋나면 몇 번 재시도한다(무음 실패 제거)."""
         page = self._page
-        page.evaluate("()=>{const b=document.querySelector('li.se-toolbar-item-align button');if(b)b.click();}")
-        page.wait_for_timeout(300)
-        page.evaluate(
-            "(v)=>{const o=document.querySelector("
-            "'button[data-name=\"align-drop-down-with-justify\"][data-value=\"'+v+'\"]');if(o)o.click();}",
-            value,
-        )
-        page.wait_for_timeout(250)
+        for _ in range(3):
+            page.evaluate("()=>{const b=document.querySelector('li.se-toolbar-item-align button');if(b)b.click();}")
+            page.wait_for_timeout(300)
+            page.evaluate(
+                "(v)=>{const o=document.querySelector("
+                "'button[data-name=\"align-drop-down-with-justify\"][data-value=\"'+v+'\"]');if(o)o.click();}",
+                value,
+            )
+            page.wait_for_timeout(250)
+            cur = self._current_align()
+            if cur == value or cur == "":  # 일치하면 끝(못 읽으면 더 깨지않게 멈춘다)
+                return
+
+    # 본문 텍스트 문단별 (index, 정렬토큰, 내용유무)를 떠내는 JS.
+    # 정렬은 문단 className 의 se-text-paragraph-align-{left|center|right} 로 박힌다(라이브 검증됨).
+    _PARA_ALIGN_DUMP_JS = r"""
+    () => {
+      const out = [];
+      const paras = document.querySelectorAll('.se-component.se-text .se-text-paragraph');
+      paras.forEach((p, i) => {
+        const m = (p.className.toString().match(/se-text-paragraph-align-(\w+)/) || [])[1] || 'left';
+        out.push({i, align: m, hasText: (p.textContent || '').trim().length > 0});
+      });
+      return out;
+    }
+    """
+
+    def _read_paragraph_aligns(self) -> list[dict]:
+        """본문 텍스트 문단들의 실제 정렬을 DOM에서 읽어 [{i, align, hasText}, ...] 로 반환."""
+        try:
+            return self._page.evaluate(self._PARA_ALIGN_DUMP_JS) or []
+        except Exception:  # noqa: BLE001
+            return []
+
+    def _verify_and_fix_alignment(self, expected: str = "center", passes: int = 3) -> int:
+        """게시 후 본문 문단 정렬을 읽어 expected와 다른(내용 있는) 문단을 다시 정렬한다.
+
+        왼쪽정렬 사진 뒤에 끼워넣은 문단이 사진 정렬을 상속하거나 _apply_align 이 한 번
+        빗나가면 중앙정렬이 빠진다. 여기서 실제 DOM 정렬을 '읽어' 검증하고 어긋난 문단에
+        커서를 넣어 다시 정렬한다(SE 상속 때문에 한 번 고치면 뒤 빈 문단도 따라오므로 몇 번 훑는다).
+        고친 문단 수를 반환한다(0이면 모두 정상)."""
+        fixed = 0
+        for _ in range(passes):
+            bad = [p for p in self._read_paragraph_aligns() if p["hasText"] and p["align"] != expected]
+            if not bad:
+                break
+            for p in bad:
+                nodes = self._page.query_selector_all(".se-component.se-text .se-text-paragraph")
+                if p["i"] >= len(nodes):
+                    continue
+                try:
+                    nodes[p["i"]].scroll_into_view_if_needed()
+                    nodes[p["i"]].click()
+                    self._page.wait_for_timeout(150)
+                    self._apply_align(expected)
+                    fixed += 1
+                except Exception:  # noqa: BLE001 - 한 문단 복구 실패가 전체를 막지 않게
+                    self._page.keyboard.press("Escape")
+        return fixed
+
+    def _heal_alignment_if_uniform(self, plan, warnings: list[str]) -> None:
+        """플랜의 텍스트 블록 정렬이 한 값(보통 center)으로 통일돼 있으면 그 값으로 검증·복구한다.
+
+        본문 텍스트 블록 정렬이 섞여 있으면(예: 일부 left) 문단↔블록 매핑이 모호해 자동복구는
+        건너뛰고, 어긋난 문단 수만 경고로 알린다(엉뚱한 문단을 강제 정렬하지 않도록)."""
+        text_aligns = {(b.align or "left") for b in plan.blocks if b.kind == "text"}
+        if text_aligns == {"center"}:
+            n = self._verify_and_fix_alignment("center")
+            if n:
+                warnings.append(f"중앙정렬이 빠진 문단 {n}개를 자동으로 다시 중앙정렬했어요.")
+        elif len(text_aligns) > 1:
+            bad = [p for p in self._read_paragraph_aligns() if p["hasText"] and p["align"] != "center"]
+            if bad:
+                warnings.append(
+                    f"본문 정렬이 섞여 있어(텍스트 블록 정렬 {sorted(text_aligns)}) 자동복구는 건너뛰었어요. "
+                    f"중앙정렬이 아닌 문단 {len(bad)}개가 있으니 확인이 필요합니다."
+                )
 
     def _apply_emphasis(self, text: str, style: EmphasisStyle):
         """본문에서 text를 선택 → 글자색/배경색을 커스텀 hex로 정확히 적용.
