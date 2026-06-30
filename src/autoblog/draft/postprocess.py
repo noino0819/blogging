@@ -40,23 +40,49 @@ _CONNECTIVE_RE = re.compile(
 )
 
 
-def _greedy_wrap(segment: str, max_len: int) -> list[str]:
-    """어절(공백) 단위 그리디 줄바꿈.
+# 줄 맨 앞에 단독으로 오면 어색한 짧은 의존명사·단위(앞말과 안 끊는다)
+_DEP_START = set("것 수 때 줄 등 점 뿐 채 척 적 개 번 분".split())
+# 줄 끝에 단독으로 매달리면 어색한 짧은 수식어·부사(뒷말과 안 끊고 다음 줄로 내린다)
+_ADV_END = set("아주 참 더 딱 좀 또 꼭 잘 안 못 늘 꽤 막 너무 정말 진짜 매우 가장 제일 살짝 한참 그냥".split())
 
-    짧은 어절(의존명사·단위·조사 결합형, 길이 ≤2: '수','것','원에','시에' 등)이
-    줄 맨 앞에 오면 앞말과 분리돼 어색하므로, 그런 어절은 길이를 조금 넘겨도 붙인다.
+
+def _greedy_wrap(segment: str, max_len: int) -> list[str]:
+    """긴 절을 어절 단위로 '균형 있게' 줄바꿈(SNS 스타일).
+
+    그리디로 max_len까지 꽉 채우면 마지막에 한두 어절만 남는 외톨이 줄이 생기고,
+    짧은 어절을 무조건 앞줄에 붙이느라 줄이 30자를 넘기곤 했다. 대신 필요한 줄 수(k)를
+    먼저 구해 목표 길이(total/k)로 고르게 나눈다 — 외톨이·초과 줄이 안 생긴다.
+    경계 다듬기: 줄 맨 앞에 짧은 의존명사(것·수…)가 오면 앞말과 붙이고,
+    줄 끝에 짧은 수식어(아주·참…)가 매달리면 그 말을 다음 줄로 내려 수식 대상과 붙인다.
     """
+    total = len(segment)
+    if total <= max_len + 2:  # 1~2자 초과는 쪼개면 더 잘게 끊겨 어색 — 그냥 둔다
+        return [segment]
+    words = segment.split(" ")
+    k = max(1, (total + max_len - 1) // max_len)  # 필요한 줄 수
+    target = (total + k - 1) // k  # 균형 목표 길이(≤ max_len)
     out: list[str] = []
-    cur = ""
-    for word in segment.split(" "):
-        too_long = cur and len(cur) + 1 + len(word) > max_len
-        if too_long and len(word) > 2:  # 짧은 어절은 끊지 않고 붙임
-            out.append(cur)
-            cur = word
+    cur: list[str] = []
+    cur_len = 0
+    breaks_left = k - 1  # 남은 줄바꿈 횟수 — 다 쓰면 나머지는 마지막 줄로
+    for word in words:
+        add = len(word) + (1 if cur else 0)
+        do_break = bool(cur) and cur_len + add > target and breaks_left > 0
+        if do_break and len(word) <= 2 and word in _DEP_START:
+            do_break = False  # 짧은 의존명사는 앞말과 안 끊음
+        if do_break:
+            carry: list[str] = []
+            if len(cur) > 1 and cur[-1] in _ADV_END:
+                carry = [cur.pop()]  # 줄 끝 수식어는 다음 줄로 내림
+            out.append(" ".join(cur))
+            breaks_left -= 1
+            cur = [*carry, word]
+            cur_len = sum(len(w) for w in cur) + (len(cur) - 1)
         else:
-            cur = word if not cur else f"{cur} {word}"
+            cur.append(word)
+            cur_len += add
     if cur:
-        out.append(cur)
+        out.append(" ".join(cur))
     return out
 
 

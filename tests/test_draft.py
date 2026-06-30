@@ -221,3 +221,26 @@ def test_wrap_keeps_title_intact():
     # plan이 첫 줄만 제목으로 떼어내도 '메종 아카이'가 본문으로 새지 않는지
     first_line = enforce_format(text).split("\n", 1)[0]
     assert first_line == title
+
+
+def test_greedy_wrap_balanced():
+    """쉼표·연결어미 없는 긴 절은 균형 분할 — 초과 줄·외톨이 꼬리·매달린 수식어가 없다."""
+    from autoblog.draft.postprocess import _ADV_END, wrap_long_lines
+
+    def body(line: str) -> list[str]:
+        return [ln for ln in wrap_long_lines(f"제목\n\n{line}", max_len=30).split("\n")[2:] if ln]
+
+    # 예전엔 30자까지 꽉 채우고 7자 외톨이("부드러웠어요.")가 떨어졌다
+    out = body("목에 걸고 피부에 닿았을 때 거슬림 없이 아주 부드러웠어요.")
+    assert len(out) >= 2
+    assert all(len(ln) <= 30 for ln in out)  # 30자 초과 줄 없음
+    assert min(len(ln) for ln in out) >= 12  # 외톨이(짧은 꼬리) 없음 — 균형
+    assert not any(ln.split()[-1] in _ADV_END for ln in out)  # 수식어 줄 끝 매달림 없음
+
+    # 예전엔 35자(짧은 어절 무조건 앞줄에 붙임)까지 넘쳤다
+    assert all(len(ln) <= 30 for ln in body("이런 실용적인 부분까지 사용자를 위해 세심하게 만들어진 것 같아 좋았어요 -"))
+
+    # 1~2자 초과(≤32)는 더 잘게 쪼개지 않고 그대로 둔다
+    near = "오늘 카페에서 마신 라떼가 정말 부드럽고 고소해서 좋았던"  # 31자
+    assert len(near) == 31
+    assert body(near) == [near]
