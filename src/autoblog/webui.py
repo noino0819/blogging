@@ -317,6 +317,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .sponpick .spc img{width:100%;height:100%;object-fit:contain;padding:4px}
  .sponpick .spc.sel{border-color:#7c4dff;background:#f4f0ff}
  .sponpick .spc.sel::after{content:"✓";position:absolute;top:2px;right:4px;color:#7c4dff;font-weight:800;font-size:13px}
+ .prodlinkbox{margin-top:14px}
+ .plrow{display:flex;gap:6px;margin-top:6px}
+ .plrow .plink{flex:1;min-width:0}
+ .plrow .plrm{flex:0 0 auto;padding:9px 12px;color:var(--sub)}
  /* 보조 액션(복사/붙여넣기) — 한 줄에 작게 */
  .actrow{display:flex;gap:8px;margin-top:9px}
  .actrow .btn{padding:10px;font-size:12px}
@@ -468,6 +472,11 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <div class=muted id=kwnote style="display:none;margin-top:4px;color:#2563eb;line-height:1.4"></div>
           <label class=f>최소 글자 수 <span class=hint data-tip="본문이 이 글자 수(공백 제외) 이상이 되도록 써요. 비우면 1500자가 적용됩니다.">i</span></label>
           <input type=number id=minchars placeholder="1500" min=0 step=100>
+          <div class=prodlinkbox id=prodlinkbox style="display:none">
+            <label class=f>상품 링크 <span class=hint data-tip="상품 리뷰에 꼭 들어가야 하는 링크예요. 본문에 카드 형태로 한 번씩 삽입됩니다. [+ 링크 추가]로 여러 개 넣을 수 있어요.">i</span></label>
+            <div id=prodlinks></div>
+            <button type=button class="btn ghost" id=addprodlink style="width:100%;justify-content:center;gap:6px;margin-top:6px">+ 링크 추가</button>
+          </div>
           <div class=togrow>
             <div class=tl>협찬 글 <span class=hint data-tip="켜면 즐겨찾기 스티커 중 고른 고지 스티커가 본문 맨 위에 들어가고, 아래 쿠팡파트너스 링크가 본문 중간중간 카드로 분산 삽입됩니다.">i</span></div>
             <div class=sw id=sponsw></div>
@@ -736,6 +745,7 @@ function autoKind(v){v=(v||'').trim().toLowerCase(); if(!v)return 'place';
 function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
   $$('#kindseg button').forEach(b=>{b.classList.toggle('on',b.dataset.k===k);
     b.classList.toggle('auto',!KINDMANUAL&&b.dataset.k===k);});
+  {const pb=$('#prodlinkbox'); if(pb)pb.style.display=(k==='product')?'block':'none';}
   $('#srchint').innerHTML=KINDMANUAL
     ?('<b>'+(k==='place'?'맛집':'상품')+'</b>으로 수집합니다.')
     :('입력을 보고 <b>'+(k==='place'?'맛집':'상품')+'</b>으로 자동 인식했어요. 직접 골라도 돼요.');}
@@ -743,8 +753,19 @@ function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
 const FMT={emphasis:true,structure:true,stickers:true,stickerAll:false,sponsored:false,sponsorSticker:'',hideDefault:true};
 let CATEGORY='';
 const LINKS=()=>($('#links').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+// 상품 링크 — 상품 리뷰에 꼭 넣을 링크. 카드로 한 번씩 삽입. 기본 1행 + [+ 링크 추가].
+function prodLinkRow(val){
+  const row=document.createElement('div'); row.className='plrow';
+  const inp=document.createElement('input'); inp.type='url'; inp.className='plink'; inp.placeholder='https:// 상품 링크 붙여넣기'; inp.value=val||'';
+  const rm=document.createElement('button'); rm.type='button'; rm.className='btn ghost plrm'; rm.title='삭제'; rm.textContent='✕';
+  rm.onclick=()=>{const box=$('#prodlinks'); if(box.children.length>1)row.remove(); else inp.value='';};
+  row.append(inp,rm); return row;}
+function addProdLink(val){$('#prodlinks').appendChild(prodLinkRow(val)); return $('#prodlinks').lastElementChild;}
+function resetProdLinks(){$('#prodlinks').innerHTML=''; addProdLink('');}
+const PRODLINKS=()=>SRCKIND==='product'?$$('#prodlinks .plink').map(i=>i.value.trim()).filter(Boolean):[];
 const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:false,emoji:false};
 let PRUNE=true;  // 임시저장 시 같은 제목 이전 글 자동 정리(설정 토글)
+let IMPORTED_DRAFT=null;  // 사진을 가져온 원본 임시저장 글 {title,date} — 저장 완료 후 삭제 대상
 let SAVEDBG=false;  // 디버그: 임시저장 시 브라우저를 화면에 띄워 작업 과정을 직접 본다(headful)
 const RULE_META=[
  ['mobile_friendly','모바일 친화','문단을 2~3줄로 짧게, 여백 넉넉히(네이버 트래픽 대부분 모바일)'],
@@ -833,7 +854,7 @@ function renderDraftList(){
   (DRAFTS||[]).forEach(dr=>{
     const row=document.createElement('div'); row.className='ditem';
     row.innerHTML=`<span class=dt>${(dr.title||'(제목 없음)')}</span><span class=dd>${dr.date||''}</span>`;
-    row.onclick=()=>importDraft(dr.idx, dr.title);
+    row.onclick=()=>importDraft(dr.idx, dr.title, dr.date);
     list.appendChild(row);
   });
 }
@@ -869,7 +890,7 @@ function setupDraftImport(){
   };
   const ref=$('#draftrefresh'); if(ref) ref.onclick=()=>fetchDrafts();
 }
-async function importDraft(idx, title){
+async function importDraft(idx, title, date){
   if(DRAFTBUSY) return; DRAFTBUSY=true;
   const stat=$('#draftstat');
   const el=elapsed(`"${title}" 사진 가져오는 중…`, spinRow(stat));
@@ -888,6 +909,8 @@ async function importDraft(idx, title){
     if(paths.length) toast(`${paths.length}장 불러왔어요 (기존 사진 교체됨)`,'ok');
     // 사진 불러오기 성공 + 불러온 글에 제목이 있으면 → 그 제목을 필수 키워드에 자동으로 넣어줌
     if(paths.length) applyDraftTitleKeyword(title);
+    // 이 원본 글을 저장 완료 후 삭제 대상으로 기억(제목+저장일시로 식별).
+    if(paths.length) IMPORTED_DRAFT={title:(title||''), date:(date||'')};
   }catch(e){ el.stop(); stat.textContent='가져오기 실패'; toast('사진을 못 가져왔어요 — '+e.message,'err'); }
   DRAFTBUSY=false;
 }
@@ -1096,9 +1119,11 @@ function closeNP(){ $('#npmodal').style.display='none'; }
 function doNewPost(){  // 새 글: 입력·사진선택·분류·세부분류 비우기
   closeNP();
   $('#memo').value=''; $('#srcval').value=''; if(typeof setKind==='function')setKind('place',false);
+  if(typeof resetProdLinks==='function')resetProdLinks();
   { const kw=$('#keywords'); if(kw)kw.value=''; }
   { const note=$('#kwnote'); if(note){note.textContent=''; note.style.display='none';} }
   SELP=[]; PHOTOMETA={}; THUMB=null; PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
+  IMPORTED_DRAFT=null;  // 새 글이니 '불러온 원본' 기억도 비운다
   PLAN=null; const sv=$('#save'); if(sv)sv.disabled=true;
   const pv=$('#preview'); if(pv){ pv.className='doc empty'; pv.innerHTML='왼쪽에서 메모를 쓰고 [초안 생성]을 누르세요.'; }
   loadPhotos(); renderPmeta(); updatePhotoSummary();
@@ -1149,7 +1174,7 @@ $('#gen').onclick=async()=>{
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:$('#keywords').value,minChars:$('#minchars').value,
-      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES};
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES};
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); toast('초안 생성 실패: '+(d.error||'알 수 없는 오류'),'err'); return;}
@@ -1210,7 +1235,7 @@ $('#iapply').onclick=async()=>{
   if(!text){toast('붙여넣은 글이 비어 있어요.','info');return;}
   $('#iapply').disabled=true;
   try{
-    const body={text,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS()};
+    const body={text,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS()};
     const r=await fetch('/api/import-draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){toast('가져오기 실패: '+(d.error||''),'err');return;}
@@ -1302,7 +1327,9 @@ function updateSaveHint(){
 function fireSave(title, category){
   SAVE_QUEUE++; updateSaveHint();
   const task=bgTask(`'${title}' 임시저장 중…`);
-  fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category})})
+  // 사진을 가져온 원본 글이 있으면 함께 보내, 저장 완료 후 서버가 그 원본을 삭제하게 한다.
+  const importedDraft=IMPORTED_DRAFT;
+  fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category,importedDraft})})
     .then(async r=>{
       const d=await r.json();
       if(!r.ok)throw new Error(d.error||'알 수 없는 오류');
@@ -1745,6 +1772,7 @@ $('#personalist').onclick=async e=>{const b=e.target.closest('.pdel'); if(!b)ret
     await loadPersonas();
   }catch(e){}};
 
+$('#addprodlink').onclick=()=>addProdLink(''); resetProdLinks();
 setKind('place',false); loadPhotos(); setupUpload(); setupDraftImport(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories(); loadPhotoCats(); loadPersonas();
 $('#photobtn').onclick=openPhotoModal; $('#phclose').onclick=closePhotoModal; $('#phdone').onclick=closePhotoModal;
 $('#phmodal').onclick=e=>{ if(e.target===$('#phmodal'))closePhotoModal(); };
@@ -2264,6 +2292,7 @@ def _make_handler(state: dict):
                 quote_variants=qkeys,
                 sponsored=bool(body.get("sponsored")),
                 sponsor_links=_links(body),
+                product_links=_links(body, "productLinks"),
                 sponsor_sticker=(body.get("sponsorSticker") or "").strip(),
                 use_cache=True,  # 같은 URL 재수집 방지(export/캡션과 캐시 공유)
             )
@@ -2302,6 +2331,7 @@ def _make_handler(state: dict):
                 place_address=place_address,
                 sponsored=bool(body.get("sponsored")),
                 sponsor_links=_links(body),
+                product_links=_links(body, "productLinks"),
                 sponsor_sticker=(body.get("sponsorSticker") or "").strip(),
             )
             self._send_plan(result)
@@ -2343,6 +2373,10 @@ def _make_handler(state: dict):
             category = (body.get("category") or "").strip() or None
             prefs = _load_prefs()
             prune = bool(prefs.get("pruneDrafts", True))  # 설정 토글(기본 켬)
+            # 사진을 가져왔던 원본 임시저장 글(있으면). 저장 직후 그 글을 삭제한다.
+            imported = body.get("importedDraft") if prune else None
+            if not isinstance(imported, dict) or not (imported.get("title") or "").strip():
+                imported = None
             # 디버그 토글이 켜져 있으면 저장 과정을 화면에 띄워(headful) 직접 보게 한다(기본 끔=백그라운드).
             headless = not bool(prefs.get("saveDebug", False))
 
@@ -2361,7 +2395,12 @@ def _make_handler(state: dict):
                         if not pub.wait_for_login():
                             raise RuntimeError("네이버 로그인이 필요합니다")
                     warnings = pub.publish(
-                        result.plan, category=category, save=True, submit=False, prune_same_title=prune
+                        result.plan,
+                        category=category,
+                        save=True,
+                        submit=False,
+                        prune_same_title=prune,
+                        delete_imported=imported,
                     )
                 finally:
                     pub.close()
@@ -2548,9 +2587,9 @@ def _format_summary() -> dict:
     return {"dividers": build(DIVIDER_META, den), "quotes": build(QUOTE_META, qen)}
 
 
-def _links(body: dict) -> list[str]:
-    """요청 바디의 links(쿠팡파트너스 링크 줄목록) → 공백 제거한 URL 리스트."""
-    return [u.strip() for u in (body.get("links") or []) if isinstance(u, str) and u.strip()]
+def _links(body: dict, key: str = "links") -> list[str]:
+    """요청 바디의 링크 목록(links=쿠팡파트너스, productLinks=상품 필수 링크) → 공백 제거 URL."""
+    return [u.strip() for u in (body.get(key) or []) if isinstance(u, str) and u.strip()]
 
 
 def _enabled_variant_keys() -> tuple[list[str], list[str]]:

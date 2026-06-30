@@ -172,12 +172,15 @@ class BlogPublisher:
         save: bool = True,
         submit: bool = False,
         prune_same_title: bool = True,
+        delete_imported: dict | None = None,
     ) -> list[str]:
         """게시 플랜을 에디터에 주입. 기본은 임시저장만, submit=True면 발행까지.
 
         category가 주어지면 발행 레이어에서 해당 카테고리를 선택한다(유저별 동적).
         prune_same_title=True면 임시저장 직후, 같은 제목의 이전 임시저장 글을 자동 정리한다
         (최근 1건=방금 저장한 글만 남김. 삭제는 복구 불가라 제목 완전일치로만 한정).
+        delete_imported={"title","date"}가 주어지면(사진을 가져왔던 원본 글) 저장 직후 그 글을
+        식별해 삭제한다 — 새 글 제목은 보통 원본과 달라 prune_same_title로는 안 지워지므로 별도 처리.
         자동 삽입에 실패해 본문에서 빠진 항목(예: 검색 결과 없는 지도)이 있으면 사람이
         읽을 수 있는 경고 메시지 목록으로 반환한다(유저가 나중에 직접 보완하도록 안내용)."""
         warnings: list[str] = []
@@ -230,6 +233,16 @@ class BlogPublisher:
             if prune_same_title:
                 try:
                     self.delete_drafts_by_title(plan.title)
+                except Exception:  # noqa: BLE001 - 정리 실패는 저장 결과에 영향 없음
+                    pass
+            # 사진을 가져왔던 원본 임시저장 글 정리(새 글로 내용이 옮겨졌으니 원본은 삭제).
+            if delete_imported and isinstance(delete_imported, dict):
+                try:
+                    self.delete_imported_draft(
+                        delete_imported.get("title") or "",
+                        delete_imported.get("date") or "",
+                        keep_title=plan.title,
+                    )
                 except Exception:  # noqa: BLE001 - 정리 실패는 저장 결과에 영향 없음
                     pass
         if submit:
@@ -318,6 +331,70 @@ class BlogPublisher:
             page.wait_for_timeout(900)  # 목록 갱신 대기
             deleted += 1
         return deleted
+
+    def delete_imported_draft(self, title: str, date: str = "", *, keep_title: str = "") -> bool:
+        """사진을 가져왔던 '원본' 임시저장 글 한 건을 삭제한다(불러온 뒤 새 글로 옮겨 저장한 경우).
+
+        식별은 다음 순서로 — 안전 우선(못 찾으면 아무것도 안 지움):
+          1) (제목, 저장일시) 완전일치 항목. 날짜가 절대표기면 이게 가장 정확하다.
+          2) 1이 빗나갈 때(예: 날짜가 '5분 전' 식 상대표기라 그새 달라짐) 폴백:
+             - 원본 제목이 방금 저장한 글 제목(keep_title)과 다르면, 같은 제목 항목 전부 삭제
+               (방금 저장한 글은 제목이 달라 안 걸림 → 원본만 정리).
+             - 제목이 같으면, 가장 오래된 1건만 원본으로 보고 삭제(최신=방금 저장한 글은 보존).
+        하나라도 삭제했으면 True.
+        """
+        page = self._page
+        t = (title or "").strip()
+        d = (date or "").strip()
+        keep = (keep_title or "").strip()
+        if not t:
+            return False  # 제목 없는 글은 안전하게 식별 불가 → 건드리지 않음
+        self._open_draft_list()
+
+        # 1) (제목, 날짜) 완전일치 한 건
+        if d:
+            items = self._read_draft_items()
+            exact = [
+                it
+                for it in items
+                if (it.get("title") or "").strip() == t and (it.get("date") or "").strip() == d
+            ]
+            if exact:
+                return self._delete_draft_at(exact[0]["idx"])
+
+        # 2) 폴백: 제목 기준
+        deleted = False
+        for _ in range(len(self._read_draft_items()) + 1):
+            items = self._read_draft_items()
+            same = [it for it in items if (it.get("title") or "").strip() == t]
+            if t == keep:
+                # 새 글과 제목이 같으면 최신 1건(방금 저장)은 남기고 오래된 것만.
+                if len(same) <= 1:
+                    break
+                same.sort(key=lambda it: it.get("date") or "")  # 오래된 것이 [0]
+                if not self._delete_draft_at(same[0]["idx"]):
+                    break
+            else:
+                if not same:
+                    break
+                if not self._delete_draft_at(same[0]["idx"]):
+                    break
+            deleted = True
+        return deleted
+
+    def _delete_draft_at(self, idx: int) -> bool:
+        """임시저장 목록 idx번 항목을 삭제(확인 팝업까지). 성공 시 True. (목록이 열려있다고 가정)"""
+        page = self._page
+        del_buttons = page.query_selector_all(SMART_EDITOR["draft_item_delete"])
+        if idx < 0 or idx >= len(del_buttons):
+            return False
+        del_buttons[idx].click()
+        page.wait_for_timeout(500)
+        confirm = page.query_selector(SMART_EDITOR["draft_delete_confirm"])  # '삭제하시겠습니까' 확인
+        if confirm and confirm.is_visible():
+            confirm.click()
+        page.wait_for_timeout(900)  # 목록 갱신 대기
+        return True
 
     def import_draft_photos(self, idx: int, dest_dir: Path) -> list[str]:
         """idx번 임시저장 글을 에디터에 로드해 본문 사진을 dest_dir에 내려받고 로컬 경로 목록을 반환.

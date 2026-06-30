@@ -226,6 +226,7 @@ def build_publish_plan(
     place_address: str | None = None,
     sponsor: bool = False,
     sponsor_links: list[str] | None = None,
+    product_links: list[str] | None = None,
     sponsor_sticker: str = "",
     sticker_catalog=None,
 ) -> PublishPlan:
@@ -242,6 +243,7 @@ def build_publish_plan(
     블록으로 고정 삽입한다. 지정값은 '태그 이름'(예: 파트너스) 또는 'pack:index'. 태그면
     sticker_catalog에서 찾아 해석한다(카탈로그 없으면 pack:index만 인식). 못 찾으면 건너뜀.
     sponsor_links를 주면 그 URL들을 링크 카드로 본문 텍스트 사이 고른 위치에 분산 삽입한다.
+    product_links(상품 리뷰의 필수 링크)도 같은 방식으로 카드 삽입한다(협찬과 무관, 각 한 번씩).
     """
     photos = list(photos or [])
     lines = draft.text.split("\n")
@@ -426,7 +428,7 @@ def build_publish_plan(
 
     # 협찬 링크 카드 — 글 끝에 몰지 않고 본문 텍스트 사이 고른 '중간중간' 위치에 분산.
     # 텍스트 블록이 t개일 때 링크 i는 (i+1)/(n+1) 지점 텍스트 뒤에 — 맨 앞/맨 끝을 피해 가운데로.
-    links = [u.strip() for u in (sponsor_links or []) if u.strip()]
+    links = [u.strip() for u in [*(sponsor_links or []), *(product_links or [])] if u.strip()]
     if links:
         text_pos = [i for i, b in enumerate(blocks) if b.kind == "text"]
         if not text_pos:  # 본문 텍스트가 없으면 그대로 끝에

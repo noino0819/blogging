@@ -285,6 +285,7 @@ def plan_from_text(
     place_address: str | None = None,
     sponsored: bool = False,
     sponsor_links: list[str] | None = None,
+    product_links: list[str] | None = None,
     sponsor_sticker: str = "",
     photo_meta: dict[str, dict] | None = None,
 ) -> PipelineResult:
@@ -336,6 +337,7 @@ def plan_from_text(
         divider_variant=divider_variant, quote_variant_default=quote_variant,
         structure_styles=load_structure_styles(), place_query=place_query,
         place_address=place_address, sponsor=sponsored, sponsor_links=sponsor_links,
+        product_links=product_links,
         sponsor_sticker=sponsor_sticker, sticker_catalog=catalog,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
@@ -365,6 +367,7 @@ def run_pipeline(
     quote_variants: list[str] | None = None,
     sponsored: bool = False,
     sponsor_links: list[str] | None = None,
+    product_links: list[str] | None = None,
     sponsor_sticker: str = "",
     model: str | None = None,
     photo_meta: dict[str, dict] | None = None,
@@ -427,6 +430,7 @@ def run_pipeline(
         divider_variant=divider_variant, quote_variant_default=quote_variant,
         structure_styles=load_structure_styles(), place_query=place_query,
         place_address=place_address, sponsor=sponsored, sponsor_links=sponsor_links,
+        product_links=product_links,
         sponsor_sticker=sponsor_sticker, sticker_catalog=catalog,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
