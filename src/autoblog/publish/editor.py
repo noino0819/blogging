@@ -523,7 +523,8 @@ class BlogPublisher:
         앵커로만 쓴다. text/divider 블록을 해당 앵커(사진 k 뒤 / 영상 뒤 / 맨 앞 사진 위)에 끼워
         넣는다. 영상은 절대 건드리지 않아 그대로 보존되고, 저장하면 같은 글이 갱신된다(삭제 없음).
         image 블록↔원본 사진은 image_path(=photo_paths의 다운로드 순=문서 순)로 매핑하고, 없으면
-        등장 순서로 폴백한다. 아직 미지원 블록(인용/링크/스티커/장소)은 경고로 남긴다.
+        등장 순서로 폴백한다. 제목·인용구·스티커·구분선까지 넣는다(아직 미지원: 링크/장소는 경고로 남김).
+        한 사진 앵커에 여러 블록이 붙을 때는 '역순 삽입'으로 순서를 보존한다(아래 루프 주석 참고).
 
         글 식별: draft_title을 주면(권장) 발행 직전에 제목+날짜로 목록에서 idx를 '다시' 찾는다
         (위치 번호가 밀려 엉뚱한 글을 덮어쓰는 사고 방지). 못 찾으면 RuntimeError로 중단한다.
@@ -549,33 +550,60 @@ class BlogPublisher:
             pass
         page.wait_for_timeout(800)
 
+        # 제목 — 불러온 원본 글의 제목 칸을 새 글 제목으로 교체(기존 내용 지우고 다시 입력).
+        # (publish와 달리 in-place는 기존 글을 여는 거라 제목 칸이 차 있으므로 clear 필요)
+        if plan.title:
+            self._type_title(plan.title, clear=True)
+            page.click(SMART_EDITOR["content_component"])
+
+        # 블록을 미디어 앵커별 그룹으로 묶는다(앵커=None 맨앞 / ("photo",k) 사진 뒤 / ("video",) 영상 뒤).
         path_index = {p: i for i, p in enumerate(photo_paths or [])}
-        anchor = None  # None=맨 앞, ("photo", k), ("video",)
-        positioned = False
+        groups: list[tuple] = []  # (anchor, [blocks])
+        cur_anchor = None
+        cur: list = []
         img_seen = -1
-        emphases = []
+
+        def flush_group():
+            if cur:
+                groups.append((cur_anchor, list(cur)))
+                cur.clear()
+
         for block in plan.blocks:
             if block.kind == "image":
+                flush_group()
                 img_seen += 1
                 k = path_index.get(block.image_path, img_seen)
-                anchor = ("photo", k)
-                positioned = False
+                cur_anchor = ("photo", k)
             elif block.kind == "video":
-                anchor = ("video",)
-                positioned = False
-            elif block.kind in ("text", "divider"):
-                if not positioned:
-                    self._place_anchor(anchor)
-                    positioned = True
+                flush_group()
+                cur_anchor = ("video",)
+            elif block.kind in ("text", "divider", "quote", "sticker"):
+                cur.append(block)
+            else:
+                warnings.append(
+                    f"‘{block.kind}’ 블록은 in-place에선 자동 삽입을 건너뛰었어요(직접 추가 필요)."
+                )
+        flush_group()
+
+        # 각 그룹의 블록을 '역순'으로 넣는다 — 매 블록마다 앵커(사진 바로 뒤)를 다시 잡으면
+        # 나중 것이 위로 밀려, 결과적으로 원래 순서대로 사진 뒤에 쌓인다. 이렇게 하면 블록 종류가
+        # 섞여도(인용/스티커가 본문 끝으로 포커스를 옮겨도) 커서 이어가기에 의존하지 않아 안전하다.
+        emphases = []
+        for anchor, blks in groups:
+            for block in reversed(blks):
+                self._place_anchor(anchor)
                 if block.kind == "text":
                     self._type_text_block(block)
                     emphases.extend(block.emphases)
-                else:
+                elif block.kind == "divider":
                     self._insert_divider(block.variant, align=block.align)
-            else:
-                warnings.append(
-                    f"‘{block.kind}’ 블록은 in-place 1단계에선 자동 삽입을 건너뛰었어요(직접 추가 필요)."
-                )
+                elif block.kind == "quote":
+                    # at_end=False: 본문 끝으로 점프하지 않는다(다음 블록이 앵커를 다시 잡음)
+                    self._insert_quote(block.text, block.variant, align=block.align, at_end=False)
+                elif block.kind == "sticker":
+                    self._insert_sticker(
+                        block.sticker_pack, block.sticker_index or 0, at_end=False
+                    )
         # 본문 입력 후 강조 적용(커서 간섭 방지 — 기존 publish와 동일한 후처리 패스)
         for span in emphases:
             try:
@@ -743,8 +771,12 @@ class BlogPublisher:
         self._page.wait_for_timeout(500)
 
     # --- 에디터 조작 ---
-    def _type_title(self, title: str):
+    def _type_title(self, title: str, clear: bool = False):
         self._page.click(SMART_EDITOR["title_component"])
+        if clear:  # in-place: 불러온 글의 기존 제목을 전체 선택해 지우고 새로 쓴다
+            self._page.keyboard.press("Meta+a")
+            self._page.keyboard.press("Delete")
+            self._page.wait_for_timeout(150)
         self._page.keyboard.type(title, delay=8)
 
     def _reset_text_toggles(self):
@@ -1139,10 +1171,14 @@ class BlogPublisher:
         if align and align != "left":
             self._apply_align(align)
 
-    def _insert_quote(self, text: str, variant: int = 1, align: str | None = None):
+    def _insert_quote(
+        self, text: str, variant: int = 1, align: str | None = None, at_end: bool = True
+    ):
         """인용구 삽입 후 본문 텍스트 입력. 구분선과 같은 이유로 드롭다운 경로로 통일.
 
-        text의 \\n은 인용구 안에서 줄바꿈(Enter)으로 넣어 한마디를 여러 줄로 보여준다."""
+        text의 \\n은 인용구 안에서 줄바꿈(Enter)으로 넣어 한마디를 여러 줄로 보여준다.
+        at_end=False(in-place)면 본문 끝으로 점프하지 않는다 — 다음 블록이 앵커를 다시 잡으므로
+        커서 위치를 옮길 필요가 없고, 점프하면 in-place 삽입 위치가 어긋난다."""
         self._pick_insert_variant("quotation", max(variant, 1))
         self._page.wait_for_timeout(500)
         for i, line in enumerate(text.split("\n")):
@@ -1152,6 +1188,8 @@ class BlogPublisher:
         self._page.wait_for_timeout(200)
         if align and align != "left":
             self._apply_align(align)  # 내용 입력 후(커서가 인용구 안에 있을 때) 정렬 적용
+        if not at_end:
+            return
         # 인용 블록 탈출: '본문 추가'로 블록 뒤에 새 문단을 만들고 거기로 포커스
         try:
             self._page.click(SMART_EDITOR["canvas_bottom_button"])
@@ -1203,10 +1241,12 @@ class BlogPublisher:
         self._page.wait_for_timeout(700)
         return ok
 
-    def _insert_sticker(self, pack: str, index: int):
+    def _insert_sticker(self, pack: str, index: int, at_end: bool = True):
         """(팩, 인덱스) 스티커를 본문 커서 위치에 삽입(검증된 메커니즘).
 
         패널 열기 → 팩 탭 선택 → 활성 목록에서 data-index 클릭 → 본문 끝으로 포커스 복귀.
+        at_end=False(in-place)면 본문 끝으로 점프하지 않는다 — 다음 블록이 앵커(사진 뒤)를
+        다시 잡으므로 포커스 복귀가 불필요하고, 점프하면 in-place 삽입 위치가 어긋난다.
         """
         self._open_sticker_panel()
         self._select_sticker_pack(pack)
@@ -1216,6 +1256,8 @@ class BlogPublisher:
         except Exception:
             return  # 해당 스티커가 없으면(팩 변경 등) 조용히 건너뜀
         self._page.wait_for_timeout(700)
+        if not at_end:
+            return
         # 다음 본문 입력을 위해 본문 끝으로 포커스 복귀
         try:
             self._page.click(SMART_EDITOR["canvas_bottom_button"])
