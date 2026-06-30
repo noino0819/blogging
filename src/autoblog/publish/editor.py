@@ -402,6 +402,190 @@ class BlogPublisher:
         page.wait_for_timeout(900)  # 목록 갱신 대기
         return True
 
+    def _resolve_draft_idx(self, title: str, date: str = "") -> int | None:
+        """제목(+날짜)으로 현재 임시저장 목록에서 idx를 '지금' 다시 찾는다.
+
+        불러올 때의 위치 번호는 그새 다른 글을 저장하면 밀려서 엉뚱한 글을 가리킬 수 있다.
+        그래서 발행 직전에 (제목,날짜) 완전일치 우선·없으면 제목만 일치 중 가장 최근으로 재해석한다.
+        못 찾으면 None(호출부가 '안전 실패'로 중단 — 엉뚱한 글을 덮어쓰지 않게)."""
+        t = (title or "").strip()
+        d = (date or "").strip()
+        if not t:
+            return None
+        self._open_draft_list()
+        items = self._read_draft_items()
+        if d:
+            exact = [
+                it for it in items
+                if (it.get("title") or "").strip() == t and (it.get("date") or "").strip() == d
+            ]
+            if exact:
+                return exact[0]["idx"]
+        same = [it for it in items if (it.get("title") or "").strip() == t]
+        if same:
+            same.sort(key=lambda it: it.get("date") or "")  # 가장 최근이 마지막
+            return same[-1]["idx"]
+        return None
+
+    def _load_draft_into_editor(self, idx: int):
+        """idx번 임시저장 글을 에디터에 로드(목록 열기 → 항목 클릭 → 불러오기 확인).
+
+        import_draft_photos(사진 추출)와 publish_inplace(in-place 편집)가 공유한다."""
+        page = self._page
+        self._open_draft_list()
+        buttons = page.query_selector_all(SMART_EDITOR["draft_item_button"])
+        if idx < 0 or idx >= len(buttons):
+            raise ValueError(f"임시저장 인덱스를 벗어남: {idx} (총 {len(buttons)}건)")
+        buttons[idx].click()
+        page.wait_for_timeout(1500)
+        confirm = page.query_selector(SMART_EDITOR["draft_load_confirm"])  # '불러오기' 확인 팝업
+        if confirm and confirm.is_visible():
+            confirm.click()
+        page.wait_for_timeout(800)
+
+    # --- in-place 편집 (불러온 글에 직접 본문을 짜 넣는다) ---
+    def _editor_photos(self):
+        """본문 사진 img 요소들(문서 순). 클릭하면 그 사진 컴포넌트가 선택된다."""
+        return self._page.query_selector_all(SMART_EDITOR["editor_image"])
+
+    def _editor_video(self):
+        """본문 영상 컴포넌트(첫 번째). 없으면 None."""
+        v = self._page.query_selector_all(".se-component.se-video")
+        return v[0] if v else None
+
+    def _anchor_after_photo(self, k: int) -> bool:
+        """k번째 사진을 선택 → Enter로 그 사진 '바로 뒤'에 빈 문단을 만들고 커서를 둔다.
+
+        사진을 클릭하면 객체선택이라 바로 타이핑하면 글자가 사라진다(검증됨) → 반드시 Enter."""
+        page = self._page
+        imgs = self._editor_photos()
+        if not imgs:
+            return False
+        k = max(0, min(k, len(imgs) - 1))
+        imgs[k].scroll_into_view_if_needed()
+        imgs[k].click()
+        page.wait_for_timeout(300)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(300)
+        return True
+
+    def _anchor_after_video(self) -> bool:
+        """영상 컴포넌트를 선택 → Enter로 영상 '바로 뒤'에 커서를 둔다(영상 자체는 안 건드림)."""
+        page = self._page
+        v = self._editor_video()
+        if not v:
+            return False
+        v.scroll_into_view_if_needed()
+        v.click()
+        page.wait_for_timeout(300)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(300)
+        return True
+
+    def _anchor_before_first_media(self) -> bool:
+        """첫 미디어(사진/영상) '위'에 커서를 둔다.
+
+        맨 위 사진은 선택 툴바가 컴포넌트 top edge-button을 덮어 클릭이 막힌다(프로브로 확인:
+        edge force/JS/좌표 클릭, Ctrl+Home 전부 실패). 대신 '제목 칸 끝에서 Enter'를 치면 제목
+        바로 아래(=첫 미디어 위)에 본문 문단이 생기고 캐럿도 그리로 간다(프로브에서 유일하게 성공)."""
+        page = self._page
+        comps = page.query_selector_all(".se-component.se-image, .se-component.se-video")
+        if not comps:
+            page.click(SMART_EDITOR["content_component"])  # 미디어 없으면 본문에 바로
+            return True
+        page.click(SMART_EDITOR["title_component"])
+        page.wait_for_timeout(200)
+        page.keyboard.press("End")
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(300)
+        return True
+
+    def _place_anchor(self, anchor) -> None:
+        """anchor 위치(맨 앞 / 사진 k 뒤 / 영상 뒤)에 커서를 둔다."""
+        if anchor is None:
+            self._anchor_before_first_media()
+        elif anchor[0] == "photo":
+            self._anchor_after_photo(anchor[1])
+        else:
+            self._anchor_after_video()
+
+    def publish_inplace(
+        self, plan, *, draft_idx: int | None = None,
+        draft_title: str | None = None, draft_date: str = "",
+        photo_paths: list[str] | None = None,
+        category: str | None = None, save: bool = True,
+    ) -> list[str]:
+        """불러온 임시저장 글에 'in-place'로 본문을 짜 넣는다(M1: 사진·영상 현 위치 고정).
+
+        사진은 이미 글에 있으니 업로드하지 않고, plan의 image/video 블록을 '원본 미디어 위치'의
+        앵커로만 쓴다. text/divider 블록을 해당 앵커(사진 k 뒤 / 영상 뒤 / 맨 앞 사진 위)에 끼워
+        넣는다. 영상은 절대 건드리지 않아 그대로 보존되고, 저장하면 같은 글이 갱신된다(삭제 없음).
+        image 블록↔원본 사진은 image_path(=photo_paths의 다운로드 순=문서 순)로 매핑하고, 없으면
+        등장 순서로 폴백한다. 아직 미지원 블록(인용/링크/스티커/장소)은 경고로 남긴다.
+
+        글 식별: draft_title을 주면(권장) 발행 직전에 제목+날짜로 목록에서 idx를 '다시' 찾는다
+        (위치 번호가 밀려 엉뚱한 글을 덮어쓰는 사고 방지). 못 찾으면 RuntimeError로 중단한다.
+        draft_title 없이 draft_idx만 주면 그 번호로 로드한다(테스트·단발 용)."""
+        page = self._page
+        warnings: list[str] = []
+        self.open_write_page()
+        if draft_title:
+            idx = self._resolve_draft_idx(draft_title, draft_date)
+            if idx is None:
+                raise RuntimeError(
+                    f"불러온 글을 목록에서 다시 찾지 못했어요(제목 ‘{draft_title}’). "
+                    "엉뚱한 글 덮어쓰기를 막으려고 in-place 저장을 중단합니다."
+                )
+        elif draft_idx is not None:
+            idx = draft_idx
+        else:
+            raise ValueError("draft_title 또는 draft_idx 중 하나는 필요합니다")
+        self._load_draft_into_editor(idx)
+        try:
+            page.wait_for_selector(SMART_EDITOR["editor_image"], timeout=8000)
+        except Exception:
+            pass
+        page.wait_for_timeout(800)
+
+        path_index = {p: i for i, p in enumerate(photo_paths or [])}
+        anchor = None  # None=맨 앞, ("photo", k), ("video",)
+        positioned = False
+        img_seen = -1
+        emphases = []
+        for block in plan.blocks:
+            if block.kind == "image":
+                img_seen += 1
+                k = path_index.get(block.image_path, img_seen)
+                anchor = ("photo", k)
+                positioned = False
+            elif block.kind == "video":
+                anchor = ("video",)
+                positioned = False
+            elif block.kind in ("text", "divider"):
+                if not positioned:
+                    self._place_anchor(anchor)
+                    positioned = True
+                if block.kind == "text":
+                    self._type_text_block(block)
+                    emphases.extend(block.emphases)
+                else:
+                    self._insert_divider(block.variant, align=block.align)
+            else:
+                warnings.append(
+                    f"‘{block.kind}’ 블록은 in-place 1단계에선 자동 삽입을 건너뛰었어요(직접 추가 필요)."
+                )
+        # 본문 입력 후 강조 적용(커서 간섭 방지 — 기존 publish와 동일한 후처리 패스)
+        for span in emphases:
+            try:
+                self._apply_emphasis(span.text, span.style)
+            except Exception:  # noqa: BLE001
+                page.keyboard.press("Escape")
+        if save:
+            if category:
+                self._apply_category_for_draft(category)
+            self.save_draft()
+        return warnings
+
     def import_draft_photos(self, idx: int, dest_dir: Path) -> list[str]:
         """idx번 임시저장 글을 에디터에 로드해 본문 사진을 dest_dir에 내려받고 로컬 경로 목록을 반환.
 
@@ -412,15 +596,7 @@ class BlogPublisher:
         import uuid
 
         page = self._page
-        self._open_draft_list()
-        buttons = page.query_selector_all(SMART_EDITOR["draft_item_button"])
-        if idx < 0 or idx >= len(buttons):
-            raise ValueError(f"임시저장 인덱스 범위를 벗어남: {idx} (총 {len(buttons)}건)")
-        buttons[idx].click()
-        page.wait_for_timeout(1500)
-        confirm = page.query_selector(SMART_EDITOR["draft_load_confirm"])  # '불러오기' 확인 팝업
-        if confirm and confirm.is_visible():
-            confirm.click()
+        self._load_draft_into_editor(idx)
         # 사진이 없는 글일 수 있으니 짧게만 기다린다.
         try:
             page.wait_for_selector(SMART_EDITOR["editor_image"], timeout=8000)

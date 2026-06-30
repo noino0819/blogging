@@ -288,6 +288,7 @@ def plan_from_text(
     product_links: list[str] | None = None,
     sponsor_sticker: str = "",
     photo_meta: dict[str, dict] | None = None,
+    inplace: bool = False,
 ) -> PipelineResult:
     """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱·후처리 → 게시 플랜.
 
@@ -339,6 +340,7 @@ def plan_from_text(
         place_address=place_address, sponsor=sponsored, sponsor_links=sponsor_links,
         product_links=product_links,
         sponsor_sticker=sponsor_sticker, sticker_catalog=catalog,
+        inplace=inplace,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
 
@@ -372,6 +374,7 @@ def run_pipeline(
     model: str | None = None,
     photo_meta: dict[str, dict] | None = None,
     use_cache: bool = False,
+    inplace: bool = False,
     progress: Callable[[str], None] | None = None,
 ) -> PipelineResult:
     """수집→초안(강조/구조/스티커 마커 자동)→게시 플랜까지 한 번에 조립.
@@ -432,5 +435,6 @@ def run_pipeline(
         place_address=place_address, sponsor=sponsored, sponsor_links=sponsor_links,
         product_links=product_links,
         sponsor_sticker=sponsor_sticker, sticker_catalog=catalog,
+        inplace=inplace,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)

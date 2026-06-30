@@ -418,8 +418,10 @@ def build_publish_plan(
 
     # 마커로 못 채운 남은 미디어(사진·영상): 글 끝에 몰지 않고 본문 텍스트 블록 사이에 고루 분산
     # (업로드한 사진·영상은 모두 본문에 들어가되, 끝에 우르르 붙는 걸 방지)
+    # inplace(불러온 글 편집)에선 사진·영상이 이미 글에 박혀 있어 '못 채운 미디어 끌어다 넣기'를
+    # 하지 않는다 — 마커 안 단 미디어는 원래 자리에 그대로 두고, 실행기가 텍스트만 끼운다.
     leftover = [ph for i, ph in enumerate(photos) if not used[i]]
-    if leftover:
+    if leftover and not inplace:
         text_pos = [i for i, b in enumerate(blocks) if b.kind == "text"]
         if not text_pos:  # 본문 텍스트가 없으면 그대로 끝에
             for ph in leftover:
@@ -492,7 +494,7 @@ def build_publish_plan(
     # 끌어올리고 가장 작은 크기로 표시한다. 마커([사진:협찬])를 어디에 넣었든, 또 대표 썸네일이
     # 따로 지정됐든 항상 맨 처음에 등장하게 보장한다.
     spon_paths = {ph.path for ph in photos if ph.label == SPONSOR_PHOTO_LABEL}
-    if spon_paths:
+    if spon_paths and not inplace:  # inplace는 사진 위치를 실행기가 정함(끌어올림 X)
         spon_blocks = [b for b in blocks if b.kind == "image" and b.image_path in spon_paths]
         if spon_blocks:
             for b in spon_blocks:
@@ -503,7 +505,7 @@ def build_publish_plan(
     # 대표 썸네일 — 지정 사진을 본문 '첫 이미지'로 끌어올린다(네이버 대표 사진=글의 첫 이미지).
     # 마커가 어디에 박히든 썸네일이 가장 먼저 등장하게 하되, 협찬 고지 사진보다는 뒤에 둔다.
     thumb_path = next((ph.path for ph in photos if ph.thumbnail and ph.path not in spon_paths), None)
-    if thumb_path:
+    if thumb_path and not inplace:  # inplace는 사진 위치를 실행기가 정함(썸네일 끌어올림 X)
         img_idx = [i for i, b in enumerate(blocks) if b.kind == "image" and b.image_path not in spon_paths]
         first = img_idx[0] if img_idx else None
         cur = next((i for i in img_idx if blocks[i].image_path == thumb_path), None)
