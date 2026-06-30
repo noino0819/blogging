@@ -2949,6 +2949,9 @@ def _prompt_preview(kind: str = "place") -> dict:
     sticker_instr = build_sticker_instruction(load_sticker_catalog().labels())
     if sticker_instr:  # 보유 스티커 라벨이 있을 때만(감정·구분선 스티커 안내)
         layers.append(["스티커 (스티커 켤 때)", sticker_instr])
+    from autoblog.draft.prompts import build_selfcheck_instruction
+
+    layers.append(["자가 점검 (항상 맨 끝에)", build_selfcheck_instruction()])
     path = _prompt_path_for(kind)
     return {
         "base_raw": path.read_text(encoding="utf-8"),

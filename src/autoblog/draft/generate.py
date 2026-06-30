@@ -8,7 +8,7 @@ from autoblog.collect.fact_card import FactCard
 from autoblog.draft.guideline import CheckItem, Guidelines, check_guidelines
 from autoblog.draft.postprocess import enforce_format
 from autoblog.draft.prompt import build_system_prompt, build_user_prompt
-from autoblog.draft.prompts import load_base_prompt
+from autoblog.draft.prompts import build_selfcheck_instruction, load_base_prompt
 from autoblog.draft.rules import CommonRules
 from autoblog.draft.style import StyleProfile
 from autoblog.llm import chat
@@ -86,6 +86,8 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
         from autoblog.publish.plan import build_place_instruction  # 지연 임포트(순환 회피)
 
         system = f"{system}\n\n{build_place_instruction()}"
+    # 자가 점검은 항상 맨 끝에(모델이 마지막으로 읽는 최종 게이트) — 맛집·상품 공통.
+    system = f"{system}\n\n{build_selfcheck_instruction()}"
     user = build_user_prompt(req.fact_card, req.experience_memo, req.template_text)
     return system, user
 
