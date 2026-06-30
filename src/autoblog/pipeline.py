@@ -64,6 +64,7 @@ def collect_card(
     photos: list[str] | None = None,
     photo_meta: dict[str, dict] | None = None,
     *,
+    card_kind: str | None = None,
     use_cache: bool = False,
     progress: Callable[[str], None] | None = None,
 ) -> FactCard:
@@ -73,6 +74,9 @@ def collect_card(
     (webui: 수동 분류·AI 자동 추천 결과). None이면 기존처럼 로컬 Vision 자동 분류(CLI 등).
     use_cache=True면 같은 URL/검색어의 수집 결과를 세션 캐시에서 재사용한다(webui 세션).
     progress(msg)를 주면 단계별 상태 메시지를 전달한다(예: '네이버 지도에서…').
+    card_kind('place'|'product')는 URL·검색어가 비어 수집할 게 없을 때 만들 빈 카드의
+    타입을 정한다 — 유저가 '상품'을 골랐는데 검색어를 안 넣어도(스마트스토어 WTM 차단으로
+    어차피 못 긁음) 상품 카드가 나오게 해서 상품 프롬프트가 걸리도록.
     """
 
     def _say(msg: str) -> None:
@@ -106,7 +110,8 @@ def collect_card(
             if use_cache and not card.is_fallback:
                 _SCRAPE_CACHE[key] = card.model_copy(deep=True)
     else:
-        card = FactCard(type=CardType.place)
+        ctype = CardType.product if card_kind == "product" else CardType.place
+        card = FactCard(type=ctype)
     if photos:
         _say("사진을 정리하는 중…")
         if photo_meta is not None:
@@ -197,6 +202,7 @@ def build_export_prompt(
     card: FactCard | None = None,
     place_url: str | None = None,
     product: str | None = None,
+    card_kind: str | None = None,
     photos: list[str] | None = None,
     style: StyleProfile | None = None,
     rules: CommonRules | None = None,
@@ -226,14 +232,14 @@ def build_export_prompt(
         try:
             card = collect_card(
                 place_url, product, photos, photo_meta=photo_meta,
-                use_cache=use_cache, progress=progress,
+                card_kind=card_kind, use_cache=use_cache, progress=progress,
             )
         except Exception:  # noqa: BLE001 — 수집 실패해도 내보내기는 메모만으로 진행
-            card = (
-                collect_card(photos=photos, photo_meta=photo_meta)
-                if photos
-                else FactCard(type=CardType.place)
-            )
+            if photos:
+                card = collect_card(photos=photos, photo_meta=photo_meta, card_kind=card_kind)
+            else:
+                ctype = CardType.product if card_kind == "product" else CardType.place
+                card = FactCard(type=ctype)
     if progress:
         progress("내 프롬프트와 입력 자료를 합치는 중…")
     labels: list[str] = []
@@ -351,6 +357,7 @@ def run_pipeline(
     card: FactCard | None = None,
     place_url: str | None = None,
     product: str | None = None,
+    card_kind: str | None = None,
     photos: list[str] | None = None,
     style: StyleProfile | None = None,
     rules: CommonRules | None = None,
@@ -387,7 +394,7 @@ def run_pipeline(
     if card is None:
         card = collect_card(
             place_url, product, photos, photo_meta=photo_meta,
-            use_cache=use_cache, progress=progress,
+            card_kind=card_kind, use_cache=use_cache, progress=progress,
         )
 
     catalog = None

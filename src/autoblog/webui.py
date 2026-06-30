@@ -2096,7 +2096,10 @@ def _make_handler(state: dict):
             """body의 srcval+kind → (srcval, src) — generate/export 공통 종류 판정."""
             srcval = (body.get("srcval") or "").strip()
             kind = (body.get("kind") or "").strip()
-            if srcval and kind in ("place", "product"):
+            # 유저가 명시한 선택(kind)을 srcval 유무와 무관하게 존중한다. 상품은 스마트스토어
+            # WTM 차단으로 검색어를 비우는 경우가 많은데, 예전엔 srcval이 비면 kind를 버려서
+            # 상품 글이 맛집 프롬프트로 떨어졌다(빈 상품 카드는 collect_card가 card_kind로 처리).
+            if kind in ("place", "product"):
                 return srcval, kind
             is_url = srcval.startswith("http") or "naver.me" in srcval or "place" in srcval
             return srcval, ("place" if (srcval and is_url) else ("product" if srcval else None))
@@ -2130,6 +2133,7 @@ def _make_handler(state: dict):
                     body.get("memo", ""),
                     place_url=srcval if src == "place" else None,
                     product=srcval if src == "product" else None,
+                    card_kind=src,
                     photos=photos or None,
                     photo_meta=photo_meta,
                     style=style,
@@ -2310,6 +2314,7 @@ def _make_handler(state: dict):
                 body["memo"],
                 place_url=srcval if src == "place" else None,
                 product=srcval if src == "product" else None,
+                card_kind=src,
                 photos=photos or None,
                 photo_meta=photo_meta,
                 style=style,

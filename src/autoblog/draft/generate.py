@@ -110,7 +110,11 @@ def generate_draft(
             model=model,
         ).strip()
     text = raw
-    is_product = req.fact_card.product is not None  # 상품 리뷰: 나열 박스(✅/1️⃣~) 보존
+    from autoblog.collect.fact_card import CardType
+
+    # 상품 리뷰: 나열 박스(✅/1️⃣~) 보존. 카드 타입으로 판단해야 WTM 차단으로
+    # product 데이터를 못 긁은 상품 글도 박스가 후처리에서 안 깎인다.
+    is_product = req.fact_card.type == CardType.product
     debug = {"system": system, "user": user, "raw": raw, "model": model or ""}
 
     # 강조 마킹 추출(포맷 후처리 전에 — 줄바꿈이 <<>>를 깨지 않도록)
