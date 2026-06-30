@@ -26,6 +26,7 @@ autoblog = "autoblog.cli:app"
 dev = [
     "pytest>=8.2",
     "ruff>=0.5",
+    "pyinstaller>=6.21",  # 데스크톱 앱 패키징(packaging/build_macos.sh)
 ]
 
 [build-system]
