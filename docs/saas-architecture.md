@@ -49,7 +49,9 @@
 | **구분선·인용구·지도** | **이미지 0** | 마커뿐, 네이버 네이티브 |
 
 - **유저 사진**: 원본(한 글 수십 장, [data/uploads](../data/uploads))은 **로컬에 머문다**. 웹 배치/미리보기용 **가벼운 썸네일만** Storage에. 실제 게시는 도우미가 로컬 원본으로.
-- **스티커**: ([stickers.py](../src/autoblog/publish/stickers.py)) 안정 식별자가 `(pack, index)`라 글엔 `clip_001:8` 같은 텍스트만 남는다. 이미지 바이트 저장 없음. 카탈로그 썸네일은 **네이버 CDN URL 핫링크**(저장 0) 우선, 막히면 수백 장을 Storage에 1회 업로드(글 활동과 무관하게 바운드). 카탈로그 **메타데이터**(태그·즐겨찾기·협찬지정)는 작아서 `sticker_catalog` 테이블에 둠.
+- **스티커**: ([stickers.py](../src/autoblog/publish/stickers.py)) 안정 식별자가 `(pack, index)`라 글엔 `clip_001:8` 같은 텍스트만 남는다. 이미지 바이트 저장 없음. 카탈로그 **메타데이터**(태그·즐겨찾기·협찬지정)는 작아서 `sticker_catalog` 테이블에 둠.
+  - **썸네일 = 네이버 CDN 핫링크 (검증 완료, 저장 0).** CDN(`storep-phinf.pstatic.net`)은 외부 referer를 403으로 막지만 **referer 없으면 200**. 그래서 웹에서 `<img referrerpolicy="no-referrer">`(또는 페이지 `<meta name=referrer content=no-referrer>`)로 띄우면 내 스토리지에 0장 저장하고 그대로 렌더됨. URL은 pack+index로 결정 → `https://storep-phinf.pstatic.net/{pack}/original_{index+1}.png?type=m480_480` (OGQ 개별). 기본팩(clip/cafe/motion)은 개별 이미지 없이 스프라이트(`original_preview.png`)뿐이라 스프라이트 핫링크 후 CSS로 index 칸 크롭.
+  - **폴백 B**: 네이버가 no-referer까지 막으면 수백 장을 Storage에 1회 업로드(글 활동과 무관, 바운드).
 
 ## 로컬 도우미 = 유저가 까는 것
 
