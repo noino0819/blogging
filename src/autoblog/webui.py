@@ -72,8 +72,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .card h3{font-size:13px;margin:0 0 12px;color:#374151}
  label.f{display:block;font-size:12px;color:#6b7280;margin:14px 0 6px;font-weight:600}
  label.f:first-child{margin-top:0}
- input[type=text],input[type=number],textarea{width:100%;border:1px solid #d6dade;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;background:#fbfcfd}
- input[type=text]:focus,input[type=number]:focus,textarea:focus{outline:2px solid #03c75a33;border-color:var(--green)}
+ input[type=text],input[type=number],input[type=url],textarea{width:100%;border:1px solid #d6dade;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;background:#fbfcfd}
+ input[type=text]:focus,input[type=number]:focus,input[type=url]:focus,textarea:focus{outline:2px solid #03c75a33;border-color:var(--green)}
  input[type=number]{-moz-appearance:textfield}
  input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
  textarea{min-height:130px;resize:vertical;line-height:1.6}
@@ -324,7 +324,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .prodlinkbox{margin-top:14px}
  .plrow{display:flex;gap:6px;margin-top:6px}
  .plrow .plink{flex:1;min-width:0}
- .plrow .plrm{flex:0 0 auto;padding:9px 12px;color:var(--sub)}
+ .plrow .plrm{flex:0 0 auto;width:34px;padding:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--sub)}
  /* 보조 액션(복사/붙여넣기) — 한 줄에 작게 */
  .actrow{display:flex;gap:8px;margin-top:9px}
  .actrow .btn{padding:10px;font-size:12px}
@@ -1180,7 +1180,8 @@ $('#gen').onclick=async()=>{
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:$('#keywords').value,minChars:$('#minchars').value,
-      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES};
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES,
+      inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 in-place 편집(새 글용 사진 재정렬 휴리스틱 끔)
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); toast('초안 생성 실패: '+(d.error||'알 수 없는 오류'),'err'); return;}
@@ -1334,9 +1335,10 @@ function updateSaveHint(){
 function fireSave(title, category){
   SAVE_QUEUE++; updateSaveHint();
   const task=bgTask(`'${title}' 임시저장 중…`);
-  // 사진을 가져온 원본 글이 있으면 함께 보내, 저장 완료 후 서버가 그 원본을 삭제하게 한다.
-  const importedDraft=IMPORTED_DRAFT;
-  fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category,importedDraft})})
+  // 불러온 글이면 그 글을 'in-place'로 갱신(원본 삭제 X, 사진 재업로드 X, 영상 보존).
+  // 일반 새 글이면 importedDraft 없음 → 기존 방식(새 글 저장).
+  const inplace=!!IMPORTED_DRAFT, inplaceDraft=IMPORTED_DRAFT;
+  fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category,inplace,inplaceDraft})})
     .then(async r=>{
       const d=await r.json();
       if(!r.ok)throw new Error(d.error||'알 수 없는 오류');
@@ -2326,6 +2328,7 @@ def _make_handler(state: dict):
                 product_links=_links(body, "productLinks"),
                 sponsor_sticker=(body.get("sponsorSticker") or "").strip(),
                 use_cache=True,  # 같은 URL 재수집 방지(export/캡션과 캐시 공유)
+                inplace=bool(body.get("inplace")),  # 불러온 글 in-place 편집(사진 재정렬 휴리스틱 끔)
             )
             self._send_plan(result)
 
@@ -2411,6 +2414,12 @@ def _make_handler(state: dict):
             # 디버그 토글이 켜져 있으면 저장 과정을 화면에 띄워(headful) 직접 보게 한다(기본 끔=백그라운드).
             headless = not bool(prefs.get("saveDebug", False))
 
+            # 불러온 글 in-place 편집 요청(불러오기로 들어온 글). 있으면 원본을 '갱신'한다
+            # — 새 글 생성·원본 삭제·사진 재업로드 없이, 기존 사진/영상 사이에 본문만 끼워 넣는다.
+            inplace_draft = body.get("inplaceDraft") if body.get("inplace") else None
+            if not isinstance(inplace_draft, dict) or not (inplace_draft.get("title") or "").strip():
+                inplace_draft = None
+
             # 연속으로 저장을 눌러도 한 건씩 순서대로 처리한다(대기열). 락을 못 잡으면
             # 앞 건이 끝날 때까지 이 스레드가 대기 → 브라우저가 하나만 뜬다.
             with state["publish_lock"]:
@@ -2425,14 +2434,28 @@ def _make_handler(state: dict):
                         pub.start()
                         if not pub.wait_for_login():
                             raise RuntimeError("네이버 로그인이 필요합니다")
-                    warnings = pub.publish(
-                        result.plan,
-                        category=category,
-                        save=True,
-                        submit=False,
-                        prune_same_title=prune,
-                        delete_imported=imported,
-                    )
+                    if inplace_draft:
+                        photo_paths = [
+                            ph.path for ph in result.card.photos
+                            if getattr(ph, "media_kind", "image") != "video"
+                        ]
+                        warnings = pub.publish_inplace(
+                            result.plan,
+                            draft_title=inplace_draft.get("title") or "",
+                            draft_date=inplace_draft.get("date") or "",
+                            photo_paths=photo_paths,
+                            category=category,
+                            save=True,
+                        )
+                    else:
+                        warnings = pub.publish(
+                            result.plan,
+                            category=category,
+                            save=True,
+                            submit=False,
+                            prune_same_title=prune,
+                            delete_imported=imported,
+                        )
                 finally:
                     pub.close()
             self._send(200, json.dumps({"ok": True, "warnings": warnings or []}).encode())
