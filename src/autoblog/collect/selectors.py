@@ -36,6 +36,15 @@ SMART_EDITOR = {
     # 버튼이 선택 즉시 바로 보이므로 메뉴를 펼칠 필요 없음(image_size_menu 비움).
     "image_size_menu": "",
     "image_size_smallest": "button.se-object-arrangement-normal-toolbar-button",  # '작게'(data-value=normal)
+    # 동영상: 사진과 달리 '동영상' 툴바 버튼 → 업로더 모달(.nvu_wrap)이 뜬다. 모달에서
+    # 로컬 파일 버튼으로 파일창을 열어 업로드 → 서버 인코딩 → 제목(필수) 입력 → '완료'로
+    # 본문에 .se-component.se-video 삽입. (셀렉터는 scripts/probe_video_upload.py 로 라이브 캡처)
+    "video_upload_button": ".se-toolbar-item-video button",  # '동영상 추가' 툴바 버튼
+    "video_uploader_modal": ".se-popup-video-upload",  # 업로더 팝업(.nvu_wrap 포함)
+    "video_local_button": ".nvu_btn_append.nvu_local",  # 모달 내 '동영상 추가'(로컬 파일) → 파일창
+    "video_title_input": "input.nvu_inp",  # 제목 입력(필수, 최대 40자)
+    "video_submit_button": ".nvu_btn_submit",  # '완료'(등록 → 본문 삽입)
+    "editor_video": ".se-component.se-video",  # 본문에 삽입된 동영상 컴포넌트
     "divider_button": "button.se-insert-horizontal-line-default-toolbar-button",  # 구분선
     "quote_button": "button.se-insert-quotation-default-toolbar-button",  # 인용구
     # 스티커: 툴바 버튼 → 우측 사이드바 패널(팩 탭 + 스티커 그리드). (팩코드,인덱스)로 삽입.

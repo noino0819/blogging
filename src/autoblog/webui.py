@@ -16,9 +16,12 @@ from urllib.parse import parse_qs, urlparse
 
 from autoblog.config import REPO_ROOT
 
-PHOTO_DIR = REPO_ROOT / "test"  # 유저 사진 폴더(테스트용)
+PHOTO_DIR = REPO_ROOT / "test"  # 유저 사진/영상 폴더(테스트용)
 _IMG_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-UPLOAD_DIR = REPO_ROOT / "data" / "uploads"  # 유저가 올린 사진
+from autoblog.collect.photos import VIDEO_EXT as _VID_EXT  # noqa: E402  영상 확장자(단일 출처)
+from autoblog.collect.photos import is_video  # noqa: E402
+_MEDIA_EXT = _IMG_EXT | _VID_EXT
+UPLOAD_DIR = REPO_ROOT / "data" / "uploads"  # 유저가 올린 사진/영상
 FONTS_DIR = REPO_ROOT / "config" / "fonts"  # 에디터 웹폰트(로컬 서빙, 미리보기용)
 # 미리보기에서 실제 글씨체로 보이게 — 에디터와 같은 se-* 패밀리명 사용
 _FONT_FAMILIES = [
@@ -132,6 +135,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;max-height:230px;overflow:auto;padding:2px;user-select:none;-webkit-user-select:none}
  .pcell{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;cursor:pointer;border:2px solid transparent}
  .pcell img{width:100%;height:100%;object-fit:cover;display:block}
+ .vidbadge{position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,.72);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:7px;pointer-events:none}
  .pcell.sel{border-color:var(--green)}
  .dropzone{border:2px dashed #cdd3da;border-radius:11px;padding:18px;text-align:center;color:var(--sub);font-size:13px;cursor:pointer;margin-bottom:10px}
  .dropzone:hover,.dropzone.drag{border-color:var(--green);background:#f3fcf6;color:var(--green-d)}
@@ -398,7 +402,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 <div id=phmodal class=modal style="display:none"><div class="modalbox phbox">
   <div class=modalhd><span>📷 사진 추가·분류</span><button class=mx id=phclose>✕</button></div>
   <div class=muted>사진을 올리고 → 글에 넣을 사진을 클릭·Shift로 선택 → 아래 칸으로 끌거나 선택 후 칸을 눌러 분류하세요.</div>
-  <div class=dropzone id=dropzone>📷 사진을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*" multiple hidden></div>
+  <div class=dropzone id=dropzone>📷 사진·동영상을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*,video/*" multiple hidden></div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
     <button type=button class="btn ghost" id=draftload style="white-space:nowrap">📥 임시저장에서 불러오기</button>
     <button type=button class="btn ghost" id=draftrefresh title="네이버에서 목록 새로고침" style="display:none;padding:9px 11px">🔄</button>
@@ -812,9 +816,11 @@ function st(m,loading){const s=$('#status'); s.innerHTML=(loading?'<span class=s
 
 // 사진: PHOTOS=업로드 전체, SELP=분류함(보드)에 넣은 사진. 그리드(위)=아직 분류 안 한 더미(=PHOTOS−SELP).
 function inboxPhotos(){ return PHOTOS.filter(p=>!SELP.includes(p)); }
+function isVid(path){ return /\.(mp4|mov|m4v|avi|webm|mkv)$/i.test(path||''); }  // 확장자로 영상 판별
 function gridCell(path){
   const d=document.createElement('div'); d.className='pcell'+(PMSEL.has(path)?' sel':''); d.dataset.path=path;
-  d.innerHTML=`<img loading=lazy src="/photo?path=${encodeURIComponent(path)}">`;
+  const badge = isVid(path) ? '<span class=vidbadge>▶ 영상</span>' : '';
+  d.innerHTML=`<img loading=lazy src="/photo?path=${encodeURIComponent(path)}">${badge}`;
   d.onclick=(e)=>photoSel(path,e);
   d.onmousedown=(e)=>{ if(e.shiftKey) e.preventDefault(); };  // Shift+클릭 시 텍스트선택 방지
   return d;
@@ -835,7 +841,7 @@ function setupUpload(){const dz=$('#dropzone'), fi=$('#fileinput');
   dz.ondragleave=()=>dz.classList.remove('drag');
   dz.ondrop=e=>{e.preventDefault();dz.classList.remove('drag');handleFiles(e.dataTransfer.files);};}
 async function handleFiles(files){
-  for(const f of files){ if(!f.type.startsWith('image/'))continue;
+  for(const f of files){ if(!f.type.startsWith('image/') && !f.type.startsWith('video/') && !isVid(f.name))continue;
     const dataurl=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f);});
     try{const res=await fetch('/api/upload',{method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify({filename:f.name,data:dataurl.split(',')[1]})});
@@ -1259,6 +1265,7 @@ function renderPreview(d){
       h+=`<div class="q ${qc}" style="${alignStyle(b)}">${esc(b.text)}</div>`;}
     else if(b.kind==='sticker')h+=`<img class=st src="/img?ref=${encodeURIComponent(b.sticker_ref)}">`;
     else if(b.kind==='image')h+=`<div class=ph>🖼 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
+    else if(b.kind==='video')h+=`<div class=ph>🎬 동영상 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
     else if(b.kind==='link')h+=`<div class=ph>🔗 링크 카드 <small>${esc(b.link_url)}</small></div>`;
   }
   const p=$('#preview'); p.classList.remove('empty'); p.innerHTML=h;
@@ -1788,10 +1795,32 @@ $('#capmodal').onclick=e=>{ if(e.target===$('#capmodal'))closeCapModal(); };
 </script></body></html>"""
 
 
+def _video_thumb(cache: dict, size: int = 320) -> bytes:
+    """동영상은 썸네일 추출 없이, 어두운 타일 + 재생(▶) 아이콘 플레이스홀더로 표시.
+
+    /photo 가 모든 미디어에 같은 <img src>로 쓰여, 영상도 이 한 장으로 그리드·캡션·대표
+    미리보기 어디서나 일관되게 보인다(언어/폰트 비의존, PIL 도형만 사용)."""
+    if "__video__" in cache:
+        return cache["__video__"]
+    from PIL import Image, ImageDraw
+
+    im = Image.new("RGB", (size, size), "#2b2f36")
+    d = ImageDraw.Draw(im)
+    cx, cy, r = size // 2, size // 2, size // 6
+    d.ellipse([cx - r * 1.6, cy - r * 1.6, cx + r * 1.6, cy + r * 1.6], fill="#000000")
+    d.polygon([(cx - r // 2, cy - r), (cx - r // 2, cy + r), (cx + r, cy)], fill="#ffffff")
+    buf = BytesIO()
+    im.save(buf, format="JPEG", quality=80)
+    cache["__video__"] = buf.getvalue()
+    return cache["__video__"]
+
+
 def _thumb(path: Path, cache: dict, size: int = 320) -> bytes | None:
     key = str(path)
     if key in cache:
         return cache[key]
+    if is_video(str(path)):
+        return _video_thumb(cache, size)  # 영상은 공용 플레이스홀더(경로별 캐시 불필요)
     try:
         from PIL import Image
 
@@ -1811,8 +1840,10 @@ def _list_photos() -> list[dict]:
         return []
     out = []
     for p in sorted(PHOTO_DIR.iterdir()):
-        if p.is_file() and p.suffix.lower() in _IMG_EXT:
-            out.append({"path": str(p), "name": p.name})
+        if p.is_file() and p.suffix.lower() in _MEDIA_EXT:
+            out.append(
+                {"path": str(p), "name": p.name, "kind": "video" if is_video(p.name) else "image"}
+            )
     return out
 
 
@@ -1828,12 +1859,12 @@ def _safe_photo(path: str) -> Path | None:
 
 
 def _save_upload(filename: str, b64: str) -> str:
-    """업로드 이미지를 data/uploads/에 저장하고 경로 반환."""
+    """업로드 미디어(사진/영상)를 data/uploads/에 저장하고 경로 반환."""
     import base64
     import uuid
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    safe = Path(filename).name or "image"
+    safe = Path(filename).name or "media"
     dest = UPLOAD_DIR / f"{uuid.uuid4().hex[:8]}_{safe}"
     dest.write_bytes(base64.b64decode(b64))
     return str(dest)
@@ -2344,7 +2375,7 @@ def _make_handler(state: dict):
                 blk = {"kind": b.kind, "text": b.text, "variant": b.variant, "align": b.align}
                 if b.kind == "sticker":
                     blk["sticker_ref"] = f"{b.sticker_pack}:{b.sticker_index}"
-                elif b.kind == "image":
+                elif b.kind in ("image", "video"):
                     blk["image_path"] = b.image_path
                     blk["image_label"] = b.image_label
                 elif b.kind == "link":

@@ -21,6 +21,7 @@ from autoblog.publish.stickers import StickerPicker
 PHOTO_MARKER = "[사진]"
 # [사진] / [사진:음식] — 라벨로 어떤 사진을 그 자리에 놓을지 지정 가능
 _PHOTO_RE = re.compile(r"^\[사진(?::(.+?))?\]$")
+_VIDEO_RE = re.compile(r"^\[영상(?::(.+?))?\]$")  # 동영상 마커(사진과 동일 규칙, media_kind=video만 매칭)
 # 협찬 고지 사진 라벨 — 이 라벨이 붙은 사진은 본문 '첫 이미지'로 끌어올린다(최상단 고지).
 SPONSOR_PHOTO_LABEL = "협찬"
 QUOTE_CLOSE = "[/인용구]"
@@ -196,9 +197,10 @@ def _is_hashtag_line(s: str) -> bool:
 
 
 class PublishBlock(BaseModel):
-    kind: str  # "text" | "image" | "divider" | "quote" | "sticker" | "place" | "link"
+    kind: str  # "text" | "image" | "video" | "divider" | "quote" | "sticker" | "place" | "link"
     text: str = ""
     link_url: str = ""  # 링크 카드(oglink) URL — 쿠팡파트너스 등
+    keep_url_text: bool = False  # 협찬 링크: 카드 밑 'URL 텍스트 줄'을 지우지 말고 남김(크롤러 인식용)
     emphases: list[StyledSpan] = Field(default_factory=list)
     image_path: str | None = None
     image_label: str = ""
@@ -229,8 +231,13 @@ def build_publish_plan(
     product_links: list[str] | None = None,
     sponsor_sticker: str = "",
     sticker_catalog=None,
+    inplace: bool = False,
 ) -> PublishPlan:
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
+
+    inplace=True(임시저장 글 in-place 편집)면 사진은 이미 글에 박혀 있어 '위치를 옮기는'
+    후처리(남은 사진 분산·협찬 사진 끌어올림·대표 썸네일 끌어올림)를 모두 건너뛴다.
+    이미지 블록은 마커 순서 그대로 남아 실행기가 image_path로 원본 사진 위치에 매핑한다.
 
     첫 비어있지 않은 줄=제목. 본문에서 마커를 블록으로 분리:
     - [사진]/[사진:라벨] → 이미지(라벨 같은 사진 우선, 없으면 남은 순서대로)
@@ -265,18 +272,23 @@ def build_publish_plan(
     used = [False] * len(photos)  # 사진별 사용 여부(순서 아닌 라벨로 매칭)
     first_body_seen = False  # 대제목은 본문 첫 줄에만 부여
 
-    def take_photo(label: str | None) -> PhotoItem | None:
-        """라벨이 같은 안 쓴 사진 우선, 없으면 남은 사진 순서대로. 다 쓰면 None."""
+    def take_photo(label: str | None, media_kind: str = "image") -> PhotoItem | None:
+        """media_kind(사진/영상)가 같은 것 중, 라벨이 같은 안 쓴 것 우선·없으면 순서대로. 다 쓰면 None."""
         if label:
             for i, ph in enumerate(photos):
-                if not used[i] and ph.label == label:
+                if not used[i] and ph.media_kind == media_kind and ph.label == label:
                     used[i] = True
                     return ph
         for i, ph in enumerate(photos):
-            if not used[i]:
+            if not used[i] and ph.media_kind == media_kind:
                 used[i] = True
                 return ph
         return None
+
+    def media_block(ph: PhotoItem) -> PublishBlock:
+        """PhotoItem → 이미지/영상 블록(media_kind로 kind 결정, 경로·라벨 필드는 공용)."""
+        kind = "video" if ph.media_kind == "video" else "image"
+        return PublishBlock(kind=kind, image_path=ph.path, image_label=ph.caption or ph.label)
 
     def flush_text():
         text = "\n".join(text_buf).strip()
@@ -352,6 +364,7 @@ def build_publish_plan(
         quote_m = _QUOTE_OPEN_RE.match(s)
         sticker_m = _STICKER_RE.match(s)
         photo_m = _PHOTO_RE.match(s)
+        video_m = _VIDEO_RE.match(s)
         place_m = _PLACE_RE.match(s)
         if place_m:
             flush_text()
@@ -380,9 +393,14 @@ def build_publish_plan(
             quote_variant = int(quote_m.group(1) or quote_variant_default)
         elif photo_m:
             flush_text()
-            ph = take_photo(photo_m.group(1))
+            ph = take_photo(photo_m.group(1), media_kind="image")
             if ph is not None:
-                blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.caption or ph.label))
+                blocks.append(media_block(ph))
+        elif video_m:
+            flush_text()
+            ph = take_photo(video_m.group(1), media_kind="video")
+            if ph is not None:
+                blocks.append(media_block(ph))
         else:
             role = classify_role(s)
             if role:
@@ -398,17 +416,17 @@ def build_publish_plan(
             PublishBlock(kind="quote", text="\n".join(quote_buf).strip(), variant=quote_variant)
         )
 
-    # 마커로 못 채운 남은 사진: 글 끝에 몰지 않고 본문 텍스트 블록 사이에 고루 분산
-    # (업로드한 사진은 모두 본문에 들어가되, 끝에 우르르 붙는 걸 방지)
+    # 마커로 못 채운 남은 미디어(사진·영상): 글 끝에 몰지 않고 본문 텍스트 블록 사이에 고루 분산
+    # (업로드한 사진·영상은 모두 본문에 들어가되, 끝에 우르르 붙는 걸 방지)
     leftover = [ph for i, ph in enumerate(photos) if not used[i]]
     if leftover:
         text_pos = [i for i, b in enumerate(blocks) if b.kind == "text"]
         if not text_pos:  # 본문 텍스트가 없으면 그대로 끝에
             for ph in leftover:
-                blocks.append(PublishBlock(kind="image", image_path=ph.path, image_label=ph.caption or ph.label))
+                blocks.append(media_block(ph))
         else:
-            def trailing_end(idx: int) -> int:  # 텍스트 블록 뒤 마커 이미지까지 건너뛴 위치
-                while idx + 1 < len(blocks) and blocks[idx + 1].kind == "image":
+            def trailing_end(idx: int) -> int:  # 텍스트 블록 뒤 마커 미디어(사진/영상)까지 건너뛴 위치
+                while idx + 1 < len(blocks) and blocks[idx + 1].kind in ("image", "video"):
                     idx += 1
                 return idx
 
@@ -421,19 +439,24 @@ def build_publish_plan(
             for i, b in enumerate(blocks):
                 spread.append(b)
                 for ph in after.get(i, []):
-                    spread.append(
-                        PublishBlock(kind="image", image_path=ph.path, image_label=ph.caption or ph.label)
-                    )
+                    spread.append(media_block(ph))
             blocks = spread
 
     # 협찬 링크 카드 — 글 끝에 몰지 않고 본문 텍스트 사이 고른 '중간중간' 위치에 분산.
     # 텍스트 블록이 t개일 때 링크 i는 (i+1)/(n+1) 지점 텍스트 뒤에 — 맨 앞/맨 끝을 피해 가운데로.
     links = [u.strip() for u in [*(sponsor_links or []), *(product_links or [])] if u.strip()]
+    # 협찬 링크(sponsor_links)는 카드 밑 URL 텍스트 줄을 남겨 체험단 크롤러가 잡게 한다.
+    # 상품리뷰 링크(product_links)는 비협찬이라 지금처럼 깔끔하게(텍스트 줄 제거).
+    sponsor_set = {u.strip() for u in (sponsor_links or []) if u.strip()}
+
+    def link_block(url: str) -> PublishBlock:
+        return PublishBlock(kind="link", link_url=url, keep_url_text=url in sponsor_set)
+
     if links:
         text_pos = [i for i, b in enumerate(blocks) if b.kind == "text"]
         if not text_pos:  # 본문 텍스트가 없으면 그대로 끝에
             for url in links:
-                blocks.append(PublishBlock(kind="link", link_url=url))
+                blocks.append(link_block(url))
         else:
             t = len(text_pos)
             last = t - 2 if t >= 3 else t - 1  # 텍스트 블록이 3개 이상이면 마지막 문단 뒤는 피함
@@ -445,7 +468,7 @@ def build_publish_plan(
             for i, b in enumerate(blocks):
                 spread.append(b)
                 for url in after.get(i, []):
-                    spread.append(PublishBlock(kind="link", link_url=url))
+                    spread.append(link_block(url))
             blocks = spread
 
     # 협찬 고지 스티커 — 본문 맨 위에 고정 삽입(제목 칸과 별개로 본문 첫 블록).

@@ -195,6 +195,12 @@ class BlogPublisher:
                 emphases.extend(block.emphases)
             elif block.kind == "image" and block.image_path:
                 self._insert_image(block.image_path, size=block.image_size)
+            elif block.kind == "video" and block.image_path:
+                if not self._insert_video(block.image_path, title=block.image_label):
+                    warnings.append(
+                        f"동영상 자동 삽입 실패: ‘{block.image_path}’ — 업로드/인코딩이 지연됐어요. "
+                        "에디터에서 직접 ‘동영상’을 추가해 주세요."
+                    )
             elif block.kind == "divider":
                 self._insert_divider(block.variant, align=block.align)
             elif block.kind == "quote":
@@ -213,7 +219,7 @@ class BlogPublisher:
                         "건너뛰었어요. 에디터에서 직접 ‘장소’를 추가해 주세요."
                     )
             elif block.kind == "link" and block.link_url:
-                self._insert_link(block.link_url)
+                self._insert_link(block.link_url, keep_url_text=block.keep_url_text)
         # 본문 입력을 모두 마친 뒤 강조 서식 적용(커서 간섭 방지)
         for span in emphases:
             try:
@@ -628,14 +634,18 @@ class BlogPublisher:
         page.wait_for_timeout(1500)
         return True
 
-    def _insert_link(self, url: str) -> bool:
+    def _insert_link(self, url: str, keep_url_text: bool = False) -> bool:
         """SE 링크 카드(oglink) 삽입 — 본문에 URL을 합성 paste 이벤트로 붙여넣어 카드 생성.
 
         툴바 '링크'(글감검색) 버튼은 외부 URL을 "글감을 가져올 수 없습니다"로 거부하므로 못 쓴다.
         대신 contenteditable에 DataTransfer 기반 paste 이벤트를 디스패치하면(시스템 클립보드 불필요
         → 권한 팝업 없음) 네이버가 OG 메타데이터를 받아 se-oglink 카드를 만든다. 붙여넣기는 URL을
         '일반 텍스트 줄'로도 남기므로, 카드 생성 뒤 그 텍스트 줄을 찾아 삭제한다(SEO상 맨 URL 방지).
-        라이브 검증: 쿠팡파트너스 링크 → 'Coupang Partners' 카드 1개, 텍스트 잔여 없음."""
+        라이브 검증: 쿠팡파트너스 링크 → 'Coupang Partners' 카드 1개, 텍스트 잔여 없음.
+
+        keep_url_text=True면 그 'URL 텍스트 줄'을 지우지 않고 카드와 함께 남긴다 — 협찬/체험단
+        플랫폼 크롤러가 발행글 HTML에서 '지정 캠페인 URL 문자열'을 찾아 인식하는데, oglink 카드의
+        href는 네이버 리다이렉트로 감싸져 원본 URL이 안 보일 수 있어 텍스트로도 남겨둬야 잡힌다."""
         page = self._page
         page.click(SMART_EDITOR["content_component"])
         page.wait_for_timeout(300)
@@ -670,6 +680,9 @@ class BlogPublisher:
                 break
         if not created:
             return False
+        # 협찬 링크는 크롤러가 URL 문자열을 잡도록 텍스트 줄을 일부러 남긴다.
+        if keep_url_text:
+            return True
         # 붙여넣기가 남긴 '일반 URL 텍스트 줄' 제거(트리플클릭으로 줄 선택 → 삭제)
         box = page.evaluate(
             """(url)=>{
@@ -1046,6 +1059,76 @@ class BlogPublisher:
         self._page.wait_for_timeout(2500)  # 업로드 대기
         if size == "small":
             self._resize_image_smallest()
+
+    def _insert_video(self, path: str, title: str = "") -> bool:
+        """동영상 업로더 모달로 영상 삽입(사진과 흐름이 다름).
+
+        '동영상' 툴바 버튼 → 업로더 모달(.nvu_wrap)에서 로컬 파일 버튼으로 파일창을 열어
+        업로드 → 서버 인코딩(수~수십 초) → 제목(필수) 입력 → '완료'로 본문에 영상 컴포넌트
+        삽입. 인코딩이 길어 사진의 고정 대기로는 부족하므로 단계마다 넉넉히 폴링한다.
+        실패(타임아웃 등)하면 모달을 닫고 False를 반환(본문은 그대로, 호출부가 경고로 안내).
+        """
+        page = self._page
+        before = len(page.query_selector_all(SMART_EDITOR["editor_video"]))
+        try:
+            page.click(SMART_EDITOR["video_upload_button"])
+            page.wait_for_selector(SMART_EDITOR["video_uploader_modal"], timeout=8000)
+            page.wait_for_timeout(800)
+            with page.expect_file_chooser(timeout=8000) as fc:
+                page.click(SMART_EDITOR["video_local_button"])
+            fc.value.set_files(path)
+        except Exception:
+            self._close_video_modal()
+            return False
+
+        # 업로드 완료 대기('업로드 완료' 텍스트 출현, 최대 120초)
+        uploaded = False
+        for _ in range(40):
+            page.wait_for_timeout(3000)
+            txt = page.evaluate(
+                "() => { const r = document.querySelector('.nvu_wrap');"
+                " return r ? r.textContent : ''; }"
+            )
+            if "업로드 완료" in (txt or ""):
+                uploaded = True
+                break
+            if not page.query_selector(SMART_EDITOR["video_uploader_modal"]):
+                break  # 모달이 사라짐(예외적) — 아래 컴포넌트 출현으로 판정
+        if not uploaded and page.query_selector(SMART_EDITOR["video_uploader_modal"]):
+            self._close_video_modal()
+            return False
+
+        # 제목(필수) 입력 후 '완료'
+        try:
+            ttl = (title or "동영상").strip()[:40]
+            page.fill(SMART_EDITOR["video_title_input"], ttl)
+            page.wait_for_timeout(300)
+            page.click(SMART_EDITOR["video_submit_button"])
+        except Exception:
+            self._close_video_modal()
+            return False
+
+        # 본문에 동영상 컴포넌트가 늘어날 때까지 대기(최대 60초)
+        for _ in range(20):
+            page.wait_for_timeout(3000)
+            if len(page.query_selector_all(SMART_EDITOR["editor_video"])) > before:
+                self._focus_body_end()
+                return True
+            if not page.query_selector(SMART_EDITOR["video_uploader_modal"]):
+                # 모달은 닫혔는데 컴포넌트 미확인 → 한 번 더 확인
+                if len(page.query_selector_all(SMART_EDITOR["editor_video"])) > before:
+                    self._focus_body_end()
+                    return True
+        return False
+
+    def _close_video_modal(self):
+        """동영상 업로더 모달이 떠 있으면 닫는다(실패 후 정리)."""
+        try:
+            if self._page.query_selector(SMART_EDITOR["video_uploader_modal"]):
+                self._page.keyboard.press("Escape")
+                self._page.wait_for_timeout(400)
+        except Exception:
+            pass
 
     def _resize_image_smallest(self):
         """방금 삽입한 본문 사진을 선택해 에디터 '크기' 컨트롤로 가장 작게 변경.

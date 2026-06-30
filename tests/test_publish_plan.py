@@ -44,6 +44,42 @@ def test_build_plan_photo_label_fallback_and_leftover():
     assert imgs == ["a.jpg", "b.jpg"]
 
 
+def test_build_plan_video_marker_matches_only_video():
+    # [사진]은 영상을 집지 않고, [영상]은 영상만 집는다(media_kind로 분리)
+    draft = DraftResult(text="제목\n\n매장 외관.\n[사진]\n분위기 영상.\n[영상]")
+    photos = [
+        PhotoItem(path="ext.jpg", label="외관", media_kind="image"),
+        PhotoItem(path="clip.mp4", label="기타", media_kind="video"),
+    ]
+    plan = build_publish_plan(draft, photos)
+    kinds = [b.kind for b in plan.blocks]
+    assert kinds == ["text", "image", "text", "video"]
+    assert plan.blocks[1].image_path == "ext.jpg"
+    assert plan.blocks[3].kind == "video" and plan.blocks[3].image_path == "clip.mp4"
+
+
+def test_build_plan_video_label_used_as_block_label():
+    # 캡션이 있으면 영상 블록 라벨(=업로더 제목)로 쓰인다
+    draft = DraftResult(text="제목\n\n본문.\n[영상]")
+    photos = [PhotoItem(path="clip.mp4", caption="조리 과정", media_kind="video")]
+    plan = build_publish_plan(draft, photos)
+    vid = next(b for b in plan.blocks if b.kind == "video")
+    assert vid.image_label == "조리 과정"
+
+
+def test_build_plan_leftover_video_spread_as_video_block():
+    # [영상] 마커가 없어도 남은 영상은 본문에 분산되며 kind='video'로 생성(image로 새지 않음)
+    draft = DraftResult(text="제목\n\n첫 문단.\n[구분선]\n둘째 문단.")
+    photos = [
+        PhotoItem(path="a.jpg", label="외관", media_kind="image"),
+        PhotoItem(path="v.mp4", label="기타", media_kind="video"),
+    ]
+    plan = build_publish_plan(draft, photos)
+    kinds = [b.kind for b in plan.blocks]
+    assert kinds == ["text", "image", "divider", "text", "video"]
+    assert plan.blocks[4].image_path == "v.mp4"
+
+
 def test_build_plan_distributes_emphasis():
     span = StyledSpan(text="13,000원", preset_id=20, style=EmphasisStyle(text_color="#C2410C"))
     draft = DraftResult(text="제목\n\n추어탕은 13,000원이었어요.", emphases=[span])

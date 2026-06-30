@@ -107,19 +107,30 @@ def build_user_prompt(card: FactCard, experience_memo: str, template_text: str |
     if card.photos:
         from autoblog.collect.photos import photo_summary
 
-        labels = sorted({p.label for p in card.photos})
-        n = len(card.photos)
-        parts.append(
-            "# 사진 구성 (분류 결과)\n"
-            f"보유 사진: {photo_summary(card.photos)} (총 {n}장)\n"
-            f"이 {n}장을 한 장도 빠짐없이 모두 본문에 배치하세요. 사진 수만큼 마커를 넣어야 합니다"
-            f"(마커가 모자라면 남은 사진이 글 끝에 몰려 들어갑니다).\n"
-            "사진을 먼저 보여주고 그 아래에서 설명하는 순서로 쓰세요. "
-            "[사진:라벨] 을 한 줄로 먼저 넣고, 그 다음 문단에서 방금 보여준 사진을 설명하세요"
-            f"(라벨은 보유 사진의 분류명: {', '.join(labels)}).\n"
-            "예: [사진:음식] 을 넣고 그 아래 문단에서 음식을 묘사, [사진:외관] 을 넣고 그 아래에서 가게 첫인상을 묘사. "
-            "라벨을 모르겠으면 그냥 [사진] 으로 두면 됩니다. 같은 라벨 사진이 여러 장이면 그만큼 마커를 반복하세요."
-        )
+        imgs = [p for p in card.photos if p.media_kind != "video"]
+        vids = [p for p in card.photos if p.media_kind == "video"]
+        labels = sorted({p.label for p in imgs})
+        n = len(imgs)
+        if imgs:
+            parts.append(
+                "# 사진 구성 (분류 결과)\n"
+                f"보유 사진: {photo_summary(imgs)} (총 {n}장)\n"
+                f"이 {n}장을 한 장도 빠짐없이 모두 본문에 배치하세요. 사진 수만큼 마커를 넣어야 합니다"
+                f"(마커가 모자라면 남은 사진이 글 끝에 몰려 들어갑니다).\n"
+                "사진을 먼저 보여주고 그 아래에서 설명하는 순서로 쓰세요. "
+                "[사진:라벨] 을 한 줄로 먼저 넣고, 그 다음 문단에서 방금 보여준 사진을 설명하세요"
+                f"(라벨은 보유 사진의 분류명: {', '.join(labels)}).\n"
+                "예: [사진:음식] 을 넣고 그 아래 문단에서 음식을 묘사, [사진:외관] 을 넣고 그 아래에서 가게 첫인상을 묘사. "
+                "라벨을 모르겠으면 그냥 [사진] 으로 두면 됩니다. 같은 라벨 사진이 여러 장이면 그만큼 마커를 반복하세요."
+            )
+        if vids:
+            nv = len(vids)
+            parts.append(
+                "# 동영상 구성\n"
+                f"보유 동영상 {nv}개. 동영상도 빠짐없이 본문에 배치하세요. 동영상 개수만큼 [영상] 마커를 넣습니다.\n"
+                "동영상이 어울리는 문맥(예: 매장 분위기·조리 과정·제품 시연)에 [영상] 을 한 줄로 먼저 넣고 "
+                "그 아래 문단에서 영상 내용을 설명하세요. [영상] 마커가 모자라면 남은 영상이 본문에 자동 분산됩니다."
+            )
         if "협찬" in labels:
             parts.append(
                 "# 협찬 사진 배치 (필수)\n"
