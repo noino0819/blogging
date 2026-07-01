@@ -196,6 +196,34 @@ def _is_hashtag_line(s: str) -> bool:
     return sum(1 for t in s.split() if t.startswith("#")) >= 2
 
 
+# 대제목(콘셉트 한 줄)은 본문보다 큰 글씨라, 길면 모바일에서 화면 끝에서 제멋대로 접혀
+# 위아래 비율이 어긋난다. 그래서 공백 제외 이 길이를 넘으면 어절 경계에서 미리 한 번
+# 줄바꿈해 두 줄로 만든다(모바일 큰 글씨 기준 ~13자에서 접힘 → 10자 초과부터 선제 분할).
+_BIG_TITLE_WRAP_THRESHOLD = 10
+
+
+def balance_wrap(s: str, threshold: int = _BIG_TITLE_WRAP_THRESHOLD) -> str:
+    """대제목이 길면 어절(띄어쓰기) 경계에서 한 번 줄바꿈해 위아래 글자 수가 최대한
+    비슷한 두 줄로 만든다. 다음 경우엔 그대로 둔다:
+    - 이미 줄바꿈(\\n)이 있음 — 작성자/모델이 직접 나눴으니 존중.
+    - 공백 제외 길이가 threshold 이하 — 짧아서 안 접힘.
+    - 띄어쓰기가 없음 — 나눌 어절 경계가 없어 단어 중간 절단은 하지 않음.
+    """
+    if "\n" in s:
+        return s
+    if len(s.replace(" ", "")) <= threshold:
+        return s
+    spaces = [i for i, ch in enumerate(s) if ch == " "]
+    if not spaces:
+        return s
+
+    def imbalance(i: int) -> int:  # 공백 제외 글자 수 차이 — 작을수록 위아래 균형
+        return abs(len(s[:i].replace(" ", "")) - len(s[i + 1 :].replace(" ", "")))
+
+    best = min(spaces, key=imbalance)
+    return s[:best] + "\n" + s[best + 1 :]
+
+
 class PublishBlock(BaseModel):
     kind: str  # "text" | "image" | "video" | "divider" | "quote" | "sticker" | "place" | "link"
     text: str = ""
@@ -217,6 +245,58 @@ class PublishPlan(BaseModel):
     blocks: list[PublishBlock] = Field(default_factory=list)
 
 
+_MEDIA_KINDS = ("image", "video")
+
+
+def fill_imageless_text(
+    blocks: list[PublishBlock], picker: StickerPicker | None, enabled: bool = True
+) -> list[PublishBlock]:
+    """사진이 앞에 몰려 사진 없이 '글만 있는' 본문 문단에 이모티콘 한 개를 붙여 허전함을 채운다.
+
+    사진 배치를 조화롭게 하는 게 우선이고 사진 3장 연속도 맥락상 괜찮지만, 사진을 앞에서
+    다 쓰면 뒤쪽 문단이 텍스트만 남아 밋밋해진다. 앞뒤로 사진/영상이 붙어 있지 않은 본문
+    텍스트 블록 끝에 스티커를 하나 얹는다(감정 스티커가 문단 끝에 붙는 것과 같은 자연스러움).
+
+    - 첫 사진보다 앞(대제목·해시태그·인트로 등 헤더)은 건드리지 않는다.
+    - 앞이나 뒤가 사진/영상인 문단은 이미 사진과 어울려 있으니 넘어간다.
+    - 이미 스티커가 붙은 문단(감정 스티커 등)에는 겹쳐 넣지 않고, 연속으로 붙는 것도 피한다.
+    - picker가 없거나(스티커 미설정) 사진이 하나도 없는 글이면 아무것도 하지 않는다.
+    """
+    if not enabled or picker is None:
+        return blocks
+    first_media = next((i for i, b in enumerate(blocks) if b.kind in _MEDIA_KINDS), None)
+    if first_media is None:  # 사진이 아예 없는 글은 대상 아님
+        return blocks
+    n = len(blocks)
+    out: list[PublishBlock] = []
+    skip_next = False  # 직전 문단 뒤에 막 넣었으면 이번 문단은 건너뛰어 과밀 방지
+    for i, b in enumerate(blocks):
+        out.append(b)
+        prev_kind = blocks[i - 1].kind if i > 0 else None
+        next_kind = blocks[i + 1].kind if i + 1 < n else None
+        bare = (
+            b.kind == "text"
+            and i > first_media  # 헤더(첫 사진 앞)는 제외
+            and prev_kind not in _MEDIA_KINDS
+            and next_kind not in _MEDIA_KINDS
+            and prev_kind != "sticker"
+            and next_kind != "sticker"
+        )
+        if not bare:
+            skip_next = False
+            continue
+        if skip_next:
+            skip_next = False
+            continue
+        chosen = picker.pick("")
+        if chosen:
+            out.append(
+                PublishBlock(kind="sticker", sticker_pack=chosen.pack, sticker_index=chosen.index)
+            )
+            skip_next = True
+    return out
+
+
 def build_publish_plan(
     draft: DraftResult,
     photos: list[PhotoItem] | None = None,
@@ -232,6 +312,7 @@ def build_publish_plan(
     sponsor_sticker: str = "",
     sticker_catalog=None,
     inplace: bool = False,
+    bare_text_sticker: bool = True,
 ) -> PublishPlan:
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
 
@@ -251,6 +332,10 @@ def build_publish_plan(
     sticker_catalog에서 찾아 해석한다(카탈로그 없으면 pack:index만 인식). 못 찾으면 건너뜀.
     sponsor_links를 주면 그 URL들을 링크 카드로 본문 텍스트 사이 고른 위치에 분산 삽입한다.
     product_links(상품 리뷰의 필수 링크)도 같은 방식으로 카드 삽입한다(협찬과 무관, 각 한 번씩).
+
+    bare_text_sticker=True면 사진이 앞에 몰려 뒤쪽이 텍스트만 남은 문단(앞뒤로 사진 없는
+    본문 블록)에 이모티콘을 하나씩 붙여 허전함을 채운다(fill_imageless_text). 사진 배치를
+    바꾸지는 않는다 — 사진이 없는 자리에만 스티커로 보조. picker 없으면 아무것도 안 함.
     """
     photos = list(photos or [])
     lines = draft.text.split("\n")
@@ -336,9 +421,18 @@ def build_publish_plan(
             )
             return
         role_style = ss.big_title
-        span = StyledSpan(text=s, preset_id=None, style=role_style.to_style())
+        # 대제목은 큰 글씨라 길면 균형 있게 두 줄로 미리 접는다. \n을 넣으면 실행기가
+        # 문단(Enter) 두 개로 치므로, 큰 글씨가 두 줄 모두 먹도록 span도 줄별로 나눈다
+        # (한 span이 \n을 넘어가면 드래그 선택이 두 문단에 걸쳐 실패할 수 있음).
+        wrapped = balance_wrap(s)
+        spans = [
+            StyledSpan(text=ln, preset_id=None, style=role_style.to_style())
+            for ln in wrapped.split("\n")
+        ]
         blocks.append(
-            PublishBlock(kind="text", text=s, emphases=[span], align=role_style.align or "center")
+            PublishBlock(
+                kind="text", text=wrapped, emphases=spans, align=role_style.align or "center"
+            )
         )
 
     for line in body_lines:
@@ -511,5 +605,9 @@ def build_publish_plan(
         cur = next((i for i in img_idx if blocks[i].image_path == thumb_path), None)
         if first is not None and cur is not None and cur != first:
             blocks.insert(first, blocks.pop(cur))
+
+    # 마지막으로, 사진이 앞에 몰려 사진 없이 글만 남은 뒤쪽 문단에 이모티콘을 채운다
+    # (모든 재배치가 끝난 뒤라야 어느 문단에 사진이 붙는지 정확히 판단한다).
+    blocks = fill_imageless_text(blocks, picker, enabled=bare_text_sticker)
 
     return PublishPlan(title=title, blocks=blocks)

@@ -164,6 +164,68 @@ def test_build_plan_sticker_dropped_without_match():
     assert all("[스티커" not in b.text for b in plan.blocks)
 
 
+def _filler_picker():
+    from autoblog.publish.stickers import Sticker, StickerCatalog, StickerPicker
+
+    cat = StickerCatalog(
+        stickers=[
+            Sticker(pack="ogq_a", index=1, tags=["기쁨"]),
+            Sticker(pack="ogq_a", index=2, tags=["신남"]),
+        ],
+        favorites=["ogq_a:1", "ogq_a:2"],
+    )
+    return StickerPicker(cat)
+
+
+def test_bare_text_gets_filler_sticker():
+    # 사진이 앞에 몰려 뒤쪽 문단이 텍스트만 남으면 그 문단 끝에 이모티콘을 채운다.
+    # 사진 2장을 앞에서 다 쓰고, 뒤 두 섹션(구분선으로 나뉜 텍스트)은 사진이 없다.
+    draft = DraftResult(text="제목\n\n인트로.\n[사진]\n[사진]\n[구분선]\n둘째 섹션.\n[구분선]\n셋째 섹션.")
+    photos = [PhotoItem(path="a.jpg", label="음식"), PhotoItem(path="b.jpg", label="음식")]
+    plan = build_publish_plan(draft, photos, picker=_filler_picker())
+    kinds = [b.kind for b in plan.blocks]
+    # 사진 배치·순서는 그대로, 사진 없는 뒤쪽 텍스트 문단에만 스티커가 붙는다
+    assert [b.image_path for b in plan.blocks if b.kind == "image"] == ["a.jpg", "b.jpg"]
+    assert kinds.count("sticker") >= 1
+    # 스티커는 항상 텍스트 문단 바로 뒤에 오고, 사진 옆에는 끼지 않는다
+    for i, b in enumerate(plan.blocks):
+        if b.kind == "sticker":
+            assert plan.blocks[i - 1].kind == "text"
+
+
+def test_bare_text_skips_header_and_photo_adjacent():
+    # 첫 사진 앞(인트로)과 사진에 붙은 문단에는 스티커를 넣지 않는다
+    draft = DraftResult(text="제목\n\n인트로 문단.\n[사진]\n사진 옆 문단.")
+    photos = [PhotoItem(path="a.jpg", label="음식")]
+    plan = build_publish_plan(draft, photos, picker=_filler_picker())
+    # 인트로(첫 사진 앞)·사진 바로 뒤 문단 모두 사진과 붙어 있어 스티커 없음
+    assert all(b.kind != "sticker" for b in plan.blocks)
+    assert [b.kind for b in plan.blocks] == ["text", "image", "text"]
+
+
+def test_bare_text_no_sticker_without_picker():
+    # picker가 없으면(스티커 미설정) 아무것도 넣지 않는다
+    draft = DraftResult(text="제목\n\n인트로.\n[사진]\n[구분선]\n뒤 문단.")
+    photos = [PhotoItem(path="a.jpg", label="음식")]
+    plan = build_publish_plan(draft, photos)  # picker 없음
+    assert all(b.kind != "sticker" for b in plan.blocks)
+
+
+def test_bare_text_disabled():
+    # bare_text_sticker=False면 채우지 않는다
+    draft = DraftResult(text="제목\n\n인트로.\n[사진]\n[구분선]\n뒤 문단.")
+    photos = [PhotoItem(path="a.jpg", label="음식")]
+    plan = build_publish_plan(draft, photos, picker=_filler_picker(), bare_text_sticker=False)
+    assert all(b.kind != "sticker" for b in plan.blocks)
+
+
+def test_bare_text_skipped_when_no_photos():
+    # 사진이 아예 없는 글은 대상 아님(허전한 문단 채우기 안 함)
+    draft = DraftResult(text="제목\n\n첫 문단.\n[구분선]\n둘째 문단.")
+    plan = build_publish_plan(draft, picker=_filler_picker())
+    assert all(b.kind != "sticker" for b in plan.blocks)
+
+
 def _structure_styles():
     return StructureStyles(
         big_title=RoleStyle(font="nanummaruburi", size=30, color="#395D73"),
@@ -185,12 +247,15 @@ def test_structure_styles_header_and_subheading():
     )
     plan = build_publish_plan(draft, structure_styles=_structure_styles())
 
-    # 첫 줄은 제목칸, 본문 대제목은 별도(마루부리30)
+    # 첫 줄은 제목칸, 본문 대제목은 별도(마루부리30). 13자라 균형 있게 두 줄로 접히고
+    # 두 줄 각각 같은 대제목 서식 span이 붙는다.
     assert plan.title == "혜화 치즈철판카츠 메종아카이"
-    big = next(b for b in plan.blocks if b.text == "친구랑 주말 대학로 데이트 코스")
-    assert big.emphases[0].style.font_family == "nanummaruburi"
-    assert big.emphases[0].style.font_size == "30"
-    assert big.emphases[0].style.text_color == "#395D73"
+    big = next(b for b in plan.blocks if b.text.replace("\n", " ") == "친구랑 주말 대학로 데이트 코스")
+    assert big.text == "친구랑 주말\n대학로 데이트 코스"
+    assert len(big.emphases) == 2
+    assert all(sp.style.font_family == "nanummaruburi" for sp in big.emphases)
+    assert all(sp.style.font_size == "30" for sp in big.emphases)
+    assert all(sp.style.text_color == "#395D73" for sp in big.emphases)
 
     # 해시태그는 2개씩 줄바꿈 + 줄마다 span, 바로 뒤에 가운데 꺾인 선(variant 4)
     tag_block = next(b for b in plan.blocks if "#대학로맛집" in b.text)
@@ -212,6 +277,33 @@ def test_structure_styles_off_by_default():
     draft = DraftResult(text="제목\n\n짧은 첫 줄\n다음 줄")
     plan = build_publish_plan(draft)
     assert all(not b.emphases for b in plan.blocks if b.kind == "text")
+
+
+def test_balance_wrap_splits_long_big_title_evenly():
+    from autoblog.publish.plan import balance_wrap
+
+    assert balance_wrap("달콤함은 그대로 칼로리는 가볍게") == "달콤함은 그대로\n칼로리는 가볍게"
+    # 위/아래 글자 수(공백 제외) 차이가 최소가 되는 어절 경계에서 나뉜다
+    top, bot = balance_wrap("바삭바삭 멈출 수 없는 인생 간식").split("\n")
+    assert abs(len(top.replace(" ", "")) - len(bot.replace(" ", ""))) <= 1
+
+
+def test_balance_wrap_leaves_short_prewrapped_or_spaceless():
+    from autoblog.publish.plan import balance_wrap
+
+    assert balance_wrap("짧은 대제목") == "짧은 대제목"  # 공백 제외 10자 이하
+    assert balance_wrap("이미\n나눈 대제목 길어도") == "이미\n나눈 대제목 길어도"  # 이미 줄바꿈됨
+    assert balance_wrap("띄어쓰기없는아주긴한줄짜리대제목") == "띄어쓰기없는아주긴한줄짜리대제목"  # 나눌 공백 없음
+
+
+def test_big_title_wrapped_with_per_line_spans():
+    # 대제목이 길면 두 줄로 접히고, 줄마다 대제목 서식 span이 하나씩(두 줄 다 큰 글씨).
+    draft = DraftResult(text="제목칸\n바삭바삭 멈출 수 없는 인생 간식\n본문 첫 문단.")
+    plan = build_publish_plan(draft, structure_styles=_structure_styles())
+    big = next(b for b in plan.blocks if "바삭바삭" in b.text)
+    assert "\n" in big.text
+    assert len(big.emphases) == big.text.count("\n") + 1
+    assert all(sp.style.font_size == "30" for sp in big.emphases)
 
 
 def test_sponsor_sticker_prepended_at_top():
