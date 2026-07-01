@@ -1,10 +1,6 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:03C75A,100:00A345&height=200&section=header&text=autoblog&fontSize=70&fontColor=FFFFFF&fontAlignY=40&animation=fadeIn" width="100%" alt="autoblog" />
-
-<img src="https://readme-typing-svg.demolab.com?font=Noto+Sans+KR&weight=600&size=21&duration=2600&pause=700&color=03C75A&center=true&vCenter=true&width=560&height=42&lines=%EC%82%AC%EC%A7%84%EC%9D%84+%EB%84%A3%EC%9C%BC%EB%A9%B4%2C+%EA%B2%BD%ED%97%98+%EC%A4%91%EC%8B%AC%EC%9D%98+%EA%B8%80%EC%9D%84;%EA%B0%95%EC%A1%B0%C2%B7%EA%B5%AC%EB%B6%84%EC%84%A0%C2%B7%EC%8A%A4%ED%8B%B0%EC%BB%A4%EA%B9%8C%EC%A7%80+%EC%9E%90%EB%8F%99+%EC%84%9C%EC%8B%9D;%EB%84%A4%EC%9D%B4%EB%B2%84+%EB%B8%94%EB%A1%9C%EA%B7%B8%EC%97%90+%EC%9E%84%EC%8B%9C%EC%A0%80%EC%9E%A5%C2%B7%EB%B0%9C%ED%96%89%EA%B9%8C%EC%A7%80" alt="typing" />
-
-<br><br>
+# ✍️ autoblog
 
 **사진과 가게·상품 정보만 넣으면, 경험을 중심으로 한 네이버 블로그 글을 자동으로 써서 게시까지 해주는 데스크톱 프로그램입니다.**
 
@@ -50,21 +46,6 @@ flowchart LR
 <br>
 
 ## 화면
-
-<div align="center">
-
-<!--
-  📌 스크린샷/GIF 넣는 곳:
-     글쓰기 화면을 캡처해 docs/preview.png (또는 데모 녹화 docs/demo.gif) 로 저장하면
-     아래 이미지가 자동으로 표시됩니다. GIF면 src를 docs/demo.gif 로 바꾸세요.
--->
-<img src="docs/preview.png" alt="autoblog 글쓰기 화면" width="820" />
-
-<sub><i>· 메모·수집·사진·서식을 좌측에서 넣고, 우측 미리보기에서 실제 서식 그대로 확인한 뒤 임시저장합니다.</i></sub>
-
-</div>
-
-<br>
 
 일반 사용자는 터미널을 쓰지 않습니다. `autoblog ui` 한 줄(또는 패키징된 더블클릭 앱)이 로컬 웹 서버를 띄우고 브라우저에 글쓰기 화면을 엽니다. **npm·node 없이** 파이썬 표준 라이브러리만으로 동작합니다.
 
@@ -241,7 +222,6 @@ tests/
 <br>
 
 <div align="center">
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:00A345,100:03C75A&height=90&section=footer" width="100%" alt="" />
 <sub>네이버 게시는 공식 API가 없어 실제 브라우저 자동화로 동작합니다. 개인 블로그 운영 보조 용도로 사용하시기 바랍니다.</sub>
 </div>
 </content>
