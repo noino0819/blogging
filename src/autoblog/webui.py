@@ -103,11 +103,25 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .kindseg button .em{font-size:17px;margin-right:5px}
  .kindseg button.on{background:var(--green);color:#fff;border-color:var(--green);box-shadow:0 3px 10px #03c75a44}
  .kindseg button.auto{outline:3px solid #03c75a33}
- /* 백그라운드 작업 칩 — 코너에 떠서 경과시간을 보여주고, 끝나면 사라진다 */
- #bgtasks{position:fixed;right:18px;bottom:18px;z-index:9999;display:flex;flex-direction:column;gap:9px;align-items:flex-end;pointer-events:none}
- .bgtask{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:11px 16px;font-size:12.5px;font-weight:600;color:var(--ink);box-shadow:0 12px 30px rgba(0,0,0,.16);animation:tin .24s cubic-bezier(.2,.9,.3,1.25);pointer-events:auto}
- .bgtask.out{animation:tout .18s ease forwards}
- .bgtask .spin{display:inline-block}
+ /* 상단 임시저장 작업 탭바 — 백그라운드 저장을 글마다 탭으로 띄운다. 실패한 탭은 남아 다시 시도. */
+ #savebar{position:fixed;top:12px;left:224px;right:16px;z-index:9998;display:flex;flex-wrap:wrap;gap:8px;pointer-events:none}
+ #savebar:empty{display:none}
+ .stab{display:flex;align-items:center;gap:8px;max-width:340px;background:#fff;border:1px solid var(--line);border-radius:11px;padding:8px 10px 8px 12px;font-size:12.5px;font-weight:700;color:var(--ink);box-shadow:0 8px 22px rgba(0,0,0,.14);pointer-events:auto;animation:tin .22s cubic-bezier(.2,.9,.3,1.25)}
+ .stab.out{animation:tout .18s ease forwards}
+ .stab .spin{display:inline-block;flex:none}
+ .stab .sdot{width:15px;height:15px;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;line-height:1}
+ .stab .stitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .stab .scnt{color:var(--sub);font-weight:600;flex:none}
+ .stab .sretry,.stab .sx{flex:none;display:none;width:22px;height:22px;border:none;border-radius:7px;background:#f2f4f6;color:var(--sub);font-size:12px;cursor:pointer;line-height:1;padding:0}
+ .stab .sretry:hover,.stab .sx:hover{background:#e6e9ed;color:var(--ink)}
+ .stab.err{border-color:#f0b3ad;background:#fff6f5}
+ .stab.err .sdot{color:#e23b2e}
+ .stab.err .sretry{display:inline-flex;background:#fde5e2;color:#d0362a;font-weight:800}
+ .stab.err .sretry:hover{background:#fbd3ce}
+ .stab.err .sx,.stab.warn .sx{display:inline-flex}
+ .stab.ok .sdot{color:var(--green-d)}
+ .stab.warn{border-color:#f2d9a8;background:#fffaf0}
+ .stab.warn .sdot{color:#d98a00}
  /* 토스트 팝업 — 에러/완료를 화면 중앙 상단에 크게 */
  #toasts{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:9px;align-items:center;pointer-events:none;width:max-content;max-width:90vw}
  .toast{position:relative;pointer-events:auto;min-width:300px;max-width:560px;padding:14px 46px 14px 16px;border-radius:14px;font-size:14px;font-weight:700;color:#fff;line-height:1.45;box-shadow:0 12px 34px rgba(0,0,0,.26);display:flex;gap:11px;align-items:flex-start;animation:tin .24s cubic-bezier(.2,.9,.3,1.25)}
@@ -367,7 +381,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .okcard .okb .btn{padding:13px}
  .okcf{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;opacity:0;animation:okfall 1.15s ease-out forwards}
  @keyframes okfall{0%{opacity:0;transform:translateY(-10px) rotate(0)}12%{opacity:1}100%{opacity:0;transform:translateY(230px) rotate(420deg)}}
-</style></head><body><div id=toasts></div><div id=bgtasks></div>
+</style></head><body><div id=toasts></div><div id=savebar></div>
 <svg width=0 height=0 style="position:absolute" aria-hidden=true><defs>
  <g id=i-write fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="M13.5 6.5l3 3"/></g>
  <g id=i-sticker fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=12 cy=12 r=9 /><path d="M8.5 14.5a4 4 0 0 0 7 0"/><circle cx=9 cy=10 r=.7 fill=currentColor stroke=none /><circle cx=15 cy=10 r=.7 fill=currentColor stroke=none /></g>
@@ -910,14 +924,20 @@ async function importDraft(idx, title, date){
     const d=await r.json();
     if(!r.ok){ throw new Error(d.error||'가져오기 실패'); }
     const sec=el.stop();
-    const paths=d.paths||[];
-    // 기존 사진·분류 상태를 모두 비우고 불러온 사진으로 교체
+    // 미디어를 문서 순서대로(사진+영상). 하위호환: media 없으면 paths를 이미지로 간주.
+    const media=d.media||((d.paths||[]).map(p=>({kind:'image',path:p})));
+    const paths=media.map(m=>m.path).filter(Boolean);  // 사진+영상 경로(순서 유지)
+    const nImg=media.filter(m=>m.kind==='image').length;
+    const nVid=media.filter(m=>m.kind==='video').length;
+    // 기존 사진·분류 상태를 모두 비우고 불러온 미디어로 교체
     PHOTOS=paths.slice(); SELP=[]; PHOTOMETA={}; THUMB=null;
     PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
     renderGrid(); renderPmeta(); updatePhotoSummary();
-    // 목록은 캐시로 그대로 둔다(접지 않음) — 재조회 없이 바로 다른 글을 이어서 고를 수 있게.
-    stat.textContent = paths.length? `${paths.length}장 불러옴 (${sec}초) — 아래에서 분류하세요` : '가져올 사진이 없는 글이에요';
-    if(paths.length) toast(`${paths.length}장 불러왔어요 (기존 사진 교체됨)`,'ok');
+    // 글을 고르면 목록을 자동으로 접는다(캐시는 유지 — 📥로 다시 펼치면 재조회 없이 바로 뜸).
+    $('#draftlist').style.display='none';
+    const vidNote = nVid? ` · 영상 ${nVid}개(▶ 타일에 무슨 영상인지 꼭 캡션하세요)` : '';
+    stat.textContent = paths.length? `사진 ${nImg}장${vidNote} 불러옴 (${sec}초) — 아래에서 분류하세요` : '가져올 미디어가 없는 글이에요';
+    if(paths.length) toast(nVid? `사진 ${nImg}장·영상 ${nVid}개 불러왔어요 — 영상 캡션 잊지 마세요`:`${nImg}장 불러왔어요 (기존 사진 교체됨)`,'ok');
     // 사진 불러오기 성공 + 불러온 글에 제목이 있으면 → 그 제목을 필수 키워드에 자동으로 넣어줌
     if(paths.length) applyDraftTitleKeyword(title);
     // 이 원본 글을 저장 완료 후 삭제 대상으로 기억(제목+저장일시로 식별).
@@ -1215,7 +1235,8 @@ $('#export').onclick=async()=>{
   $('#export').disabled=true; expLoading(true);
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:$('#keywords').value,minChars:$('#minchars').value,
-      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES};
+      emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES,
+      inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 [영상] 순서 고정 지시를 프롬프트에 포함
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     if(!r.body){closePM(); toast('프롬프트 생성 실패','err');return;}
     // NDJSON 스트림: {stage} 단계 갱신, 마지막에 {prompt} 또는 {error}
@@ -1319,48 +1340,82 @@ $('#catload').onclick=async()=>{
     fillCategories(d.categories); $('#catstat').textContent=`카테고리 ${d.categories.length}개 불러와 저장됨 (${sec}초)`; toast(`카테고리 ${d.categories.length}개를 불러와 저장했어요.`,'ok');
   }catch(e){el.stop(); $('#catstat').textContent='실패'; toast('카테고리 불러오기 실패 — '+e.message,'err');}finally{$('#catload').disabled=false;}
 };
-// 백그라운드 작업 칩 — 코너에 스피너+경과시간을 띄우고, done()이 부드럽게 닫는다.
-function bgTask(label){
-  const el=document.createElement('div'); el.className='bgtask';
-  el.innerHTML='<span class=spin></span><span class=bgtext></span><span class=spincount></span>';
-  const txt=el.querySelector('.bgtext'), cnt=el.querySelector('.spincount');
-  $('#bgtasks').appendChild(el);
-  let typed=false;
-  const e=elapsed(label, (lbl,counter)=>{ if(!typed){typed=true; typeText(txt,lbl);} cnt.textContent=txt._ttTimer?'':(counter?' '+counter:''); });
-  return {done(){const sec=e.stop(); el.classList.add('out'); setTimeout(()=>el.remove(),200); return sec;}};
-}
-// 임시저장은 '쏘고 넘어가는' 방식 — 누르면 뒤(백그라운드)로 보내고, 바로 새 글로 갈지 묻는다.
-// 연속으로 눌러도 막지 않고 쌓이며, 서버가 한 건씩 순서대로 처리한다(대기열).
+// 임시저장은 '쏘고 넘어가는' 방식 — 누르면 상단 탭바에 '작업 탭'을 만들어 백그라운드로 보내고,
+// 바로 새 글로 갈지 묻는다. 연속으로 눌러도 막지 않고 탭이 쌓이며, 서버가 한 건씩 순서대로
+// 처리한다(대기열). 저장이 실패하면 그 탭이 빨갛게 남아 ↻로 다시 시도할 수 있다 — 이미 다음
+// 글로 넘어갔어도 서버가 그 글의 스냅샷을 들고 있어 '그 글'을 다시 저장한다.
 let SAVE_QUEUE=0;  // 진행 중/대기 중인 임시저장 건수
 function updateSaveHint(){
   if(SAVE_QUEUE>0) st(`백그라운드 임시저장 ${SAVE_QUEUE}건 진행 중… 다른 작업 계속하셔도 돼요.`);
 }
-// 한 건을 백그라운드로 게시. 지금 화면 상태와 무관하게 '누른 그 글'을 저장한다
-// (제목·카테고리는 클릭 시점 값으로 고정해 넘긴다).
-function fireSave(title, category){
+const SAVES={};  // 작업 탭: id → {id,title,el,timer,serverId,body}
+function makeSaveTab(id,title){
+  const el=document.createElement('div'); el.className='stab run'; el.dataset.id=id;
+  el.innerHTML='<span class=sdot><span class=spin></span></span>'
+    +'<span class=stitle></span><span class=scnt></span>'
+    +'<button class=sretry title="다시 시도">↻</button>'
+    +'<button class=sx title="닫기">✕</button>';
+  el.querySelector('.stitle').textContent="'"+title+"' 임시저장";
+  el.querySelector('.sretry').onclick=()=>retrySave(id);
+  el.querySelector('.sx').onclick=()=>removeSave(id);
+  $('#savebar').appendChild(el);
+  return el;
+}
+function removeSave(id){const r=SAVES[id]; if(!r)return;
+  if(r.timer){r.timer.stop(); r.timer=null;}
+  if(r.el){r.el.classList.add('out'); setTimeout(()=>r.el.remove(),200);}
+  delete SAVES[id];}
+// 탭 상태 전환. run이면 스피너, 그 외엔 상태 글자(✓ / ⚠ / !).
+function tabSetState(r,cls,dot){
+  r.el.className='stab '+cls;
+  r.el.querySelector('.sdot').innerHTML = cls==='run' ? '<span class=spin></span>' : dot;
+}
+function retrySave(id){const r=SAVES[id]; if(!r)return;
+  if(!r.serverId){ toast('이 글은 다시 시도할 수 없어요 — 글을 다시 열어 저장해 주세요.','err'); return; }
+  runSave(r, r.serverId);}
+// 실제 저장 요청. retryId가 있으면 서버가 그 작업의 스냅샷을 그대로 다시 저장한다.
+function runSave(r, retryId){
+  tabSetState(r,'run','');
+  const cntEl=r.el.querySelector('.scnt'); cntEl.textContent='';
+  if(r.timer)r.timer.stop();
+  r.timer=elapsed('', (lbl,counter,s)=>{ cntEl.textContent=(s<10?s.toFixed(1):Math.round(s))+'초'; });
   SAVE_QUEUE++; updateSaveHint();
-  const task=bgTask(`'${title}' 임시저장 중…`);
-  // 불러온 글이면 그 글을 'in-place'로 갱신(원본 삭제 X, 사진 재업로드 X, 영상 보존).
-  // 일반 새 글이면 importedDraft 없음 → 기존 방식(새 글 저장).
-  const inplace=!!IMPORTED_DRAFT, inplaceDraft=IMPORTED_DRAFT;
-  fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({category,inplace,inplaceDraft})})
-    .then(async r=>{
-      const d=await r.json();
-      if(!r.ok)throw new Error(d.error||'알 수 없는 오류');
-      const sec=task.done();
+  const body = retryId ? {retryJob:retryId} : r.body;
+  fetch('/api/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})
+    .then(async res=>{
+      const d=await res.json().catch(()=>({}));
+      if(d && d.jobId) r.serverId=d.jobId;         // 실패 응답에도 jobId가 실려와 재시도가 가능
+      if(!res.ok) throw new Error(d.error||'알 수 없는 오류');
+      const sec=r.timer?r.timer.stop():0; r.timer=null;
       const warns=d.warnings||[];
       if(warns.length){
-        warnModal(`'${title}' 임시저장됨 — 일부 항목 확인 필요`,
+        tabSetState(r,'warn','⚠'); cntEl.textContent='확인 필요';
+        warnModal(`'${r.title}' 임시저장됨 — 일부 항목 확인 필요`,
           warns.concat(['네이버 글쓰기 › 저장 목록에서 글을 열어 직접 보완해 주세요.']));
         notify('임시저장 완료 — 확인 필요', warns.join('\n'));
       }else{
-        toast(`'${title}' 임시저장 완료 ✓ (${sec}초) — 네이버 글쓰기 › 저장 목록`,'ok');
-        notify('임시저장 완료 ✓', `'${title}' — 네이버 글쓰기 › 저장 목록`);
+        tabSetState(r,'ok','✓'); cntEl.textContent=`${sec}초`;
+        toast(`'${r.title}' 임시저장 완료 ✓ (${sec}초) — 네이버 글쓰기 › 저장 목록`,'ok');
+        notify('임시저장 완료 ✓', `'${r.title}' — 네이버 글쓰기 › 저장 목록`);
+        setTimeout(()=>removeSave(r.id), 4000);    // 성공 탭은 잠깐 ✓ 후 사라짐
       }
     })
-    .catch(e=>{ task.done(); toast(`'${title}' 임시저장 실패 — ${e.message}`,'err'); notify('임시저장 실패', e.message||'');
-      if(PLAN) $('#save').disabled=false; })  // 글을 그대로 두고 있으면 다시 저장(재시도) 가능
+    .catch(e=>{ if(r.timer){r.timer.stop(); r.timer=null;}
+      tabSetState(r,'err','!'); cntEl.textContent='실패';
+      toast(`'${r.title}' 임시저장 실패 — ${e.message}`,'err'); notify('임시저장 실패', e.message||''); })
     .finally(()=>{ SAVE_QUEUE--; updateSaveHint(); if(SAVE_QUEUE===0) st('임시저장 대기열이 모두 끝났어요 ✓'); });
+}
+// 한 건을 백그라운드로 게시. 지금 화면 상태와 무관하게 '누른 그 글'을 저장한다
+// (제목·카테고리·불러온 원본은 클릭 시점 값으로 고정해 넘긴다).
+function fireSave(title, category){
+  const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+           : ('s'+Date.now()+'-'+Math.round(Math.random()*1e6));
+  // 불러온 글이면 그 글을 'in-place'로 갱신(원본 삭제 X, 사진 재업로드 X, 영상 보존).
+  // 일반 새 글이면 importedDraft 없음 → 기존 방식(새 글 저장). 값은 지금 시점으로 고정.
+  const inplace=!!IMPORTED_DRAFT, inplaceDraft=IMPORTED_DRAFT;
+  const r=SAVES[id]={id,title,el:makeSaveTab(id,title),timer:null,serverId:null,
+    body:{category,inplace,inplaceDraft}};
+  runSave(r, null);
 }
 $('#save').onclick=()=>{
   if(!PLAN)return;
@@ -1895,6 +1950,28 @@ def _save_upload(filename: str, b64: str) -> str:
     return str(dest)
 
 
+def _friendly_error(exc: Exception) -> str:
+    """유저 화면에 보낼 오류 메시지를 짧고 읽기 좋게 정리한다.
+
+    Playwright 타임아웃 등 내부 자동화 오류는 수십 줄짜리 call log를 str()에 그대로 담아
+    화면에 노출돼 사용자가 이해할 수 없다. 서버 로그엔 원본 트레이스백을 남기되(호출부에서),
+    사용자에겐 원인·다음 행동을 담은 안내문으로 바꾼다. 우리가 의도적으로 던진 RuntimeError
+    등 이미 사람 읽는 메시지는 그대로 둔다(단, 여러 줄이면 첫 줄만).
+    """
+    try:
+        from playwright.sync_api import TimeoutError as _PWTimeout
+    except Exception:  # noqa: BLE001 - playwright 미설치 등
+        _PWTimeout = ()
+    if _PWTimeout and isinstance(exc, _PWTimeout):
+        return (
+            "네이버 에디터가 제때 반응하지 않았어요(임시저장 창이 안 열리거나 안내 팝업이 "
+            "남아 있었을 수 있어요). 잠시 후 다시 시도해 주세요. 계속되면 설정에서 "
+            "‘저장 디버그’를 켜고 화면을 직접 확인해 주세요."
+        )
+    msg = (str(exc) or exc.__class__.__name__).strip()
+    return msg.splitlines()[0][:300]  # 혹시 call log가 붙은 긴 메시지는 첫 줄만
+
+
 def _make_handler(state: dict):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -2112,7 +2189,7 @@ def _make_handler(state: dict):
                 print(f"[webui] POST {path} 실패: {exc}", flush=True)
                 traceback.print_exc()
                 try:
-                    self._send(500, json.dumps({"error": str(exc)}).encode())
+                    self._send(500, json.dumps({"error": _friendly_error(exc)}).encode())
                 except Exception:  # noqa: BLE001
                     pass
 
@@ -2171,6 +2248,7 @@ def _make_handler(state: dict):
                     divider_variants=dkeys,
                     quote_variants=qkeys,
                     use_cache=True,
+                    inplace=bool(body.get("inplace")),  # 불러온 글: [영상] 순서 고정 지시 포함
                     progress=progress,
                 )
             except Exception as exc:  # noqa: BLE001 — 오류도 스트림으로 전달
@@ -2425,73 +2503,109 @@ def _make_handler(state: dict):
             ).encode())
 
         def _publish(self, body):
+            import uuid as _uuid
+
             from autoblog.publish.editor import BlogPublisher
 
-            # 게시할 플랜은 '요청이 들어온 시점'의 초안으로 고정한다(락 대기 전에 스냅샷).
-            # 유저가 저장을 누른 뒤 곧바로 새 글을 써서 state["last"]가 바뀌어도,
-            # 이 요청은 방금 누른 그 글을 저장한다(연속 저장이 안 섞이게).
-            result = state.get("last")
-            if not result:
-                self._send(400, json.dumps({"error": "먼저 초안을 생성하세요"}).encode())
-                return
-            category = (body.get("category") or "").strip() or None
+            jobs = state["jobs"]
+            # 재시도 요청(retryJob=작업id): 처음 저장 때 잡아둔 그 글의 스냅샷을 그대로 다시 쓴다.
+            # 유저가 이미 다음 글로 넘어가 state["last"]가 바뀌었어도, '실패한 그 글'을 저장한다.
+            retry_id = (body.get("retryJob") or "").strip() or None
+            if retry_id:
+                snap = jobs.get(retry_id)
+                if not snap:
+                    self._send(400, json.dumps(
+                        {"error": "다시 시도할 저장 작업을 찾지 못했어요(서버가 다시 시작됐을 수 있어요)"}
+                    ).encode())
+                    return
+                job_id = retry_id
+                result = snap["result"]
+                category = snap["category"]
+                prune = snap["prune"]
+                imported = snap["imported"]
+                inplace_draft = snap["inplace_draft"]
+            else:
+                # 게시할 플랜은 '요청이 들어온 시점'의 초안으로 고정한다(락 대기 전에 스냅샷).
+                # 유저가 저장을 누른 뒤 곧바로 새 글을 써서 state["last"]가 바뀌어도,
+                # 이 요청은 방금 누른 그 글을 저장한다(연속 저장이 안 섞이게).
+                result = state.get("last")
+                if not result:
+                    self._send(400, json.dumps({"error": "먼저 초안을 생성하세요"}).encode())
+                    return
+                category = (body.get("category") or "").strip() or None
+                prefs0 = _load_prefs()
+                prune = bool(prefs0.get("pruneDrafts", True))  # 설정 토글(기본 켬)
+                # 사진을 가져왔던 원본 임시저장 글(있으면). 저장 직후 그 글을 삭제한다.
+                imported = body.get("importedDraft") if prune else None
+                if not isinstance(imported, dict) or not (imported.get("title") or "").strip():
+                    imported = None
+                # 불러온 글 in-place 편집 요청(불러오기로 들어온 글). 있으면 원본을 '갱신'한다
+                # — 새 글 생성·원본 삭제·사진 재업로드 없이, 기존 사진/영상 사이에 본문만 끼워 넣는다.
+                inplace_draft = body.get("inplaceDraft") if body.get("inplace") else None
+                if not isinstance(inplace_draft, dict) or not (inplace_draft.get("title") or "").strip():
+                    inplace_draft = None
+                # 이 글의 저장 옵션·플랜을 작업id로 스냅샷해 둔다 — 실패 시 재시도(retryJob)가 참조한다.
+                job_id = _uuid.uuid4().hex[:12]
+                jobs[job_id] = {
+                    "result": result, "category": category, "prune": prune,
+                    "imported": imported, "inplace_draft": inplace_draft,
+                }
+
             prefs = _load_prefs()
-            prune = bool(prefs.get("pruneDrafts", True))  # 설정 토글(기본 켬)
-            # 사진을 가져왔던 원본 임시저장 글(있으면). 저장 직후 그 글을 삭제한다.
-            imported = body.get("importedDraft") if prune else None
-            if not isinstance(imported, dict) or not (imported.get("title") or "").strip():
-                imported = None
             # 디버그 토글이 켜져 있으면 저장 과정을 화면에 띄워(headful) 직접 보게 한다(기본 끔=백그라운드).
             headless = not bool(prefs.get("saveDebug", False))
             # 불러오기(in-place) 시 원본 글의 기존 제목·본문·장식을 비우고 새로 쓸지(설정 토글, 기본 켬).
             clean_imported = bool(prefs.get("cleanImported", True))
 
-            # 불러온 글 in-place 편집 요청(불러오기로 들어온 글). 있으면 원본을 '갱신'한다
-            # — 새 글 생성·원본 삭제·사진 재업로드 없이, 기존 사진/영상 사이에 본문만 끼워 넣는다.
-            inplace_draft = body.get("inplaceDraft") if body.get("inplace") else None
-            if not isinstance(inplace_draft, dict) or not (inplace_draft.get("title") or "").strip():
-                inplace_draft = None
-
-            # 연속으로 저장을 눌러도 한 건씩 순서대로 처리한다(대기열). 락을 못 잡으면
-            # 앞 건이 끝날 때까지 이 스레드가 대기 → 브라우저가 하나만 뜬다.
-            with state["publish_lock"]:
-                # 임시저장(submit=False)은 사람 확인이 필요 없으니 평소엔 백그라운드(headless).
-                # 단, 저장된 세션이 만료돼 로그인이 필요하면 화면에 창을 띄워(headful) 직접 로그인하게 한다.
-                pub = BlogPublisher(headless=headless)
-                pub.start()
-                try:
-                    if not pub.is_logged_in():
+            try:
+                # 연속으로 저장을 눌러도 한 건씩 순서대로 처리한다(대기열). 락을 못 잡으면
+                # 앞 건이 끝날 때까지 이 스레드가 대기 → 브라우저가 하나만 뜬다.
+                with state["publish_lock"]:
+                    # 임시저장(submit=False)은 사람 확인이 필요 없으니 평소엔 백그라운드(headless).
+                    # 단, 저장된 세션이 만료돼 로그인이 필요하면 화면에 창을 띄워(headful) 직접 로그인하게 한다.
+                    pub = BlogPublisher(headless=headless)
+                    pub.start()
+                    try:
+                        if not pub.is_logged_in():
+                            pub.close()
+                            pub = BlogPublisher(headless=False)
+                            pub.start()
+                            if not pub.wait_for_login():
+                                raise RuntimeError("네이버 로그인이 필요합니다")
+                        if inplace_draft:
+                            photo_paths = [
+                                ph.path for ph in result.card.photos
+                                if getattr(ph, "media_kind", "image") != "video"
+                            ]
+                            warnings = pub.publish_inplace(
+                                result.plan,
+                                draft_title=inplace_draft.get("title") or "",
+                                draft_date=inplace_draft.get("date") or "",
+                                photo_paths=photo_paths,
+                                category=category,
+                                save=True,
+                                clean_imported=clean_imported,
+                            )
+                        else:
+                            warnings = pub.publish(
+                                result.plan,
+                                category=category,
+                                save=True,
+                                submit=False,
+                                prune_same_title=prune,
+                                delete_imported=imported,
+                            )
+                    finally:
                         pub.close()
-                        pub = BlogPublisher(headless=False)
-                        pub.start()
-                        if not pub.wait_for_login():
-                            raise RuntimeError("네이버 로그인이 필요합니다")
-                    if inplace_draft:
-                        photo_paths = [
-                            ph.path for ph in result.card.photos
-                            if getattr(ph, "media_kind", "image") != "video"
-                        ]
-                        warnings = pub.publish_inplace(
-                            result.plan,
-                            draft_title=inplace_draft.get("title") or "",
-                            draft_date=inplace_draft.get("date") or "",
-                            photo_paths=photo_paths,
-                            category=category,
-                            save=True,
-                            clean_imported=clean_imported,
-                        )
-                    else:
-                        warnings = pub.publish(
-                            result.plan,
-                            category=category,
-                            save=True,
-                            submit=False,
-                            prune_same_title=prune,
-                            delete_imported=imported,
-                        )
-                finally:
-                    pub.close()
-            self._send(200, json.dumps({"ok": True, "warnings": warnings or []}).encode())
+            except Exception as exc:  # noqa: BLE001 — 실패해도 스냅샷을 남겨 상단 탭에서 재시도 가능
+                self._send(500, json.dumps(
+                    {"error": _friendly_error(exc), "jobId": job_id}
+                ).encode())
+                return
+            jobs.pop(job_id, None)  # 성공 → 스냅샷 정리(더는 재시도 불필요)
+            self._send(200, json.dumps(
+                {"ok": True, "warnings": warnings or [], "jobId": job_id}
+            ).encode())
 
         def _list_drafts(self):
             """네이버 임시저장 글 목록을 읽어 [{idx,title,date}]로 반환."""
@@ -2508,7 +2622,11 @@ def _make_handler(state: dict):
             self._send(200, json.dumps({"drafts": drafts}).encode())
 
         def _import_draft_photos(self, body):
-            """선택한 임시저장 글(idx)의 본문 사진을 내려받아 로컬 경로 목록을 반환."""
+            """선택한 임시저장 글(idx)의 본문 미디어를 문서 순서대로 반환.
+
+            사진은 다운로드해 경로를 주고, 영상은 재업로드 불가라 빈 placeholder 경로만 준다.
+            프론트는 이 순서를 유지해 영상 타일도 함께 띄우고(유저가 캡션), 재료·플랜이 영상
+            위치를 알게 한다. 하위호환으로 paths(사진만)도 함께 내려준다."""
             from autoblog.publish.editor import BlogPublisher
 
             try:
@@ -2521,10 +2639,13 @@ def _make_handler(state: dict):
             try:
                 if not pub.wait_for_login():
                     raise RuntimeError("네이버 로그인이 필요합니다")
-                paths = pub.import_draft_photos(idx, UPLOAD_DIR)
+                manifest = pub.import_draft_media(idx, UPLOAD_DIR)
             finally:
                 pub.close()
-            self._send(200, json.dumps({"paths": paths}).encode())
+            # 프론트로: 사진·영상은 경로 있는 미디어로, 콜라주(고정 앵커)는 경로 없이 종류만.
+            media = [m for m in manifest if m.get("path")]
+            paths = [m["path"] for m in media if m["kind"] == "image"]
+            self._send(200, json.dumps({"media": media, "paths": paths}).encode())
 
     return Handler
 
@@ -3212,6 +3333,10 @@ def serve_ui(host: str = "127.0.0.1", port: int = 8770) -> ThreadingHTTPServer:
         # 임시저장을 한 건씩 순서대로 처리하는 직렬화 락(여러 건을 연속으로 눌러도
         # 헤드리스 브라우저/세션이 동시에 뜨지 않게 한 번에 하나만 게시한다).
         "publish_lock": threading.Lock(),
+        # 백그라운드 임시저장 '작업' 스냅샷 저장소(작업id→플랜/옵션). 저장이 실패해도
+        # 스냅샷을 남겨, 유저가 이미 다음 글로 넘어갔어도(state["last"]가 바뀌어도) 그
+        # 실패한 '그 글'을 상단 탭에서 다시 시도할 수 있게 한다. 성공하면 스냅샷을 지운다.
+        "jobs": {},
     }
     ThreadingHTTPServer.request_queue_size = 128  # 동시 요청(이미지 다발) 대비 backlog 확대
     ThreadingHTTPServer.allow_reuse_address = True
