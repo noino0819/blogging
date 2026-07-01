@@ -45,6 +45,9 @@ class DraftRequest(BaseModel):
     sticker_labels: list[str] = Field(default_factory=list)
     # 장소(지도) — 맛집 글에서 켜면 위치 안내 자리에 [지도] 마커를 넣게 안내(plan에서 장소 카드로)
     place: bool = False
+    # 불러온 글 in-place 편집 — 동영상은 위치를 못 바꾸므로 [영상] 마커를 문서 순서 그대로
+    # 넣게 재료에 못박는다(재업로드 불가 → 순서 고정).
+    inplace: bool = False
     template_text: str | None = None
     emphasis_config: EmphasisConfig | None = None  # None이면 config/emphasis.yaml
     power_shortcuts: dict[int, EmphasisStyle] | None = None  # None이면 내장 기본 스타일
@@ -88,7 +91,9 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
         system = f"{system}\n\n{build_place_instruction()}"
     # 자가 점검은 항상 맨 끝에(모델이 마지막으로 읽는 최종 게이트) — 맛집·상품 공통.
     system = f"{system}\n\n{build_selfcheck_instruction()}"
-    user = build_user_prompt(req.fact_card, req.experience_memo, req.template_text)
+    user = build_user_prompt(
+        req.fact_card, req.experience_memo, req.template_text, inplace=req.inplace
+    )
     return system, user
 
 

@@ -217,6 +217,7 @@ def build_export_prompt(
     quote_variants: list[str] | None = None,
     photo_meta: dict[str, dict] | None = None,
     use_cache: bool = False,
+    inplace: bool = False,
     progress: Callable[[str], None] | None = None,
 ) -> str:
     """수집(선택)→프롬프트 조립까지만 하고, 다른 챗봇에 붙여넣을 단일 텍스트로 반환.
@@ -262,6 +263,7 @@ def build_export_prompt(
         quote_variants=quote_variants or [],
         sticker_labels=labels,
         place=_place_info(card)[0],
+        inplace=inplace,
     )
     system, user = build_prompt(req)
     return (
@@ -332,6 +334,7 @@ def plan_from_text(
         emphasis=emphasis,
         structure=structure,
         sticker_labels=labels,
+        inplace=inplace,
     )
     draft = generate_draft(req, raw_override=text)
     picker = (
@@ -427,6 +430,7 @@ def run_pipeline(
         quote_variants=quote_variants or [],
         sticker_labels=labels,
         place=place_on,
+        inplace=inplace,
     )
     draft = generate_draft(req, model=model)
 

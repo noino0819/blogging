@@ -150,19 +150,60 @@ class BlogPublisher:
         self._dismiss_draft_popup()
 
     def _dismiss_draft_popup(self):
-        """진입 시 뜨는 팝업/오버레이 닫기(이어쓰기 팝업 취소 + 도움말 패널 닫기)."""
-        for sel in (
-            SMART_EDITOR["draft_popup_cancel"],
-            "button:has-text('취소')",
-            SMART_EDITOR["help_close"],
-        ):
-            try:
-                el = self._page.query_selector(sel)
-                if el and el.is_visible():
-                    el.click()
-                    self._page.wait_for_timeout(400)
-            except Exception:
-                pass
+        """진입 시 뜨는 팝업/오버레이를 '딤이 사라질 때까지' 닫는다.
+
+        이어쓰기 팝업은 취소 버튼이 있지만, 공지·안내형은 취소가 없고 확인/닫기만 있거나
+        팝업이 늦게(수백 ms 뒤) 렌더되기도 한다. 그래서 셀렉터 한 번씩 눌러보는 걸로는
+        딤(se-popup-dim)이 남아 다음 클릭(저장글 버튼 등)을 인터셉트할 수 있다.
+        여기서는 딤이 실제로 사라졌는지 확인하며 여러 방법(취소/확인/닫기/Esc)을 반복한다.
+        """
+        page = self._page
+        dim_sel = ".se-popup-dim"
+        # 팝업이 늦게 뜨는 케이스까지 잡으려 몇 라운드 반복. 각 라운드에서 딤이 없으면 종료.
+        for _ in range(8):
+            dim = page.query_selector(dim_sel)
+            if not (dim and dim.is_visible()):
+                return  # 딤 없음 = 막는 오버레이 없음
+            clicked = False
+            for sel in (
+                SMART_EDITOR["draft_popup_cancel"],  # 이어쓰기 '취소'
+                "button:has-text('취소')",
+                "button.se-popup-close-button",       # 닫기(X)
+                SMART_EDITOR["help_close"],            # 도움말 패널
+            ):
+                try:
+                    el = page.query_selector(sel)
+                    if el and el.is_visible():
+                        el.click()
+                        clicked = True
+                        page.wait_for_timeout(300)
+                        break
+                except Exception:
+                    pass
+            if not clicked:
+                # 취소/닫기 버튼을 못 찾으면(확인만 있는 안내 등) Esc로 강제로 닫는다.
+                try:
+                    page.keyboard.press("Escape")
+                except Exception:
+                    pass
+                page.wait_for_timeout(300)
+
+    def _dismiss_entry_popup(self) -> bool:
+        """진입 '이어쓰기' 팝업(작성 중인 글이 있습니다)만 콕 집어 '취소'로 닫는다.
+
+        _dismiss_draft_popup과 달리 Esc·일반 닫기 버튼을 쓰지 않는다 — 임시저장 목록 팝업이
+        열려 있을 때 호출되므로, 목록까지 같이 닫아버리지 않도록 이어쓰기 팝업의 취소 버튼만 누른다.
+        닫을 팝업이 있었으면 True."""
+        page = self._page
+        try:
+            cancel = page.query_selector(SMART_EDITOR["draft_popup_cancel"])
+            if cancel and cancel.is_visible():
+                cancel.click()
+                page.wait_for_timeout(300)
+                return True
+        except Exception:  # noqa: BLE001 - 없거나 이미 닫혔으면 무시
+            pass
+        return False
 
     def publish(
         self,
@@ -433,12 +474,28 @@ class BlogPublisher:
         """idx번 임시저장 글을 에디터에 로드(목록 열기 → 항목 클릭 → 불러오기 확인).
 
         import_draft_photos(사진 추출)와 publish_inplace(in-place 편집)가 공유한다."""
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
         page = self._page
         self._open_draft_list()
         buttons = page.query_selector_all(SMART_EDITOR["draft_item_button"])
         if idx < 0 or idx >= len(buttons):
             raise ValueError(f"임시저장 인덱스를 벗어남: {idx} (총 {len(buttons)}건)")
-        buttons[idx].click()
+        # 진입 '이어쓰기' 팝업(작성 중인 글이 있습니다)은 600ms 뒤 늦게 떠, 목록은 열렸는데
+        # 그 딤이 항목 클릭을 가로채는 경우가 있다(30초 타임아웃). 클릭 직전에 이 팝업만
+        # 콕 집어 닫고(목록 팝업은 건드리지 않게), 그래도 가로채이면 몇 번 더 닫으며 재시도한다.
+        for attempt in range(5):
+            self._dismiss_entry_popup()
+            buttons = page.query_selector_all(SMART_EDITOR["draft_item_button"])
+            if idx >= len(buttons):
+                raise ValueError(f"임시저장 인덱스를 벗어남: {idx} (총 {len(buttons)}건)")
+            try:
+                buttons[idx].click(timeout=5000)
+                break
+            except PlaywrightTimeoutError:
+                page.wait_for_timeout(400)  # 늦게 뜬 팝업이 렌더될 여유 → 다음 라운드에서 걷어냄
+        else:
+            raise TimeoutError("임시저장 글 클릭이 팝업 딤에 계속 가로채여 로드하지 못했어요.")
         page.wait_for_timeout(1500)
         confirm = page.query_selector(SMART_EDITOR["draft_load_confirm"])  # '불러오기' 확인 팝업
         if confirm and confirm.is_visible():
@@ -473,16 +530,68 @@ class BlogPublisher:
 
     def _anchor_after_video(self) -> bool:
         """영상 컴포넌트를 선택 → Enter로 영상 '바로 뒤'에 커서를 둔다(영상 자체는 안 건드림)."""
+        return self._anchor_after_video_index(0)
+
+    def _anchor_after_video_index(self, n: int) -> bool:
+        """n번째 영상(문서 순)을 선택 → Enter로 그 영상 '바로 뒤'에 커서를 둔다(영상 자체 보존).
+
+        in-place 사진 재배치에서 '구간 앵커'로 쓴다 — 영상은 옮길 수 없어 고정점이 된다."""
         page = self._page
-        v = self._editor_video()
-        if not v:
+        vids = self._page.query_selector_all(SMART_EDITOR["editor_video"])
+        if not vids or n < 0 or n >= len(vids):
             return False
-        v.scroll_into_view_if_needed()
-        v.click()
+        vids[n].scroll_into_view_if_needed()
+        vids[n].click()
         page.wait_for_timeout(300)
         page.keyboard.press("Enter")
         page.wait_for_timeout(300)
         return True
+
+    def _count_collages(self) -> int:
+        """콜라주(한 컴포넌트에 사진 2장 이상)의 개수. 낱장으로 못 옮겨 고정 앵커로 둔다."""
+        return self._page.evaluate(
+            """() => [...document.querySelectorAll('.se-component')]
+                 .filter(c => c.querySelectorAll('img.se-image-resource').length >= 2).length"""
+        )
+
+    def _delete_movable_photos(self) -> int:
+        """단일 사진 컴포넌트만 모두 삭제한다(영상·콜라주는 보존 = 고정 앵커).
+
+        in-place 사진 재배치: 지운 자리에 플랜 순서대로 사진을 다시 넣는다. 콜라주(img 2장↑)와
+        영상은 재업로드가 불가/불완전하므로 건드리지 않는다. 진전이 없으면(삭제가 안 먹힘) 멈춘다.
+        (프리미티브 검증: scripts/probe_photo_rebuild.py)"""
+        page = self._page
+        removed = 0
+        prev = None
+        for _ in range(200):  # 안전 상한
+            # 콜라주(2장↑)가 아닌 단일 사진 컴포넌트의 첫 img를 찾는다.
+            handle = page.evaluate_handle(
+                """() => {
+                  for (const c of document.querySelectorAll('.se-component')) {
+                    const imgs = c.querySelectorAll('img.se-image-resource');
+                    if (imgs.length === 1) return imgs[0];
+                  }
+                  return null;
+                }"""
+            )
+            el = handle.as_element()
+            if el is None:
+                break
+            cur = len(self._editor_photos())
+            if prev is not None and cur >= prev:
+                break  # 진전 없음 — 더 시도해도 소용없음
+            prev = cur
+            try:
+                el.scroll_into_view_if_needed()
+                el.click()  # 사진 컴포넌트 객체 선택
+                page.wait_for_timeout(200)
+                page.keyboard.press("Delete")
+                page.wait_for_timeout(300)
+            except Exception:  # noqa: BLE001 - 한 장 실패가 전체를 막지 않게
+                page.keyboard.press("Escape")
+                break
+            removed += 1
+        return removed
 
     def _anchor_before_first_media(self) -> bool:
         """첫 미디어(사진/영상) '위'에 커서를 둔다.
@@ -631,14 +740,14 @@ class BlogPublisher:
         category: str | None = None, save: bool = True,
         clean_imported: bool = True,
     ) -> list[str]:
-        """불러온 임시저장 글에 'in-place'로 본문을 짜 넣는다(M1: 사진·영상 현 위치 고정).
+        """불러온 임시저장 글을 'in-place'로 편집한다(영상·콜라주 고정, 사진은 플랜대로 재배치).
 
-        사진은 이미 글에 있으니 업로드하지 않고, plan의 image/video 블록을 '원본 미디어 위치'의
-        앵커로만 쓴다. text/divider 블록을 해당 앵커(사진 k 뒤 / 영상 뒤 / 맨 앞 사진 위)에 끼워
-        넣는다. 영상은 절대 건드리지 않아 그대로 보존되고, 저장하면 같은 글이 갱신된다(삭제 없음).
-        image 블록↔원본 사진은 image_path(=photo_paths의 다운로드 순=문서 순)로 매핑하고, 없으면
-        등장 순서로 폴백한다. 제목·인용구·스티커·구분선·링크·지도까지 모두 넣는다(일반 게시와 동일).
-        한 사진 앵커에 여러 블록이 붙을 때는 '역순 삽입'으로 순서를 보존한다(아래 루프 주석 참고).
+        영상은 재업로드가 불가(유실)하고 콜라주는 낱장으로 못 옮기니 '고정 앵커'로 그대로 두고,
+        사진은 전부 삭제한 뒤 plan 순서대로 다시 넣는다. 이러면 LLM이 정한 사진·텍스트 순서가
+        그대로 반영되고(문서 물리 순서에 안 끌려감), 영상은 원자리에 보존된다. i번째 [영상] 블록을
+        i번째 물리 영상으로 매핑해, 그 사이 구간마다 사진·텍스트·인용구·스티커·구분선·링크·지도를
+        플랜 순서대로 삽입한다. 한 구간의 블록들은 '역순 삽입'으로 순서를 보존한다(아래 루프 주석).
+        저장하면 같은 글이 갱신된다(원본 삭제 없음). (mechanic 검증: scripts/probe_*_rebuild.py)
 
         글 식별: draft_title을 주면(권장) 발행 직전에 제목+날짜로 목록에서 idx를 '다시' 찾는다
         (위치 번호가 밀려 엉뚱한 글을 덮어쓰는 사고 방지). 못 찾으면 RuntimeError로 중단한다.
@@ -689,72 +798,86 @@ class BlogPublisher:
         # (publish와 달리 in-place는 기존 글을 여는 거라 제목 칸이 차 있으므로 clear 필요)
         if plan.title:
             self._type_title(plan.title, clear=True)
-            page.click(SMART_EDITOR["content_component"])
-
-        # 블록을 미디어 앵커별 그룹으로 묶는다(앵커=None 맨앞 / ("photo",k) 사진 뒤 / ("video",) 영상 뒤).
-        path_index = {p: i for i, p in enumerate(photo_paths or [])}
-        groups: list[tuple] = []  # (anchor, [blocks])
-        cur_anchor = None
-        cur: list = []
-        img_seen = -1
-
-        def flush_group():
-            if cur:
-                groups.append((cur_anchor, list(cur)))
-                cur.clear()
-
-        for block in plan.blocks:
-            if block.kind == "image":
-                flush_group()
-                img_seen += 1
-                k = path_index.get(block.image_path, img_seen)
-                cur_anchor = ("photo", k)
-            elif block.kind == "video":
-                flush_group()
-                cur_anchor = ("video",)
-            elif block.kind in ("text", "divider", "quote", "sticker", "place", "link"):
-                cur.append(block)
+            # 제목 입력 뒤 본문으로 포커스를 옮긴다. 단, 사진만 있는 불러온 글은 본문
+            # 텍스트 컴포넌트(se-text)가 아예 없을 수 있어, 있을 때만 클릭한다. 없으면
+            # 제목 선택만 풀어두면 아래 _place_anchor가 커서를 알아서 잡는다(30초 타임아웃 방지).
+            if page.query_selector(SMART_EDITOR["content_component"]):
+                page.click(SMART_EDITOR["content_component"])
             else:
-                warnings.append(
-                    f"‘{block.kind}’ 블록은 in-place에선 자동 삽입을 건너뛰었어요(직접 추가 필요)."
-                )
-        flush_group()
+                page.keyboard.press("Escape")
 
-        # 각 그룹의 블록을 '역순'으로 넣는다 — 매 블록마다 앵커(사진 바로 뒤)를 다시 잡으면
-        # 나중 것이 위로 밀려, 결과적으로 원래 순서대로 사진 뒤에 쌓인다. 이렇게 하면 블록 종류가
-        # 섞여도(인용/스티커가 본문 끝으로 포커스를 옮겨도) 커서 이어가기에 의존하지 않아 안전하다.
-        emphases = []
-        for anchor, blks in groups:
+        # ── 사진 재배치(in-place) ─ 영상·콜라주는 옮길 수 없어 고정 앵커로 두고, 사진은 전부
+        # 삭제한 뒤 플랜 순서대로 다시 넣는다. 이러면 LLM이 정한 사진·텍스트 순서가 그대로 반영되고
+        # (문서 물리 순서에 끌려가지 않음), 영상은 원자리에 보존된다. i번째 [영상] 블록 = i번째
+        # 물리 영상으로 매핑해 그 사이 구간에 사진·텍스트·장식을 배치한다.
+        # (프리미티브 검증: scripts/probe_photo_rebuild.py — 삭제→영상 고정→정확한 위치 재삽입.)
+        n_phys_video = len(page.query_selector_all(SMART_EDITOR["editor_video"]))
+        n_collage = self._count_collages()
+        if n_collage:
+            warnings.append(
+                f"콜라주(여러 장을 묶은 사진) {n_collage}개는 옮길 수 없어 그대로 뒀어요 — "
+                "그 주변 사진 순서는 확인해 주세요."
+            )
+        self._delete_movable_photos()  # 단일 사진만 삭제(영상·콜라주 보존)
+
+        # 플랜을 [영상] 블록 기준으로 구간 분할. segment 0 = 첫 영상 앞, segment K = (K-1)번 영상 뒤.
+        segments: list[list] = [[]]
+        for block in plan.blocks:
+            if block.kind == "video":
+                segments.append([])
+            elif block.kind in ("image", "text", "divider", "quote", "sticker", "place", "link"):
+                segments[-1].append(block)
+            else:
+                warnings.append(f"‘{block.kind}’ 블록은 자동 삽입을 건너뛰었어요(직접 추가 필요).")
+        n_plan_video = len(segments) - 1
+        if n_plan_video != n_phys_video:
+            warnings.append(
+                f"동영상 개수가 글({n_phys_video})과 글감({n_plan_video})이 달라 영상 주변 배치가 "
+                "어긋날 수 있어요 — 확인해 주세요."
+            )
+
+        emphases: list = []
+
+        def _insert_one(block):
+            if block.kind == "image" and block.image_path:
+                self._insert_image(block.image_path, size=block.image_size)
+            elif block.kind == "text":
+                self._type_text_block(block)
+                emphases.extend(block.emphases)
+            elif block.kind == "divider":
+                self._insert_divider(block.variant, align=block.align)
+            elif block.kind == "quote":
+                # at_end=False: 본문 끝으로 점프하지 않는다(다음 블록이 앵커를 다시 잡음)
+                self._insert_quote(block.text, block.variant, align=block.align, at_end=False)
+            elif block.kind == "sticker":
+                self._insert_sticker(block.sticker_pack, block.sticker_index or 0, at_end=False)
+            elif block.kind == "place" and block.text:
+                try:  # 지도(장소) 카드 — 커서 위치에 삽입. 검색 결과 없으면 False
+                    ok = self._insert_place(block.text, address=block.place_address)
+                except Exception:  # noqa: BLE001 - 지도는 보조, 실패해도 본문 유지
+                    page.keyboard.press("Escape")
+                    ok = False
+                if not ok:
+                    warnings.append(
+                        f"지도(장소) 자동 삽입 실패: ‘{block.text}’ — 네이버 장소 검색 결과가 없어 "
+                        "건너뛰었어요. 에디터에서 직접 ‘장소’를 추가해 주세요."
+                    )
+            elif block.kind == "link" and block.link_url:
+                self._insert_link(block.link_url, keep_url_text=block.keep_url_text, at_anchor=True)
+
+        def _anchor_segment(seg_idx):
+            # 구간 커서: 0=첫 미디어 앞, K>0=(K-1)번 물리 영상 바로 뒤(영상 부족하면 마지막 영상 뒤).
+            if seg_idx == 0 or n_phys_video == 0:
+                self._anchor_before_first_media()
+            else:
+                self._anchor_after_video_index(min(seg_idx, n_phys_video) - 1)
+
+        # 각 구간 안에서 블록을 '역순'으로 넣되 매번 구간 앵커를 다시 잡아, 나중 것이 위로 밀려
+        # 결과적으로 플랜 순서대로 쌓인다(커서 이어가기에 의존하지 않아 블록 종류가 섞여도 안전).
+        for seg_idx, blks in enumerate(segments):
             for block in reversed(blks):
-                self._place_anchor(anchor)
-                if block.kind == "text":
-                    self._type_text_block(block)
-                    emphases.extend(block.emphases)
-                elif block.kind == "divider":
-                    self._insert_divider(block.variant, align=block.align)
-                elif block.kind == "quote":
-                    # at_end=False: 본문 끝으로 점프하지 않는다(다음 블록이 앵커를 다시 잡음)
-                    self._insert_quote(block.text, block.variant, align=block.align, at_end=False)
-                elif block.kind == "sticker":
-                    self._insert_sticker(
-                        block.sticker_pack, block.sticker_index or 0, at_end=False
-                    )
-                elif block.kind == "place" and block.text:
-                    try:  # 지도(장소) 카드 — 커서 위치에 삽입. 검색 결과 없으면 False
-                        ok = self._insert_place(block.text, address=block.place_address)
-                    except Exception:  # noqa: BLE001 - 지도는 보조, 실패해도 본문 유지
-                        page.keyboard.press("Escape")
-                        ok = False
-                    if not ok:
-                        warnings.append(
-                            f"지도(장소) 자동 삽입 실패: ‘{block.text}’ — 네이버 장소 검색 결과가 없어 "
-                            "건너뛰었어요. 에디터에서 직접 ‘장소’를 추가해 주세요."
-                        )
-                elif block.kind == "link" and block.link_url:
-                    # at_anchor=True: 본문 끝이 아니라 앵커(사진 뒤)에 카드 삽입
-                    self._insert_link(
-                        block.link_url, keep_url_text=block.keep_url_text, at_anchor=True
-                    )
+                _anchor_segment(seg_idx)
+                _insert_one(block)
         # 본문 입력 후 강조 적용(커서 간섭 방지 — 기존 publish와 동일한 후처리 패스)
         for span in emphases:
             try:
@@ -823,6 +946,88 @@ class BlogPublisher:
             except Exception:  # noqa: BLE001 - 일부 이미지 실패해도 나머지 진행
                 continue
         return saved
+
+    # 문서 순서대로 미디어 컴포넌트를 훑어 {kind, src?}를 반환(사진/영상/콜라주 구분).
+    #  - 단일사진(img 1개)=image + CDN src, 영상=video(재업로드 불가라 src 없음),
+    #    콜라주(img 2개↑)=collage(한 컴포넌트에 여러 장 → 낱장으로 못 옮김, 고정 앵커).
+    #  - lazy-load라 image src가 채워질 때까지 스크롤·폴링한다.
+    _MEDIA_MANIFEST_JS = r"""
+    async () => {
+      const comps = [...document.querySelectorAll('.se-component')];
+      const out = [];
+      for (const c of comps) {
+        const cls = c.className.toString();
+        if (/se-video/.test(cls)) { out.push({kind: 'video'}); continue; }
+        const imgs = [...c.querySelectorAll('img.se-image-resource')];
+        if (imgs.length === 0) continue;              // 텍스트·구분선 등은 건너뜀
+        if (imgs.length >= 2) { out.push({kind: 'collage', count: imgs.length}); continue; }
+        const im = imgs[0];
+        im.scrollIntoView({block: 'center'});
+        for (let t = 0; t < 25; t++) {
+          if (im.src && !im.src.startsWith('data:')) break;
+          await new Promise(r => setTimeout(r, 150));
+        }
+        out.push({kind: 'image', src: (im.src && !im.src.startsWith('data:')) ? im.src : ''});
+      }
+      return out;
+    }
+    """
+
+    def import_draft_media(self, idx: int, dest_dir: Path) -> list[dict]:
+        """idx번 임시저장 글의 미디어를 '문서 순서대로' 반환한다(사진·영상·콜라주 구분).
+
+        반환: [{"kind": "image", "path": 로컬경로}, {"kind": "video"}, {"kind": "collage"}, …]
+        - 사진(단일 img)만 dest_dir로 다운로드해 로컬 경로를 준다(재삽입·재배치용).
+        - 영상·콜라주는 재업로드가 불가/불완전하므로 다운로드하지 않고 '고정 앵커' placeholder만
+          순서에 남긴다(in-place에서 위치 기준점으로 쓰고, 그 자리에 사진을 배치).
+        import_draft_photos(사진만)의 상위 버전 — in-place가 영상 위치를 알게 하는 게 목적.
+        """
+        import uuid
+
+        page = self._page
+        self._load_draft_into_editor(idx)
+        try:
+            page.wait_for_selector(
+                f"{SMART_EDITOR['editor_image']}, {SMART_EDITOR['editor_video']}", timeout=8000
+            )
+        except Exception:  # noqa: BLE001 - 미디어 없는 글일 수 있음
+            return []
+        page.wait_for_timeout(1000)
+        items = page.evaluate(self._MEDIA_MANIFEST_JS)
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        seen_src: set[str] = set()
+        manifest: list[dict] = []
+        for it in items:
+            kind = it.get("kind")
+            if kind == "video":
+                # 영상은 재업로드 불가라 다운로드하지 않는다. 다만 UI가 타일·캡션으로 다루고
+                # 재료/플랜이 위치를 알도록, 빈 .mp4 placeholder 파일을 만들어 경로를 준다
+                # (썸네일은 is_video로 플레이스홀더 처리돼 파일을 열지 않음, in-place라 업로드도 안 함).
+                dest = dest_dir / f"draft_vid_{uuid.uuid4().hex[:8]}.mp4"
+                dest.write_bytes(b"")
+                manifest.append({"kind": "video", "path": str(dest)})
+                continue
+            if kind == "collage":
+                # 콜라주(여러 장이 한 컴포넌트)는 낱장으로 못 옮기니 옮기지 않고 고정 앵커로만 남긴다.
+                # 사진 목록(이동 대상)에 넣지 않는다 — 실행기가 문서에서 그대로 둔다.
+                manifest.append({"kind": "collage"})
+                continue
+            src = it.get("src") or ""
+            if not src or src in seen_src:  # 빈 src·중복(같은 이미지 재노출)은 건너뜀
+                continue
+            seen_src.add(src)
+            try:
+                resp = self._ctx.request.get(src)
+                if resp.status != 200:
+                    continue
+                ext = ".png" if "png" in resp.headers.get("content-type", "") else ".jpg"
+                dest = dest_dir / f"draft_{uuid.uuid4().hex[:8]}{ext}"
+                dest.write_bytes(resp.body())
+                manifest.append({"kind": "image", "path": str(dest)})
+            except Exception:  # noqa: BLE001 - 일부 실패해도 나머지 진행
+                continue
+        return manifest
 
     # --- 카테고리 (유저별 동적) ---
     def _open_publish_layer(self):
