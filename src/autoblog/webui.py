@@ -112,7 +112,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .stab .sdot{width:15px;height:15px;flex:none;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;line-height:1}
  .stab .stitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .stab .scnt{color:var(--sub);font-weight:600;flex:none}
- .stab .sretry,.stab .sx{flex:none;display:none;width:22px;height:22px;border:none;border-radius:7px;background:#f2f4f6;color:var(--sub);font-size:12px;cursor:pointer;line-height:1;padding:0}
+ .stab .sretry,.stab .sx{flex:none;display:none;align-items:center;justify-content:center;width:22px;height:22px;border:none;border-radius:7px;background:#f2f4f6;color:var(--sub);font-size:12px;cursor:pointer;line-height:1;padding:0}
  .stab .sretry:hover,.stab .sx:hover{background:#e6e9ed;color:var(--ink)}
  .stab.err{border-color:#f0b3ad;background:#fff6f5}
  .stab.err .sdot{color:#e23b2e}
@@ -128,7 +128,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .wtab:hover{border-color:#cdd3da}
  .wtab.on{color:var(--ink);border-color:var(--green);box-shadow:0 0 0 1px var(--green) inset}
  .wtab .wt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
- .wtab .wx{flex:none;display:none;width:18px;height:18px;border:none;border-radius:6px;background:#f2f4f6;color:var(--sub);font-size:11px;cursor:pointer;line-height:1;padding:0}
+ .wtab .wx{flex:none;display:none;align-items:center;justify-content:center;width:18px;height:18px;border:none;border-radius:6px;background:#f2f4f6;color:var(--sub);font-size:11px;cursor:pointer;line-height:1;padding:0}
  .wtab:hover .wx,.wtab.on .wx{display:inline-flex}
  .wtab .wx:hover{background:#e6e9ed;color:var(--ink)}
  .wtab.wadd{color:var(--sub);font-weight:900;font-size:15px;line-height:1;padding:6px 11px}
