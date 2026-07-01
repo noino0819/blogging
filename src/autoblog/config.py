@@ -186,7 +186,7 @@ def save_env_value(key: str, value: str, path: Path | None = None) -> None:
 # 사진 카테고리 기본값(파일 없을 때 폴백). config/photo_categories.yaml 로 덮어쓸 수 있음.
 DEFAULT_PHOTO_CATEGORIES: dict[str, list[str]] = {
     "place": ["음식", "메뉴판", "외관", "내부", "영수증", "협찬", "기타"],
-    "product": ["제품컷", "상세페이지", "패키지", "사용샷", "협찬", "기타"],
+    "product": ["언박싱", "제품외관", "제품개봉", "제품내부", "디테일컷", "사용샷", "협찬", "기타"],
 }
 
 
