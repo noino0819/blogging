@@ -122,6 +122,21 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .stab.ok .sdot{color:var(--green-d)}
  .stab.warn{border-color:#f2d9a8;background:#fffaf0}
  .stab.warn .sdot{color:#d98a00}
+ /* 멀티 탭(워크스페이스): 글마다 독립 탭. 상단 가로 바 + 새 글(+) 버튼 */
+ #workbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:0 0 16px}
+ .wtab{display:flex;align-items:center;gap:6px;max-width:200px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:12.5px;font-weight:700;color:var(--sub);cursor:pointer;user-select:none;-webkit-user-select:none}
+ .wtab:hover{border-color:#cdd3da}
+ .wtab.on{color:var(--ink);border-color:var(--green);box-shadow:0 0 0 1px var(--green) inset}
+ .wtab .wt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .wtab .wx{flex:none;display:none;width:18px;height:18px;border:none;border-radius:6px;background:#f2f4f6;color:var(--sub);font-size:11px;cursor:pointer;line-height:1;padding:0}
+ .wtab:hover .wx,.wtab.on .wx{display:inline-flex}
+ .wtab .wx:hover{background:#e6e9ed;color:var(--ink)}
+ .wtab.wadd{color:var(--sub);font-weight:900;font-size:15px;line-height:1;padding:6px 11px}
+ .wtab.importing{border-color:#bfe0cf;background:var(--green-soft)}
+ .wtab.importing .wt{color:var(--green-d)}
+ .wtab .wspin{width:11px;height:11px;flex:none;border:2px solid #cfe9db;border-top-color:var(--green);border-radius:50%;animation:wsp .7s linear infinite;display:none}
+ .wtab.importing .wspin{display:inline-block}
+ @keyframes wsp{to{transform:rotate(360deg)}}
  /* 토스트 팝업 — 에러/완료를 화면 중앙 상단에 크게 */
  #toasts{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:9px;align-items:center;pointer-events:none;width:max-content;max-width:90vw}
  .toast{position:relative;pointer-events:auto;min-width:300px;max-width:560px;padding:14px 46px 14px 16px;border-radius:14px;font-size:14px;font-weight:700;color:#fff;line-height:1.45;box-shadow:0 12px 34px rgba(0,0,0,.26);display:flex;gap:11px;align-items:flex-start;animation:tin .24s cubic-bezier(.2,.9,.3,1.25)}
@@ -158,7 +173,22 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .draftlist .ditem:last-child{border-bottom:none}
  .draftlist .ditem:hover{background:#f3fcf6}
  .draftlist .ditem .dt{font-weight:600;color:#1f2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .draftlist .ditem{min-height:40px}  /* 모드 무관 고정 높이 — 체크 생겨도 안 늘어남 */
  .draftlist .ditem .dd{color:var(--sub);font-size:11px;white-space:nowrap}
+ .draftlist .ditem .dt{flex:1 1 auto;min-width:0}
+ /* 다중선택: 앱 기본 초록 액센트에 맞춘 둥근 사각 체크(체크 시 초록+✓).
+    자리는 항상 잡아두고(단일 모드=투명) 모드 전환 시 좌우로 안 밀리게 한다. */
+ .draftlist .ditem .dckbox{flex:none;width:18px;height:18px;border:2px solid #cdd3da;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:#fff;line-height:1;transition:border-color .12s,background .12s}
+ .draftlist .ditem .dckbox.ghost{border-color:transparent;background:transparent}  /* 단일 모드: 공간만 유지 */
+ .draftlist .ditem:hover .dckbox:not(.ghost){border-color:var(--green)}
+ .draftlist .ditem.picked .dckbox{background:var(--green);border-color:var(--green)}
+ .draftlist .ditem.picked .dckbox::after{content:"✓"}
+ .draftlist .ditem.picked{background:var(--green-soft)}
+ /* 인라인 툴바용 작은 토글 스위치(설정의 .sw 축소판) */
+ .sw.sw-sm{width:34px;height:20px;flex:0 0 34px}
+ .sw.sw-sm::after{width:14px;height:14px;top:3px;left:3px}
+ .sw.sw-sm.on::after{left:17px}
+ #draftmultiwrap{align-items:center;gap:7px;font-size:12.5px;color:var(--sub);white-space:nowrap;cursor:pointer;user-select:none}
  .minibtn{font-size:12px;padding:5px 10px;border:1px solid #cdd3da;border-radius:8px;background:#fff;cursor:pointer;color:#374151}
  .minibtn:hover{border-color:var(--green);color:var(--green-d)}
  .minibtn:disabled{opacity:.55;cursor:default}
@@ -417,12 +447,16 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=modalhd><span>📷 사진 추가·분류</span><button class=mx id=phclose>✕</button></div>
   <div class=muted>사진을 올리고 → 글에 넣을 사진을 클릭·Shift로 선택 → 아래 칸으로 끌거나 선택 후 칸을 눌러 분류하세요.</div>
   <div class=dropzone id=dropzone>📷 사진·동영상을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*,video/*" multiple hidden></div>
-  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
     <button type=button class="btn ghost" id=draftload style="white-space:nowrap">📥 임시저장에서 불러오기</button>
     <button type=button class="btn ghost" id=draftrefresh title="네이버에서 목록 새로고침" style="display:none;padding:9px 11px">🔄</button>
+    <div id=draftmultiwrap style="display:none">여러 글 선택 <div class="sw sw-sm" id=draftmulti></div></div>
     <span class=muted id=draftstat></span>
   </div>
   <div class=draftlist id=draftlist style="display:none"></div>
+  <div id=draftbatch style="display:none;margin-bottom:10px">
+    <button type=button class="btn" id=draftbatchgo>📥 선택한 글 새 탭으로 불러오기</button>
+  </div>
   <div class=phscroll>
     <div class=pgrid id=pgrid></div>
     <div class=pmeta id=pmeta></div>
@@ -465,6 +499,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <section class="view write on">
     <h2 class=title>글쓰기</h2>
     <p class=desc>경험 메모와 사진을 넣고 [초안 생성]을 누르면 오른쪽에 미리보기가 나옵니다.</p>
+    <div id=workbar></div>
     <div class=grid>
       <div class=col>
         <div class=card>
@@ -873,15 +908,36 @@ async function handleFiles(files){
 // 네이버 임시저장 글에서 사진 불러오기: 목록 조회 → 글 선택 → 본문 사진 다운로드 → PHOTOS에 추가
 // DRAFTS=한 번 조회한 목록 캐시. 📥 버튼은 이 캐시를 펼침/접음만(재조회 X), 🔄로만 네이버 재조회.
 let DRAFTBUSY=false, DRAFTS=null;
+let DRAFTMULTI=false;            // '여러 글 선택' 모드
+const DRAFTSEL=new Set();        // 선택된 글 idx(문자열) 집합
 // 캐시된 목록을 #draftlist에 렌더(데이터만; 표시 여부는 호출부에서 토글).
 function renderDraftList(){
   const list=$('#draftlist'); list.innerHTML='';
   (DRAFTS||[]).forEach(dr=>{
-    const row=document.createElement('div'); row.className='ditem';
-    row.innerHTML=`<span class=dt>${(dr.title||'(제목 없음)')}</span><span class=dd>${dr.date||''}</span>`;
-    row.onclick=()=>importDraft(dr.idx, dr.title, dr.date);
+    const key=String(dr.idx);
+    const row=document.createElement('div'); row.className='ditem'+(DRAFTMULTI&&DRAFTSEL.has(key)?' picked':'');
+    // 체크 자리는 항상 두고, 단일 모드에선 ghost(투명)로 — 모드 전환 시 좌우 밀림 없음.
+    const ck = `<span class="dckbox${DRAFTMULTI?'':' ghost'}"></span>`;
+    row.innerHTML=`${ck}<span class=dt>${(dr.title||'(제목 없음)')}</span><span class=dd>${dr.date||''}</span>`;
+    if(DRAFTMULTI){
+      row.onclick=()=>toggleDraftSel(key);  // 다중선택 모드: 행 클릭=체크 토글
+    }else{
+      row.onclick=()=>importDraft(dr.idx, dr.title, dr.date);  // 단일: 지금 탭에 바로 불러오기
+    }
     list.appendChild(row);
   });
+  updateDraftBatchBtn();
+}
+function toggleDraftSel(key){
+  if(DRAFTSEL.has(key)) DRAFTSEL.delete(key); else DRAFTSEL.add(key);
+  renderDraftList();
+}
+function updateDraftBatchBtn(){
+  const wrap=$('#draftbatch'), btn=$('#draftbatchgo');
+  if(!wrap) return;
+  const n=DRAFTSEL.size;
+  wrap.style.display=(DRAFTMULTI&&n>0)?'block':'none';
+  if(btn) btn.textContent=`📥 선택한 ${n}개 글 새 탭으로 불러오기`;
 }
 // 네이버에서 목록을 새로 가져와 캐시에 채운다. 성공 시 목록을 펼쳐 보여준다.
 async function fetchDrafts(){
@@ -897,7 +953,7 @@ async function fetchDrafts(){
     $('#draftrefresh').style.display='inline-block';  // 한 번 조회하면 새로고침 버튼 노출
     if(!DRAFTS.length){ stat.textContent=`임시저장된 글이 없어요. (${sec}초)`; list.style.display='none'; DRAFTBUSY=false; return; }
     stat.textContent=`${DRAFTS.length}건 (${sec}초) — 사진을 가져올 글을 선택하세요`;
-    renderDraftList(); list.style.display='block';
+    renderDraftList(); list.style.display='block'; $('#draftmultiwrap').style.display='inline-flex';
   }catch(e){ el.stop(); stat.textContent='불러오기 실패'; toast('임시저장 목록을 못 불러왔어요 — '+e.message,'err'); }
   DRAFTBUSY=false;
 }
@@ -905,15 +961,17 @@ function setupDraftImport(){
   const btn=$('#draftload'); if(!btn) return;
   btn.onclick=async()=>{
     const list=$('#draftlist');
-    if(list.style.display==='block'){ list.style.display='none'; return; }  // 펼쳐져 있으면 접기
+    if(list.style.display==='block'){ list.style.display='none'; $('#draftbatch').style.display='none'; return; }  // 펼쳐져 있으면 접기
     if(DRAFTS!==null){  // 캐시가 있으면 재조회 없이 즉시 펼침(글 불러온 뒤에도 그대로 유지)
-      if(DRAFTS.length){ renderDraftList(); list.style.display='block'; }
+      if(DRAFTS.length){ renderDraftList(); list.style.display='block'; $('#draftmultiwrap').style.display='inline-flex'; updateDraftBatchBtn(); }
       else { $('#draftstat').textContent='임시저장된 글이 없어요. (🔄로 새로고침)'; }
       return;
     }
     await fetchDrafts();  // 첫 조회만 네이버 호출
   };
   const ref=$('#draftrefresh'); if(ref) ref.onclick=()=>fetchDrafts();
+  const mc=$('#draftmulti'); if(mc) mc.onclick=()=>{ DRAFTMULTI=!DRAFTMULTI; mc.classList.toggle('on',DRAFTMULTI); if(!DRAFTMULTI)DRAFTSEL.clear(); renderDraftList(); };
+  const bg=$('#draftbatchgo'); if(bg) bg.onclick=()=>batchImport();
 }
 async function importDraft(idx, title, date){
   if(DRAFTBUSY) return; DRAFTBUSY=true;
@@ -942,6 +1000,7 @@ async function importDraft(idx, title, date){
     if(paths.length) applyDraftTitleKeyword(title);
     // 이 원본 글을 저장 완료 후 삭제 대상으로 기억(제목+저장일시로 식별).
     if(paths.length) IMPORTED_DRAFT={title:(title||''), date:(date||'')};
+    renderTabs();  // 불러온 글 제목이 탭에 반영되게
   }catch(e){ el.stop(); stat.textContent='가져오기 실패'; toast('사진을 못 가져왔어요 — '+e.message,'err'); }
   DRAFTBUSY=false;
 }
@@ -957,6 +1016,49 @@ function applyDraftTitleKeyword(title){
       ? `📥 불러온 글 제목 "${t}"은(는) 이미 키워드에 있어요.`
       : `📥 불러온 글 제목 "${t}"을(를) 필수 키워드에 자동으로 넣었어요. 필요 없으면 지워도 돼요.`;
     note.style.display='block';
+  }
+}
+// 불러온 미디어를 '상태 객체(WS.state)'에 반영한다(현재 탭이 아닌 배경 탭에 채울 때 씀).
+// 반환: 사진+영상 경로 배열. 활성 탭이면 호출부가 applyWS로 화면에 반영한다.
+function fillStateFromMedia(s, media, title, date){
+  const paths=media.map(m=>m.path).filter(Boolean);
+  s.PHOTOS=paths.slice(); s.SELP=[]; s.PHOTOMETA={}; s.THUMB=null;
+  s.PMACTIVE=undefined; s.PMSEL=new Set(); s.PMANCHOR=null; s.SUBCATS={};
+  if(paths.length){
+    s.IMPORTED_DRAFT={title:(title||''), date:(date||'')};  // 저장 후 원본 삭제 식별용
+    const t=(title||'').trim();
+    if(t&&t!=='(제목 없음)'){  // 제목을 필수 키워드 맨 앞에(단일 불러오기와 동일 규칙)
+      const cur=(s.keywords||'').split(',').map(x=>x.trim()).filter(Boolean);
+      if(!cur.some(k=>k.toLowerCase()===t.toLowerCase())){ cur.unshift(t); s.keywords=cur.join(', '); }
+    }
+  }
+  return paths;
+}
+// 배치 불러오기: 선택된 글을 각각 '새 탭'으로 연다. 네이버 접속은 서버 락이 하나씩 처리하므로,
+// N개를 한꺼번에 쏴도 세션 충돌 없이 순서대로 채워진다(끝난 탭부터 사진이 들어옴).
+async function batchImport(){
+  const keys=[...DRAFTSEL]; if(!keys.length) return;
+  const picks=keys.map(k=>DRAFTS.find(d=>String(d.idx)===String(k))).filter(Boolean);
+  if(!picks.length) return;
+  stashCur();  // 현재 탭 상태 보존
+  // 선택 수만큼 '불러오는 중' 탭 생성(전환은 첫 탭만). 제목은 임시로 원본 글 제목.
+  const tabs=picks.map(dr=>{ const w=pushWS(blankWS()); w.status='importing';
+    w.state.IMPORTED_DRAFT={title:(dr.title||''), date:(dr.date||'')}; return {w,dr}; });
+  CURWS=tabs[0].w.id; applyWS(tabs[0].w.state); renderTabs();
+  closePhotoModal(); DRAFTSEL.clear(); updateDraftBatchBtn();
+  toast(`${tabs.length}개 글을 새 탭으로 불러오는 중… 뒤에서 하나씩 처리돼요. 다른 탭 작업하셔도 돼요.`,'ok');
+  for(const {w,dr} of tabs){
+    fetch('/api/drafts/import',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({idx:dr.idx})})
+      .then(async res=>{ const d=await res.json().catch(()=>({})); if(!res.ok) throw new Error(d.error||'가져오기 실패');
+        const media=d.media||((d.paths||[]).map(p=>({kind:'image',path:p})));
+        const paths=fillStateFromMedia(w.state, media, dr.title, dr.date);
+        w.status='edit';
+        if(w.id===CURWS) applyWS(w.state);  // 그 탭을 보고 있으면 즉시 화면 반영
+        renderTabs();
+        const nVid=media.filter(m=>m.kind==='video').length;
+        toast(`'${dr.title||'글'}' ${paths.length}장${nVid?` · 영상 ${nVid}개`:''} 불러옴 ✓`,'ok');
+      })
+      .catch(e=>{ w.status='edit'; renderTabs(); toast(`'${dr.title||'글'}' 불러오기 실패 — ${e.message}`,'err'); });
   }
 }
 
@@ -1145,20 +1247,111 @@ function renderPmeta(){
   });
   const tc=$('#thumbclr'); if(tc) tc.onclick=()=>{ THUMB=null; renderGrid(); renderPmeta(); };
 }
+// ===== 멀티 탭(워크스페이스) =====
+// 글마다 독립 탭. 흩어진 전역·입력값을 '한 글치 상태 객체'로 캡처/복원해, 탭을 바꿔도
+// 서로 안 섞이게 한다. 네이버 접속(불러오기·게시)은 여전히 서버 락으로 한 번에 하나씩.
+let WS=[];        // [{id, status, state}]  status: 'edit' | 'importing'
+let CURWS=null;   // 현재 활성 탭 id
+let WSSEQ=0;      // '새 글 N' 번호 매기기용
+function newWSId(){ return (window.crypto&&crypto.randomUUID)?crypto.randomUUID():('w'+Date.now()+'-'+Math.round(Math.random()*1e6)); }
+function findWS(id){ return WS.find(w=>w.id===id); }
+// 화면·전역의 'per-draft' 상태 전부를 평범한 객체로 캡처(탭에 보관용).
+function captureWS(){
+  return {
+    PHOTOS:PHOTOS.slice(), SELP:SELP.slice(), PLAN,
+    PHOTOMETA:JSON.parse(JSON.stringify(PHOTOMETA||{})), THUMB,
+    PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})),
+    SRCKIND, KINDMANUAL, IMPORTED_DRAFT,
+    memo:$('#memo').value, srcval:$('#srcval').value, keywords:$('#keywords').value,
+    kwnote:$('#kwnote')?$('#kwnote').textContent:'', kwnoteShow:$('#kwnote')?$('#kwnote').style.display:'none',
+    links:$('#links')?$('#links').value:'', prod:$$('#prodlinks .plink').map(i=>i.value),
+    previewHTML:$('#preview').innerHTML, previewClass:$('#preview').className,
+    saveDisabled:$('#save')?$('#save').disabled:true,
+  };
+}
+// 빈 상태(새 글 탭).
+function blankWS(){
+  return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},
+    SRCKIND:'place',KINDMANUAL:false,IMPORTED_DRAFT:null,
+    memo:'',srcval:'',keywords:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
+    previewHTML:'왼쪽에서 메모를 쓰고 [초안 생성]을 누르세요.',previewClass:'doc empty',saveDisabled:true};
+}
+// 캡처된 상태를 화면·전역으로 되돌린다(+재렌더).
+function applyWS(s){
+  PHOTOS=(s.PHOTOS||[]).slice(); SELP=(s.SELP||[]).slice(); PLAN=s.PLAN||null;
+  PHOTOMETA=JSON.parse(JSON.stringify(s.PHOTOMETA||{})); THUMB=s.THUMB||null;
+  PMACTIVE=s.PMACTIVE; PMSEL=new Set(s.PMSEL||[]); PMANCHOR=s.PMANCHOR||null; SUBCATS=JSON.parse(JSON.stringify(s.SUBCATS||{})); PMDRAG=null;
+  IMPORTED_DRAFT=s.IMPORTED_DRAFT||null;
+  $('#memo').value=s.memo||''; $('#srcval').value=s.srcval||''; $('#keywords').value=s.keywords||'';
+  if($('#kwnote')){ $('#kwnote').textContent=s.kwnote||''; $('#kwnote').style.display=s.kwnoteShow||'none'; }
+  if($('#links')) $('#links').value=s.links||'';
+  $('#prodlinks').innerHTML=''; ((s.prod&&s.prod.length)?s.prod:['']).forEach(v=>addProdLink(v));
+  $('#preview').innerHTML=s.previewHTML||''; $('#preview').className=s.previewClass||'doc empty';
+  if($('#save')) $('#save').disabled=(s.saveDisabled!==false);
+  setKind(s.SRCKIND||'place', s.KINDMANUAL);  // kind UI + 상품링크칸 표시 동기화
+  renderGrid(); renderPmeta(); updatePhotoSummary();
+}
+// 탭 제목: 초안 제목 > 메모 첫 줄 > 불러온 원본 제목 > '새 글 N'.
+// 활성 탭은 아직 stash 전이므로 live 값(전역/DOM)을 읽어 실시간 반영한다.
+function wsTitle(w){
+  const live=(w.id===CURWS), s=w.state;
+  const plan=live?PLAN:s.PLAN;
+  const memo=live?($('#memo')?$('#memo').value:''):s.memo;
+  const imp=live?IMPORTED_DRAFT:s.IMPORTED_DRAFT;
+  if(plan&&plan.title) return plan.title;
+  const m=(memo||'').trim().split('\n')[0]; if(m) return m.slice(0,20);
+  if(imp&&imp.title) return imp.title;
+  return '새 글 '+(w.seq||'');
+}
+function renderTabs(){
+  const bar=$('#workbar'); if(!bar) return; bar.innerHTML='';
+  WS.forEach(w=>{
+    const t=document.createElement('div');
+    t.className='wtab'+(w.id===CURWS?' on':'')+(w.status==='importing'?' importing':'');
+    t.innerHTML='<span class=wspin></span><span class=wt></span>'+(WS.length>1?'<button class=wx title="탭 닫기">✕</button>':'');
+    t.querySelector('.wt').textContent=wsTitle(w);
+    t.onclick=e=>{ if(e.target.closest('.wx'))return; switchWS(w.id); };
+    const x=t.querySelector('.wx'); if(x) x.onclick=e=>{ e.stopPropagation(); closeWS(w.id); };
+    bar.appendChild(t);
+  });
+  const add=document.createElement('button'); add.type='button'; add.className='wtab wadd'; add.title='새 글 탭 열기'; add.textContent='+';
+  add.onclick=()=>newWS(); bar.appendChild(add);
+}
+// 현재 탭 상태를 저장해두는 헬퍼(전환·새탭·닫기 전에 호출).
+function stashCur(){ const c=findWS(CURWS); if(c) c.state=captureWS(); }
+function switchWS(id){
+  if(id===CURWS) return;
+  const t=findWS(id); if(!t) return;
+  stashCur(); CURWS=id; applyWS(t.state); renderTabs();
+}
+// 전환 없이 새 탭을 목록에 추가만 한다(배치 불러오기가 여러 개를 한꺼번에 만들 때).
+function pushWS(state){ const w={id:newWSId(), seq:++WSSEQ, status:'edit', state:state||blankWS()}; WS.push(w); return w; }
+function newWS(){
+  stashCur();
+  const w=pushWS(blankWS()); CURWS=w.id; applyWS(w.state); renderTabs();
+  return w;
+}
+function closeWS(id){
+  const i=WS.findIndex(w=>w.id===id); if(i<0) return;
+  const wasCur=(id===CURWS);
+  WS.splice(i,1);
+  if(!WS.length){ const w={id:newWSId(), seq:++WSSEQ, status:'edit', state:blankWS()}; WS.push(w); }
+  if(wasCur){ CURWS=WS[Math.min(i,WS.length-1)].id; applyWS(findWS(CURWS).state); }
+  renderTabs();
+}
+// 초기 탭 1개를 지금 화면 상태로 만든다(init 끝에서 호출).
+function initWorkspaces(){
+  const w={id:newWSId(), seq:++WSSEQ, status:'edit', state:captureWS()};
+  WS=[w]; CURWS=w.id; renderTabs();
+}
+
 function newPost(){ $('#npmodal').style.display='flex'; }  // 새 글 시작 확인 모달
 function closeNP(){ $('#npmodal').style.display='none'; }
-function doNewPost(){  // 새 글: 입력·사진선택·분류·세부분류 비우기
+function doNewPost(){  // 새 글: 현재 탭은 그대로 두고, 새 빈 탭을 연다
   closeNP();
-  $('#memo').value=''; $('#srcval').value=''; if(typeof setKind==='function')setKind('place',false);
-  if(typeof resetProdLinks==='function')resetProdLinks();
-  { const kw=$('#keywords'); if(kw)kw.value=''; }
-  { const note=$('#kwnote'); if(note){note.textContent=''; note.style.display='none';} }
-  SELP=[]; PHOTOMETA={}; THUMB=null; PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
-  IMPORTED_DRAFT=null;  // 새 글이니 '불러온 원본' 기억도 비운다
-  PLAN=null; const sv=$('#save'); if(sv)sv.disabled=true;
-  const pv=$('#preview'); if(pv){ pv.className='doc empty'; pv.innerHTML='왼쪽에서 메모를 쓰고 [초안 생성]을 누르세요.'; }
-  loadPhotos(); renderPmeta(); updatePhotoSummary();
-  toast('새 글을 시작했어요.','ok');
+  newWS();
+  loadPhotos();  // 새 탭의 사진 인박스를 서버 풀에서 채움(기존 새글 동작 유지)
+  toast('새 글 탭을 열었어요.','ok');
 }
 async function runAiCaption(){
   const btn=$('#aibtn'); if(!btn)return; btn.disabled=true; const old=btn.textContent;
@@ -1206,11 +1399,12 @@ $('#gen').onclick=async()=>{
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:$('#keywords').value,minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES,
+      draftId:CURWS,  // 이 탭의 글로 서버에 보관(게시 때 이 id로 '그 탭 글'을 정확히 저장)
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 in-place 편집(새 글용 사진 재정렬 휴리스틱 끔)
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); toast('초안 생성 실패: '+(d.error||'알 수 없는 오류'),'err'); return;}
-    genDone(true); PLAN=d; setTimeout(()=>renderPreview(d),350); st('생성 완료. 검토 후 임시저장하세요.'); toast('초안 생성 완료! 오른쪽 미리보기를 확인하세요.','ok'); $('#save').disabled=false;
+    genDone(true); PLAN=d; setTimeout(()=>renderPreview(d),350); st('생성 완료. 검토 후 임시저장하세요.'); toast('초안 생성 완료! 오른쪽 미리보기를 확인하세요.','ok'); $('#save').disabled=false; renderTabs();
     if(d.debug)showLog(d.debug);
   }catch(e){genDone(false); st('오류: '+e); toast('초안 생성 오류: '+e,'err');}finally{$('#gen').disabled=false;}
 };
@@ -1414,7 +1608,7 @@ function fireSave(title, category){
   // 일반 새 글이면 importedDraft 없음 → 기존 방식(새 글 저장). 값은 지금 시점으로 고정.
   const inplace=!!IMPORTED_DRAFT, inplaceDraft=IMPORTED_DRAFT;
   const r=SAVES[id]={id,title,el:makeSaveTab(id,title),timer:null,serverId:null,
-    body:{category,inplace,inplaceDraft}};
+    body:{category,inplace,inplaceDraft,draftId:CURWS}};  // draftId=지금 탭 → 서버가 '그 탭 글'을 저장
   runSave(r, null);
 }
 $('#save').onclick=()=>{
@@ -1425,9 +1619,9 @@ $('#save').onclick=()=>{
   fireSave(title, CATEGORY);
   // 2) 같은 글 중복 저장 방지 — 다음 [초안 생성]/[받아온 글]에서 다시 활성화된다.
   $('#save').disabled=true;
-  // 3) 바로 "새 글 쓸까요?" 확인 — 확인하면 폼을 비우고 다음 글로 넘어간다.
+  // 3) 바로 "새 글 쓸까요?" 확인 — 확인하면 새 탭을 연다(이 글 탭은 그대로 남음).
   confirmModal('임시저장을 시작했어요',
-    '저장은 뒤에서 진행돼요. 새 글을 작성할까요?<br><span style="color:var(--sub)">지금 메모·사진·미리보기는 비워집니다.</span>',
+    '저장은 뒤에서 진행돼요. 새 글을 작성할까요?<br><span style="color:var(--sub)">새 탭이 열려요 · 이 글 탭은 그대로 남습니다.</span>',
     '새 글 작성', '이 글 유지', doNewPost, null, '📝');
 };
 
@@ -1872,6 +2066,9 @@ $('#catmodal').onclick=e=>{ if(e.target===$('#catmodal'))closeCatModal(); };
 $('#capok').onclick=capSubmit; $('#capx').onclick=closeCapModal; $('#capcancel').onclick=closeCapModal;
 $('#capinput').onkeydown=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))capSubmit(); else if(e.key==='Escape')closeCapModal(); };
 $('#capmodal').onclick=e=>{ if(e.target===$('#capmodal'))closeCapModal(); };
+// 메모를 치는 대로 현재 탭 제목이 갱신되게(초안 생성 전에도 어느 탭인지 알아보게).
+{ const mo=$('#memo'); if(mo) mo.addEventListener('input', ()=>renderTabs()); }
+initWorkspaces();  // 초기 탭 1개 생성(맨 마지막: 위 초기화가 끝난 화면 상태를 캡처)
 </script></body></html>"""
 
 
@@ -2114,7 +2311,8 @@ def _make_handler(state: dict):
                 elif path == "/api/photo_categories":
                     self._add_photo_category(self._json_body())
                 elif path == "/api/categories":
-                    cats = _fetch_categories()
+                    with state["publish_lock"]:  # 다른 브라우저 작업과 직렬화(세션 충돌 방지)
+                        cats = _fetch_categories()
                     state["categories"] = cats
                     self._send(200, json.dumps({"categories": cats}).encode())
                 elif path == "/api/sticker-tags":
@@ -2438,7 +2636,7 @@ def _make_handler(state: dict):
                 use_cache=True,  # 같은 URL 재수집 방지(export/캡션과 캐시 공유)
                 inplace=bool(body.get("inplace")),  # 불러온 글 in-place 편집(사진 재정렬 휴리스틱 끔)
             )
-            self._send_plan(result)
+            self._send_plan(result, draft_id=(body.get("draftId") or "").strip() or None)
 
         def _import_draft(self, body):
             """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱 → 게시 플랜(생성과 동일 흐름)."""
@@ -2476,11 +2674,21 @@ def _make_handler(state: dict):
                 product_links=_links(body, "productLinks"),
                 sponsor_sticker=(body.get("sponsorSticker") or "").strip(),
             )
-            self._send_plan(result)
+            self._send_plan(result, draft_id=(body.get("draftId") or "").strip() or None)
 
-        def _send_plan(self, result):
-            """PipelineResult → {title, blocks, debug} JSON. generate/import 공통."""
+        def _send_plan(self, result, draft_id: str | None = None):
+            """PipelineResult → {title, blocks, debug} JSON. generate/import 공통.
+
+            draft_id(탭 id)가 오면 그 글을 state["drafts"]에 id로 보관해, 나중에 게시가
+            '그 탭의 글'을 정확히 집어 저장하게 한다(여러 탭이 state["last"]를 덮어써도 안전).
+            """
             state["last"] = result
+            if draft_id:
+                drafts = state["drafts"]
+                drafts[draft_id] = result
+                # 무한증식 방지: 삽입 순서상 가장 오래된 것부터 버려 최근 30개만 유지.
+                while len(drafts) > 30:
+                    drafts.pop(next(iter(drafts)))
             blocks = []
             for b in result.plan.blocks:
                 blk = {"kind": b.kind, "text": b.text, "variant": b.variant, "align": b.align}
@@ -2528,7 +2736,10 @@ def _make_handler(state: dict):
                 # 게시할 플랜은 '요청이 들어온 시점'의 초안으로 고정한다(락 대기 전에 스냅샷).
                 # 유저가 저장을 누른 뒤 곧바로 새 글을 써서 state["last"]가 바뀌어도,
                 # 이 요청은 방금 누른 그 글을 저장한다(연속 저장이 안 섞이게).
-                result = state.get("last")
+                # 멀티 탭: 요청이 draftId(탭 id)를 주면 그 탭의 글을 정확히 집는다.
+                # 없거나 못 찾으면 가장 최근 글(state["last"])로 폴백(단일 탭 하위호환).
+                draft_id = (body.get("draftId") or "").strip() or None
+                result = (state["drafts"].get(draft_id) if draft_id else None) or state.get("last")
                 if not result:
                     self._send(400, json.dumps({"error": "먼저 초안을 생성하세요"}).encode())
                     return
@@ -2611,14 +2822,17 @@ def _make_handler(state: dict):
             """네이버 임시저장 글 목록을 읽어 [{idx,title,date}]로 반환."""
             from autoblog.publish.editor import BlogPublisher
 
-            pub = BlogPublisher(headless=True)
-            pub.start()
-            try:
-                if not pub.wait_for_login():
-                    raise RuntimeError("네이버 로그인이 필요합니다")
-                drafts = pub.list_drafts()
-            finally:
-                pub.close()
+            # 게시와 같은 락으로 직렬화한다. 같은 네이버 세션을 쓰는 브라우저가 동시에 뜨면
+            # '작성 중이던 글' 이어쓰기 팝업 등이 겹쳐 클릭이 막힌다(딤 인터셉트).
+            with state["publish_lock"]:
+                pub = BlogPublisher(headless=True)
+                pub.start()
+                try:
+                    if not pub.wait_for_login():
+                        raise RuntimeError("네이버 로그인이 필요합니다")
+                    drafts = pub.list_drafts()
+                finally:
+                    pub.close()
             self._send(200, json.dumps({"drafts": drafts}).encode())
 
         def _import_draft_photos(self, body):
@@ -2634,14 +2848,16 @@ def _make_handler(state: dict):
             except (TypeError, ValueError):
                 self._send(400, json.dumps({"error": "idx가 필요합니다"}).encode())
                 return
-            pub = BlogPublisher(headless=True)
-            pub.start()
-            try:
-                if not pub.wait_for_login():
-                    raise RuntimeError("네이버 로그인이 필요합니다")
-                manifest = pub.import_draft_media(idx, UPLOAD_DIR)
-            finally:
-                pub.close()
+            # 게시와 같은 락으로 직렬화(동시 브라우저→세션 충돌·이어쓰기 팝업 겹침 방지).
+            with state["publish_lock"]:
+                pub = BlogPublisher(headless=True)
+                pub.start()
+                try:
+                    if not pub.wait_for_login():
+                        raise RuntimeError("네이버 로그인이 필요합니다")
+                    manifest = pub.import_draft_media(idx, UPLOAD_DIR)
+                finally:
+                    pub.close()
             # 프론트로: 사진·영상은 경로 있는 미디어로, 콜라주(고정 앵커)는 경로 없이 종류만.
             media = [m for m in manifest if m.get("path")]
             paths = [m["path"] for m in media if m["kind"] == "image"]
@@ -3328,6 +3544,10 @@ def serve_ui(host: str = "127.0.0.1", port: int = 8770) -> ThreadingHTTPServer:
     """글쓰기 UI 서버 생성. publish는 블로킹이라 스레드 서버 사용."""
     state: dict = {
         "last": None,
+        # 멀티 탭: 생성/불러온 글을 draftId별로 보관(탭마다 독립). 게시 때 이 id로 '그 탭의 글'을
+        # 정확히 집어 저장한다. state["last"](가장 최근 하나)만으론 여러 탭이 서로 덮어써서
+        # 엉뚱한 탭이 게시되는 사고가 난다. 무한증식 방지로 최근 N개만 유지(_store_draft).
+        "drafts": {},
         "thumbs": {},
         "label": {"running": False, "done": 0, "total": 0},
         # 임시저장을 한 건씩 순서대로 처리하는 직렬화 락(여러 건을 연속으로 눌러도
