@@ -312,7 +312,7 @@ def build_publish_plan(
     sponsor_sticker: str = "",
     sticker_catalog=None,
     inplace: bool = False,
-    bare_text_sticker: bool = True,
+    bare_text_sticker: bool = False,
 ) -> PublishPlan:
     """초안 → 게시 플랜 (줄 단위 마커 파싱).
 
@@ -333,9 +333,9 @@ def build_publish_plan(
     sponsor_links를 주면 그 URL들을 링크 카드로 본문 텍스트 사이 고른 위치에 분산 삽입한다.
     product_links(상품 리뷰의 필수 링크)도 같은 방식으로 카드 삽입한다(협찬과 무관, 각 한 번씩).
 
-    bare_text_sticker=True면 사진이 앞에 몰려 뒤쪽이 텍스트만 남은 문단(앞뒤로 사진 없는
-    본문 블록)에 이모티콘을 하나씩 붙여 허전함을 채운다(fill_imageless_text). 사진 배치를
-    바꾸지는 않는다 — 사진이 없는 자리에만 스티커로 보조. picker 없으면 아무것도 안 함.
+    bare_text_sticker(기본 꺼짐)를 켜면 사진이 앞에 몰려 뒤쪽이 텍스트만 남은 문단(앞뒤로
+    사진 없는 본문 블록)에 이모티콘을 하나씩 붙여 허전함을 채운다(fill_imageless_text).
+    기계적 삽입이라 기본은 끄고, 사진 분산은 초안 프롬프트 안내에 맡긴다(prompt.py 사진 구성).
     """
     photos = list(photos or [])
     lines = draft.text.split("\n")

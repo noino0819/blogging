@@ -178,11 +178,11 @@ def _filler_picker():
 
 
 def test_bare_text_gets_filler_sticker():
-    # 사진이 앞에 몰려 뒤쪽 문단이 텍스트만 남으면 그 문단 끝에 이모티콘을 채운다.
+    # 옵션(기본 꺼짐)을 켜면: 사진이 앞에 몰려 뒤쪽 문단이 텍스트만 남으면 그 끝에 이모티콘을 채운다.
     # 사진 2장을 앞에서 다 쓰고, 뒤 두 섹션(구분선으로 나뉜 텍스트)은 사진이 없다.
     draft = DraftResult(text="제목\n\n인트로.\n[사진]\n[사진]\n[구분선]\n둘째 섹션.\n[구분선]\n셋째 섹션.")
     photos = [PhotoItem(path="a.jpg", label="음식"), PhotoItem(path="b.jpg", label="음식")]
-    plan = build_publish_plan(draft, photos, picker=_filler_picker())
+    plan = build_publish_plan(draft, photos, picker=_filler_picker(), bare_text_sticker=True)
     kinds = [b.kind for b in plan.blocks]
     # 사진 배치·순서는 그대로, 사진 없는 뒤쪽 텍스트 문단에만 스티커가 붙는다
     assert [b.image_path for b in plan.blocks if b.kind == "image"] == ["a.jpg", "b.jpg"]
@@ -197,7 +197,7 @@ def test_bare_text_skips_header_and_photo_adjacent():
     # 첫 사진 앞(인트로)과 사진에 붙은 문단에는 스티커를 넣지 않는다
     draft = DraftResult(text="제목\n\n인트로 문단.\n[사진]\n사진 옆 문단.")
     photos = [PhotoItem(path="a.jpg", label="음식")]
-    plan = build_publish_plan(draft, photos, picker=_filler_picker())
+    plan = build_publish_plan(draft, photos, picker=_filler_picker(), bare_text_sticker=True)
     # 인트로(첫 사진 앞)·사진 바로 뒤 문단 모두 사진과 붙어 있어 스티커 없음
     assert all(b.kind != "sticker" for b in plan.blocks)
     assert [b.kind for b in plan.blocks] == ["text", "image", "text"]
@@ -220,9 +220,9 @@ def test_bare_text_disabled():
 
 
 def test_bare_text_skipped_when_no_photos():
-    # 사진이 아예 없는 글은 대상 아님(허전한 문단 채우기 안 함)
+    # 옵션을 켜도, 사진이 아예 없는 글은 대상 아님(허전한 문단 채우기 안 함)
     draft = DraftResult(text="제목\n\n첫 문단.\n[구분선]\n둘째 문단.")
-    plan = build_publish_plan(draft, picker=_filler_picker())
+    plan = build_publish_plan(draft, picker=_filler_picker(), bare_text_sticker=True)
     assert all(b.kind != "sticker" for b in plan.blocks)
 
 
