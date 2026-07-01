@@ -51,6 +51,21 @@ flowchart LR
 
 ## 화면
 
+<div align="center">
+
+<!--
+  📌 스크린샷/GIF 넣는 곳:
+     글쓰기 화면을 캡처해 docs/preview.png (또는 데모 녹화 docs/demo.gif) 로 저장하면
+     아래 이미지가 자동으로 표시됩니다. GIF면 src를 docs/demo.gif 로 바꾸세요.
+-->
+<img src="docs/preview.png" alt="autoblog 글쓰기 화면" width="820" />
+
+<sub><i>· 메모·수집·사진·서식을 좌측에서 넣고, 우측 미리보기에서 실제 서식 그대로 확인한 뒤 임시저장합니다.</i></sub>
+
+</div>
+
+<br>
+
 일반 사용자는 터미널을 쓰지 않습니다. `autoblog ui` 한 줄(또는 패키징된 더블클릭 앱)이 로컬 웹 서버를 띄우고 브라우저에 글쓰기 화면을 엽니다. **npm·node 없이** 파이썬 표준 라이브러리만으로 동작합니다.
 
 <table>
