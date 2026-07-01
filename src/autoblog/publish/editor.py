@@ -522,11 +522,65 @@ class BlogPublisher:
         else:
             self._anchor_after_video()
 
+    # 불러온 글에서 지울 '장식' 컴포넌트를 고르는 JS.
+    # 사진(se-image)·영상(se-video)·본문 텍스트(se-text)·제목(se-documentTitle)이 '아닌' 모든
+    # 컴포넌트(= 스티커·지도(장소)·링크카드·인용구·구분선 등)를 대상으로 본다. 종류마다 클래스가
+    # 달라도 '보존 대상이 아니면 제거'로 잡아 놓치지 않는다. 첫 제거 대상의 문서 순 인덱스와
+    # 남은 제거 대상 총수({idx, count})를 돌려준다(count로 삭제 진전 여부를 판정).
+    _REMOVABLE_COMP_JS = r"""
+    () => {
+      const comps = [...document.querySelectorAll('.se-component')];
+      const keep = /se-text|se-image|se-video|se-documentTitle/;
+      let idx = -1, count = 0;
+      for (let i = 0; i < comps.length; i++) {
+        if (keep.test(comps[i].className.toString())) continue;
+        if (idx < 0) idx = i;
+        count++;
+      }
+      return {idx, count};
+    }
+    """
+
+    def _remove_imported_extras(self) -> int:
+        """불러온 임시저장 글에 이미 들어 있던 '장식' 컴포넌트(스티커·지도·링크카드·인용구·구분선)를
+        지운다 — 사진/영상/본문 텍스트/제목은 그대로 둔다.
+
+        새 플랜이 같은 종류(스티커·지도·링크 등)를 다시 넣으므로, 옛것을 남겨두면 중복된다.
+        컴포넌트를 클릭해 객체선택한 뒤 Delete로 제거하고, 하나 지울 때마다 문서 순서가 바뀌므로
+        매번 첫 제거 대상을 다시 찾는다. 지운 개수를 반환한다. (안전 상한으로 무한루프 방지,
+        직전 삭제가 먹히지 않아 남은 개수가 안 줄면 더 시도하지 않고 멈춘다.)"""
+        page = self._page
+        removed = 0
+        prev_count = None
+        for _ in range(80):  # 안전 상한(무한루프 방지)
+            info = page.evaluate(self._REMOVABLE_COMP_JS)
+            count, idx = info["count"], info["idx"]
+            if count == 0 or idx < 0:
+                break
+            if prev_count is not None and count >= prev_count:
+                break  # 직전 삭제가 반영 안 됨(진전 없음) — 더 시도해도 소용없어 중단
+            prev_count = count
+            comps = page.query_selector_all(".se-component")
+            if idx >= len(comps):
+                break
+            try:
+                comps[idx].scroll_into_view_if_needed()
+                comps[idx].click()  # 컴포넌트 객체 선택
+                page.wait_for_timeout(200)
+                page.keyboard.press("Delete")
+                page.wait_for_timeout(300)
+            except Exception:  # noqa: BLE001 - 한 컴포넌트 삭제 실패가 전체를 막지 않게
+                page.keyboard.press("Escape")
+                break
+            removed += 1
+        return removed
+
     def publish_inplace(
         self, plan, *, draft_idx: int | None = None,
         draft_title: str | None = None, draft_date: str = "",
         photo_paths: list[str] | None = None,
         category: str | None = None, save: bool = True,
+        clean_imported: bool = True,
     ) -> list[str]:
         """불러온 임시저장 글에 'in-place'로 본문을 짜 넣는다(M1: 사진·영상 현 위치 고정).
 
@@ -539,7 +593,11 @@ class BlogPublisher:
 
         글 식별: draft_title을 주면(권장) 발행 직전에 제목+날짜로 목록에서 idx를 '다시' 찾는다
         (위치 번호가 밀려 엉뚱한 글을 덮어쓰는 사고 방지). 못 찾으면 RuntimeError로 중단한다.
-        draft_title 없이 draft_idx만 주면 그 번호로 로드한다(테스트·단발 용)."""
+        draft_title 없이 draft_idx만 주면 그 번호로 로드한다(테스트·단발 용).
+
+        clean_imported=True(기본)면, 로드 직후 원본 글에 이미 들어 있던 스티커·지도·링크카드
+        등 장식 블록을 지운다(사진·영상·본문은 보존) — 새 플랜이 같은 종류를 다시 넣으므로
+        남겨두면 옛것과 중복된다. False면 원본 장식을 그대로 두고 그 사이에 본문만 끼워 넣는다."""
         page = self._page
         warnings: list[str] = []
         self.open_write_page()
@@ -560,6 +618,19 @@ class BlogPublisher:
         except Exception:
             pass
         page.wait_for_timeout(800)
+
+        # 본문을 짜 넣기 전에, 불러온 원본 글에 이미 있던 스티커·지도·링크카드 등 장식 블록을
+        # 먼저 정리한다(사진/영상/본문은 보존). 새 플랜이 같은 종류를 다시 넣으므로 남겨두면
+        # 옛것과 중복된다. 정리는 보조 기능이라 실패해도 본문 작성은 그대로 진행한다.
+        if clean_imported:
+            try:
+                n = self._remove_imported_extras()
+                if n:
+                    warnings.append(
+                        f"불러온 글에 있던 스티커·지도 등 장식 {n}개를 지우고 새로 작성했어요."
+                    )
+            except Exception:  # noqa: BLE001 - 정리 실패는 본문 작성에 영향 없음
+                page.keyboard.press("Escape")
 
         # 제목 — 불러온 원본 글의 제목 칸을 새 글 제목으로 교체(기존 내용 지우고 다시 입력).
         # (publish와 달리 in-place는 기존 글을 여는 거라 제목 칸이 차 있으므로 clear 필요)
@@ -1218,7 +1289,42 @@ class BlogPublisher:
         self._pick_insert_variant("horizontal-line", max(variant, 1))
         self._page.wait_for_timeout(500)
         if align and align != "left":
-            self._apply_align(align)
+            self._align_divider(align)
+
+    def _align_divider(self, value: str = "center"):
+        """방금 넣은 구분선(HR 컴포넌트)을 가운데 등으로 정렬.
+
+        구분선은 텍스트 '문단'이 아니라 컴포넌트라, 커서 위치 정렬(_apply_align)은 옆 빈 문단에만
+        걸리고 HR엔 안 박힌다(짧은 장식형 구분선이 왼쪽에 붙는 원인). HR 컴포넌트를 직접 클릭해
+        선택한 뒤 정렬하고, 내부 .se-section의 se-section-align-{value} 클래스로 실제 적용을 검증한다."""
+        page = self._page
+        comps = page.query_selector_all(".se-component.se-horizontalLine")
+        if not comps:  # 못 찾으면 종전 방식이라도 시도
+            self._apply_align(value)
+            return
+        hr = comps[-1]
+        for _ in range(3):
+            try:
+                hr.scroll_into_view_if_needed()
+                hr.click()  # HR 컴포넌트 선택(객체 선택)
+            except Exception:  # noqa: BLE001
+                page.keyboard.press("Escape")
+            page.wait_for_timeout(200)
+            # 컴포넌트(구분선) 정렬은 data-name="align" 버튼을 쓴다 — 텍스트 문단용
+            # align-drop-down-with-justify(=_apply_align)는 구분선엔 옵션이 안 떠 무음 실패한다.
+            page.evaluate(
+                "()=>{const b=document.querySelector('li.se-toolbar-item-align button');if(b)b.click();}"
+            )
+            page.wait_for_timeout(300)
+            page.evaluate(
+                "(v)=>{const o=document.querySelector("
+                "'button[data-name=\"align\"][data-value=\"'+v+'\"]');if(o)o.click();}",
+                value,
+            )
+            page.wait_for_timeout(250)
+            sec = hr.query_selector(".se-section-horizontalLine")
+            if sec and f"se-section-align-{value}" in (sec.get_attribute("class") or ""):
+                return
 
     def _insert_quote(
         self, text: str, variant: int = 1, align: str | None = None, at_end: bool = True
