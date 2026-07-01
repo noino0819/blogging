@@ -611,7 +611,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <h2 class=title>설정</h2>
     <p class=desc>글쓰기 규칙을 관리합니다.</p>
     <div class=card id=rules></div>
-    <div class=card><h3>임시저장</h3><div id=draftset></div><div id=savedebug></div></div>
+    <div class=card><h3>임시저장</h3><div id=draftset></div><div id=cleanimp></div><div id=savedebug></div></div>
   </section>
 </main>
 <script>
@@ -775,6 +775,7 @@ const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:fal
 let PRUNE=true;  // 임시저장 시 같은 제목 이전 글 자동 정리(설정 토글)
 let IMPORTED_DRAFT=null;  // 사진을 가져온 원본 임시저장 글 {title,date} — 저장 완료 후 삭제 대상
 let SAVEDBG=false;  // 디버그: 임시저장 시 브라우저를 화면에 띄워 작업 과정을 직접 본다(headful)
+let CLEANIMP=true;  // 불러오기(in-place): 원본 글의 기존 스티커·지도 등 장식 삭제 후 작성(설정 토글)
 const RULE_META=[
  ['mobile_friendly','모바일 친화','문단을 2~3줄로 짧게, 여백 넉넉히(네이버 트래픽 대부분 모바일)'],
  ['authenticity','진정성','과장·상투구·AI식 표현 피하고 솔직·담백하게(단점도 자연스럽게)'],
@@ -1464,7 +1465,7 @@ $('#stickerall').onclick=function(){FMT.stickerAll=!FMT.stickerAll;
 
 // 글쓰기 설정(규칙·협찬·톤·카테고리) 서버 저장/복원 — 새로고침해도 유지
 async function savePrefs(){try{await fetch('/api/prefs',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,personaId:PERSONA_ID,minChars:$('#minchars').value,category:CATEGORY,pruneDrafts:PRUNE,saveDebug:SAVEDBG})});}catch(e){}}
+  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,personaId:PERSONA_ID,minChars:$('#minchars').value,category:CATEGORY,pruneDrafts:PRUNE,saveDebug:SAVEDBG,cleanImported:CLEANIMP})});}catch(e){}}
 async function loadPrefs(){
   let asked=true;
   try{const p=await (await fetch('/api/prefs')).json();
@@ -1476,9 +1477,10 @@ async function loadPrefs(){
     if(typeof p.category==='string')setCategory(p.category);
     if(typeof p.pruneDrafts==='boolean')PRUNE=p.pruneDrafts;
     if(typeof p.saveDebug==='boolean')SAVEDBG=p.saveDebug;
+    if(typeof p.cleanImported==='boolean')CLEANIMP=p.cleanImported;
     asked=!!p.pruneDraftsAsked;
   }catch(e){}
-  renderRules(); renderDraftSet(); renderSaveDebug(); applyFmtState();
+  renderRules(); renderDraftSet(); renderCleanImp(); renderSaveDebug(); applyFmtState();
   if(!asked)askPrune();  // 최초 1회만: 자동 정리 켤지 물어봄
 }
 // 저장된 협찬/스티커 상태를 토글 UI에 반영(서식 칩은 제거됨)
@@ -1503,6 +1505,16 @@ function renderDraftSet(){const c=$('#draftset'); if(!c)return; c.innerHTML='';
     <div class=d>새 글을 임시저장하면 <b>같은 제목</b>의 이전 임시저장 글을 삭제해 최신 1건만 남겨요. (네이버 임시저장 삭제는 복구 불가)</div></div>
     <div class="sw ${PRUNE?'on':''}"></div>`;
   row.querySelector('.sw').onclick=function(){PRUNE=!PRUNE; this.classList.toggle('on',PRUNE); savePrefs();};
+  c.appendChild(row);
+}
+// 불러오기(in-place): 기존 글의 스티커·지도 등 장식을 지우고 새로 작성(설정)
+function renderCleanImp(){const c=$('#cleanimp'); if(!c)return; c.innerHTML='';
+  const row=document.createElement('div'); row.className='setrow';
+  row.innerHTML=`<div><div class=t>불러온 글 장식 정리</div>
+    <div class=d>글을 <b>불러와</b> 이어 쓸 때, 기존에 들어 있던 <b>스티커·지도·링크카드</b> 등 장식은 지우고 새로 작성해요. 사진·동영상·본문은 그대로 둬요.</div></div>
+    <div class="sw ${CLEANIMP?'on':''}"></div>`;
+  row.querySelector('.sw').onclick=function(){CLEANIMP=!CLEANIMP; this.classList.toggle('on',CLEANIMP); savePrefs();
+    toast(CLEANIMP?'불러온 글의 기존 스티커·지도는 지우고 새로 작성할게요.':'불러온 글의 기존 스티커·지도를 그대로 두고 작성할게요.','info');};
   c.appendChild(row);
 }
 // 디버그: 임시저장 과정을 화면에 띄워 직접 본다(headful 브라우저)
@@ -2431,6 +2443,8 @@ def _make_handler(state: dict):
                 imported = None
             # 디버그 토글이 켜져 있으면 저장 과정을 화면에 띄워(headful) 직접 보게 한다(기본 끔=백그라운드).
             headless = not bool(prefs.get("saveDebug", False))
+            # 불러오기(in-place) 시 원본 글의 기존 스티커·지도 등 장식 정리 여부(설정 토글, 기본 켬).
+            clean_imported = bool(prefs.get("cleanImported", True))
 
             # 불러온 글 in-place 편집 요청(불러오기로 들어온 글). 있으면 원본을 '갱신'한다
             # — 새 글 생성·원본 삭제·사진 재업로드 없이, 기존 사진/영상 사이에 본문만 끼워 넣는다.
@@ -2464,6 +2478,7 @@ def _make_handler(state: dict):
                             photo_paths=photo_paths,
                             category=category,
                             save=True,
+                            clean_imported=clean_imported,
                         )
                     else:
                         warnings = pub.publish(
@@ -2541,6 +2556,8 @@ _PREFS_DEFAULT = {
     "pruneDraftsAsked": False,
     # 디버그: 임시저장 시 브라우저를 화면에 띄워(headful) 작업 과정을 직접 본다(기본 끔=백그라운드).
     "saveDebug": False,
+    # 불러오기(in-place) 시 원본 글의 기존 스티커·지도·링크카드 등 장식을 지우고 새로 작성(기본 켬).
+    "cleanImported": True,
 }
 
 
@@ -2630,6 +2647,8 @@ def _save_prefs(body: dict) -> None:
         cur["pruneDraftsAsked"] = bool(body.get("pruneDraftsAsked"))
     if "saveDebug" in body:
         cur["saveDebug"] = bool(body.get("saveDebug"))
+    if "cleanImported" in body:
+        cur["cleanImported"] = bool(body.get("cleanImported"))
     PREFS_PATH.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
