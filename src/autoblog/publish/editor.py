@@ -575,6 +575,55 @@ class BlogPublisher:
             removed += 1
         return removed
 
+    # 아직 '내용이 있는' 첫 본문 텍스트 컴포넌트의 인덱스와, 내용 있는 텍스트 컴포넌트 총수를
+    # 돌려주는 JS(제목 se-documentTitle은 제외 — 제목은 _type_title(clear=True)에서 따로 지운다).
+    _NONEMPTY_TEXT_JS = r"""
+    () => {
+      const cs = [...document.querySelectorAll('.se-component.se-text')];
+      let idx = -1, count = 0;
+      for (let i = 0; i < cs.length; i++) {
+        if ((cs[i].innerText || '').trim().length === 0) continue;
+        if (idx < 0) idx = i;
+        count++;
+      }
+      return {idx, count};
+    }
+    """
+
+    def _clear_imported_body(self) -> int:
+        """불러온 글의 본문 텍스트 컴포넌트 내용을 모두 비운다(사진/영상은 보존).
+
+        SE는 컴포넌트마다 별도 contenteditable이라, 텍스트 컴포넌트에 커서를 넣고 Ctrl+A를 누르면
+        그 컴포넌트 내용'만' 선택된다(_type_title의 제목 지우기와 같은 방식). Delete로 지우면 빈
+        문단만 남고, 그 자리에 새 플랜 본문이 앵커(사진 뒤)로 들어간다. 내용이 남은 텍스트
+        컴포넌트가 없을 때까지 반복하고(매번 다시 탐색), 비운 컴포넌트 수를 반환한다."""
+        page = self._page
+        cleared = 0
+        prev_count = None
+        for _ in range(200):  # 안전 상한(무한루프 방지)
+            info = page.evaluate(self._NONEMPTY_TEXT_JS)
+            count, idx = info["count"], info["idx"]
+            if count == 0 or idx < 0:
+                break
+            if prev_count is not None and count >= prev_count:
+                break  # 직전 비우기가 반영 안 됨(진전 없음) — 중단
+            prev_count = count
+            comps = page.query_selector_all(".se-component.se-text")
+            if idx >= len(comps):
+                break
+            try:
+                comps[idx].scroll_into_view_if_needed()
+                comps[idx].click()  # 그 텍스트 컴포넌트에 커서 진입
+                page.wait_for_timeout(150)
+                page.keyboard.press("ControlOrMeta+a")  # 그 컴포넌트 내용만 선택
+                page.keyboard.press("Delete")
+                page.wait_for_timeout(200)
+            except Exception:  # noqa: BLE001 - 한 컴포넌트 비우기 실패가 전체를 막지 않게
+                page.keyboard.press("Escape")
+                break
+            cleared += 1
+        return cleared
+
     def publish_inplace(
         self, plan, *, draft_idx: int | None = None,
         draft_title: str | None = None, draft_date: str = "",
@@ -595,9 +644,10 @@ class BlogPublisher:
         (위치 번호가 밀려 엉뚱한 글을 덮어쓰는 사고 방지). 못 찾으면 RuntimeError로 중단한다.
         draft_title 없이 draft_idx만 주면 그 번호로 로드한다(테스트·단발 용).
 
-        clean_imported=True(기본)면, 로드 직후 원본 글에 이미 들어 있던 스티커·지도·링크카드
-        등 장식 블록을 지운다(사진·영상·본문은 보존) — 새 플랜이 같은 종류를 다시 넣으므로
-        남겨두면 옛것과 중복된다. False면 원본 장식을 그대로 두고 그 사이에 본문만 끼워 넣는다."""
+        clean_imported=True(기본)면, 로드 직후 원본 글의 옛 내용을 비우고 새로 쓴다 — 제목·본문
+        텍스트·스티커·지도·링크카드 등 장식을 모두 지우고(사진·영상은 그대로 보존) 새 플랜 내용을
+        넣는다. 남겨두면 옛 제목·본문·장식이 새 내용과 뒤섞이기 때문. False면 원본을 그대로 두고
+        기존 사진/장식 사이에 본문만 끼워 넣는다(옛 본문·장식 유지)."""
         page = self._page
         warnings: list[str] = []
         self.open_write_page()
@@ -619,15 +669,18 @@ class BlogPublisher:
             pass
         page.wait_for_timeout(800)
 
-        # 본문을 짜 넣기 전에, 불러온 원본 글에 이미 있던 스티커·지도·링크카드 등 장식 블록을
-        # 먼저 정리한다(사진/영상/본문은 보존). 새 플랜이 같은 종류를 다시 넣으므로 남겨두면
-        # 옛것과 중복된다. 정리는 보조 기능이라 실패해도 본문 작성은 그대로 진행한다.
+        # 본문을 짜 넣기 전에, 불러온 원본 글의 옛 내용을 비운다(사진/영상은 보존):
+        #  ① 스티커·지도·링크카드 등 장식 블록 삭제, ② 본문 텍스트 컴포넌트 내용 비우기.
+        # (제목은 아래 _type_title(clear=True)에서 지운다.) 새 플랜이 제목·본문·장식을 모두
+        # 다시 넣으므로, 옛것을 남겨두면 새 내용과 뒤섞인다. 정리는 보조라 실패해도 작성은 진행.
         if clean_imported:
             try:
-                n = self._remove_imported_extras()
-                if n:
+                extras = self._remove_imported_extras()
+                cleared = self._clear_imported_body()
+                if extras or cleared:
                     warnings.append(
-                        f"불러온 글에 있던 스티커·지도 등 장식 {n}개를 지우고 새로 작성했어요."
+                        f"불러온 글의 옛 내용을 정리했어요(장식 {extras}개 삭제, 본문 {cleared}곳 비움) "
+                        "— 사진·영상은 그대로 두고 새로 작성했어요."
                     )
             except Exception:  # noqa: BLE001 - 정리 실패는 본문 작성에 영향 없음
                 page.keyboard.press("Escape")

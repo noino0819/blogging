@@ -1507,14 +1507,14 @@ function renderDraftSet(){const c=$('#draftset'); if(!c)return; c.innerHTML='';
   row.querySelector('.sw').onclick=function(){PRUNE=!PRUNE; this.classList.toggle('on',PRUNE); savePrefs();};
   c.appendChild(row);
 }
-// 불러오기(in-place): 기존 글의 스티커·지도 등 장식을 지우고 새로 작성(설정)
+// 불러오기(in-place): 기존 글의 제목·본문·장식을 비우고 새로 작성(설정)
 function renderCleanImp(){const c=$('#cleanimp'); if(!c)return; c.innerHTML='';
   const row=document.createElement('div'); row.className='setrow';
-  row.innerHTML=`<div><div class=t>불러온 글 장식 정리</div>
-    <div class=d>글을 <b>불러와</b> 이어 쓸 때, 기존에 들어 있던 <b>스티커·지도·링크카드</b> 등 장식은 지우고 새로 작성해요. 사진·동영상·본문은 그대로 둬요.</div></div>
+  row.innerHTML=`<div><div class=t>불러온 글 비우고 새로 쓰기</div>
+    <div class=d>글을 <b>불러와</b> 이어 쓸 때, 기존 <b>제목·본문 글·스티커·지도·링크카드</b>는 지우고 새 내용으로 다시 써요. <b>사진·동영상은 그대로</b> 두고요. 끄면 기존 본문·장식을 남긴 채 사진 사이에 본문만 끼워 넣어요.</div></div>
     <div class="sw ${CLEANIMP?'on':''}"></div>`;
   row.querySelector('.sw').onclick=function(){CLEANIMP=!CLEANIMP; this.classList.toggle('on',CLEANIMP); savePrefs();
-    toast(CLEANIMP?'불러온 글의 기존 스티커·지도는 지우고 새로 작성할게요.':'불러온 글의 기존 스티커·지도를 그대로 두고 작성할게요.','info');};
+    toast(CLEANIMP?'불러온 글의 기존 제목·본문·장식은 지우고 새로 작성할게요.':'불러온 글의 기존 본문·장식을 그대로 두고 작성할게요.','info');};
   c.appendChild(row);
 }
 // 디버그: 임시저장 과정을 화면에 띄워 직접 본다(headful 브라우저)
@@ -2443,7 +2443,7 @@ def _make_handler(state: dict):
                 imported = None
             # 디버그 토글이 켜져 있으면 저장 과정을 화면에 띄워(headful) 직접 보게 한다(기본 끔=백그라운드).
             headless = not bool(prefs.get("saveDebug", False))
-            # 불러오기(in-place) 시 원본 글의 기존 스티커·지도 등 장식 정리 여부(설정 토글, 기본 켬).
+            # 불러오기(in-place) 시 원본 글의 기존 제목·본문·장식을 비우고 새로 쓸지(설정 토글, 기본 켬).
             clean_imported = bool(prefs.get("cleanImported", True))
 
             # 불러온 글 in-place 편집 요청(불러오기로 들어온 글). 있으면 원본을 '갱신'한다
@@ -2556,7 +2556,7 @@ _PREFS_DEFAULT = {
     "pruneDraftsAsked": False,
     # 디버그: 임시저장 시 브라우저를 화면에 띄워(headful) 작업 과정을 직접 본다(기본 끔=백그라운드).
     "saveDebug": False,
-    # 불러오기(in-place) 시 원본 글의 기존 스티커·지도·링크카드 등 장식을 지우고 새로 작성(기본 켬).
+    # 불러오기(in-place) 시 원본 글의 기존 제목·본문·스티커·지도 등을 비우고 새로 작성(기본 켬).
     "cleanImported": True,
 }
 
