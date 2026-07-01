@@ -110,6 +110,9 @@ def _wrap_line(line: str, max_len: int) -> list[str]:
 _LIST_LINE_RE = re.compile(r"^[ \t]*(?:[0-9]️?⃣|🔟|✅|✓|👉|🌟)")
 # 상품 리뷰에서 구조 표식으로 쓰는 🌟은 금지 이모지 제거에서 예외로 둔다.
 _PRODUCT_KEEP_EMOJI = "🌟"
+# 핵심 요약 박스(키캡 줄)의 "소제목: 설명" 콜론을 em-dash로 바꾼다 — 콜론이 어색하다는 피드백.
+# 키캡으로 시작하는 줄에만, 첫 콜론 하나만 적용한다(시간 표기·👉 구매처: 등 다른 콜론은 보존).
+_KEYCAP_COLON_RE = re.compile(r"^([ \t]*[0-9]️?⃣[^\n:]*?)[ \t]*:[ \t]*", re.MULTILINE)
 
 
 def wrap_long_lines(text: str, max_len: int = 30, *, keep_list_lines: bool = False) -> str:
@@ -158,6 +161,8 @@ def enforce_format(
         text = text.replace(ch, "")
     for bad, good in _FORBIDDEN_PHRASES.items():  # 금지 표현 완화
         text = text.replace(bad, good)
+    if allow_checklist:  # 상품: 키캡 요약 줄의 "소제목: 설명" 콜론 → em-dash
+        text = _KEYCAP_COLON_RE.sub(r"\1 — ", text)
     if wrap:
         text = wrap_long_lines(text, max_len, keep_list_lines=allow_checklist)
     # 치환으로 생긴 줄 끝 공백 / 과도한 빈 줄 정리
