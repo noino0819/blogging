@@ -1,6 +1,6 @@
 <div align="center">
 
-# ✍️ autoblog
+<img src="https://readme-typing-svg.demolab.com?font=Pacifico&size=72&color=03C75A&center=true&vCenter=true&width=520&height=115&duration=4000&pause=99999999&lines=Autoblog" alt="Autoblog" />
 
 <img src="https://readme-typing-svg.demolab.com?font=Noto+Sans+KR&weight=600&size=21&duration=2600&pause=700&color=03C75A&center=true&vCenter=true&width=560&height=42&lines=%EC%82%AC%EC%A7%84%EC%9D%84+%EB%84%A3%EC%9C%BC%EB%A9%B4%2C+%EA%B2%BD%ED%97%98+%EC%A4%91%EC%8B%AC%EC%9D%98+%EA%B8%80%EC%9D%84;%EA%B0%95%EC%A1%B0%C2%B7%EA%B5%AC%EB%B6%84%EC%84%A0%C2%B7%EC%8A%A4%ED%8B%B0%EC%BB%A4%EA%B9%8C%EC%A7%80+%EC%9E%90%EB%8F%99+%EC%84%9C%EC%8B%9D;%EB%84%A4%EC%9D%B4%EB%B2%84+%EB%B8%94%EB%A1%9C%EA%B7%B8%EC%97%90+%EC%9E%84%EC%8B%9C%EC%A0%80%EC%9E%A5%C2%B7%EB%B0%9C%ED%96%89%EA%B9%8C%EC%A7%80" alt="typing" />
 
@@ -30,19 +30,13 @@
 
 ## 전체 흐름
 
-```mermaid
-flowchart LR
-    IN([📸 사진 · 경험 메모<br/>가게 / 상품 URL]):::io
-    C[정보 수집<br/><sub>검색 API · 스크래핑 · Vision</sub>]:::step
-    D[초안 작성<br/><sub>LLM · 마커 자동 삽입</sub>]:::step
-    F[포맷 & 스타일<br/><sub>모바일 최적화 후처리</sub>]:::step
-    P[네이버 게시<br/><sub>Smart Editor 자동화</sub>]:::step
-    OUT([✅ 임시저장 / 발행]):::io
-
-    IN --> C --> D --> F --> P --> OUT
-
-    classDef step fill:#03C75A,stroke:#00813a,stroke-width:0,color:#ffffff,rx:8,ry:8;
-    classDef io fill:#eafaf0,stroke:#03C75A,stroke-width:1.5px,color:#1f2329,rx:8,ry:8;
+```text
+  입력                   1. 수집                2. 초안               3. 서식               4. 게시
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│ 사진·경험 메모 │  ──▶ │ 검색 API      │  ──▶ │ LLM 작성      │  ──▶ │ 모바일 최적화  │  ──▶ │ Smart Editor │
+│ 가게/상품 URL │      │ 스크래핑·Vision│      │ 마커 자동 삽입 │      │ 후처리        │      │ 임시저장/발행 │
+└─────────────┘      └─────────────┘      └─────────────┘      └─────────────┘      └─────────────┘
+     입력 →              사실 카드(JSON) →        초안(+마커) →          정돈된 본문 →           네이버 발행
 ```
 
 수집한 사실 카드(JSON)를 바탕으로 초안 LLM이 글을 쓰고, 이때 강조·구분선·인용구·스티커·사진 배치 **마커를 스스로 삽입**합니다. 이후 결정적 후처리로 모바일 화면에 맞게 다듬고, Smart Editor 자동화로 네이버에 올립니다.
