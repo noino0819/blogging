@@ -91,10 +91,17 @@ def build_system_prompt(
     return "\n\n".join(blocks)
 
 
-def build_user_prompt(card: FactCard, experience_memo: str, template_text: str | None = None) -> str:
+def build_user_prompt(
+    card: FactCard,
+    experience_memo: str,
+    template_text: str | None = None,
+    inplace: bool = False,
+) -> str:
     """재료(경험 메모=주연, 사실 카드=조연) → 사용자 프롬프트.
 
     재료 구분용 머리말은 모델이 본문에 인용하지 않도록 명시한다(라벨 누수 방지).
+    inplace=True(불러온 글 편집)면 동영상은 위치를 못 바꾸므로 [영상] 마커를 재료에 나열된
+    순서 그대로 넣도록 못박는다(재업로드 불가 → 순서 고정).
     """
     facts = render_fact_card(card)
     parts = [
@@ -117,6 +124,10 @@ def build_user_prompt(card: FactCard, experience_memo: str, template_text: str |
                 f"보유 사진: {photo_summary(imgs)} (총 {n}장)\n"
                 f"이 {n}장을 한 장도 빠짐없이 모두 본문에 배치하세요. 사진 수만큼 마커를 넣어야 합니다"
                 f"(마커가 모자라면 남은 사진이 글 끝에 몰려 들어갑니다).\n"
+                "사진은 글 전체에 고루 나눠, 사진↔설명 문단이 번갈아 오도록 배치하세요. "
+                "여러 장을 앞부분에 몰아 넣으면 뒤쪽이 글만 남아 밋밋해집니다 — 사진만 3장 넘게 "
+                "연달아 붙이지 말고(꼭 함께 봐야 하는 사진이 아니라면), 사이사이에 그 사진을 "
+                "설명하는 문단을 두어 처음부터 끝까지 사진과 글이 고르게 섞이게 하세요.\n"
                 "사진을 먼저 보여주고 그 아래에서 설명하는 순서로 쓰세요. "
                 "[사진:라벨] 을 한 줄로 먼저 넣고, 그 다음 문단에서 방금 보여준 사진을 설명하세요"
                 f"(라벨은 보유 사진의 분류명: {', '.join(labels)}).\n"
@@ -125,12 +136,26 @@ def build_user_prompt(card: FactCard, experience_memo: str, template_text: str |
             )
         if vids:
             nv = len(vids)
-            parts.append(
-                "# 동영상 구성\n"
-                f"보유 동영상 {nv}개. 동영상도 빠짐없이 본문에 배치하세요. 동영상 개수만큼 [영상] 마커를 넣습니다.\n"
-                "동영상이 어울리는 문맥(예: 매장 분위기·조리 과정·제품 시연)에 [영상] 을 한 줄로 먼저 넣고 "
-                "그 아래 문단에서 영상 내용을 설명하세요. [영상] 마커가 모자라면 남은 영상이 본문에 자동 분산됩니다."
+            vlines = [
+                "# 동영상 구성",
+                f"보유 동영상 {nv}개(아래 순서대로). 동영상도 빠짐없이 본문에 배치하세요 — 개수만큼 [영상] 마커를 넣습니다.",
+            ]
+            for i, v in enumerate(vids, 1):  # 문서 순서대로 번호+내용(유저 캡션)
+                cap = (v.caption or v.label or "").strip()
+                vlines.append(f"  {i}) {cap}" if cap else f"  {i}) (내용 설명 없음)")
+            vlines.append(
+                "각 동영상이 어울리는 문맥(예: 매장 분위기·조리 과정·제품 시연)에 [영상] 을 한 줄로 먼저 넣고 "
+                "그 아래 문단에서 그 영상 내용을 설명하세요."
             )
+            if inplace:
+                vlines.append(
+                    "중요: 이 글은 기존 글을 편집하는 것이라 동영상은 위치를 바꿀 수 없습니다. "
+                    "[영상] 마커는 반드시 위에 나열된 순서 그대로(1번 영상 먼저, 그다음 2번…) 한 개씩 넣고, "
+                    "순서를 바꾸거나 빠뜨리지 마세요."
+                )
+            else:
+                vlines.append("[영상] 마커가 모자라면 남은 영상이 본문에 자동 분산됩니다.")
+            parts.append("\n".join(vlines))
         if "협찬" in labels:
             parts.append(
                 "# 협찬 사진 배치 (필수)\n"
@@ -138,7 +163,7 @@ def build_user_prompt(card: FactCard, experience_memo: str, template_text: str |
                 "[사진:협찬] 을 한 줄 단독으로 가장 먼저 넣어 최상단에 배치하세요. "
                 "다른 어떤 사진·문단보다 앞서야 하며, 협찬 사진에는 따로 설명 문단을 붙이지 않아도 됩니다."
             )
-        captioned = [p for p in card.photos if p.caption]
+        captioned = [p for p in imgs if p.caption]  # 사진만(영상 캡션은 동영상 구성에 별도)
         if captioned:
             parts.append(
                 "# 사진 내용 (각 사진이 구체적으로 무엇인지 — 이 설명에 맞는 문맥에 배치하세요)\n"

@@ -60,6 +60,16 @@ def test_user_prompt_experience_is_lead():
     assert "언급하거나 인용하지 마세요" in user  # 라벨 누수 방지 지시
 
 
+def test_photo_prompt_advises_spreading():
+    # 사진 배치 안내에 '고루 분산 / 앞에 몰지 말라'가 들어간다(근본 처방)
+    from autoblog.collect.fact_card import PhotoItem
+
+    card = _place_card()
+    card.photos = [PhotoItem(path=f"{i}.jpg", label="음식") for i in range(4)]
+    user = build_user_prompt(card, "맛있게 먹었다")
+    assert "고루" in user and "몰아" in user
+
+
 def test_guideline_checklist():
     g = Guidelines(
         required_keywords=["수지맛집", "초밥"],
@@ -121,8 +131,10 @@ def test_product_checklist_box_preserved():
     # 키캡 결합문자(⃣ U+20E3)·✅·🌟·👉가 살아 있어야 한다(변이 선택자 FE0F는 빠질 수 있음)
     assert "⃣" in prod and "✅" in prod and "🌟" in prod and "👉" in prod
     assert "!" not in prod and ".ᐟ" in prod  # 느낌표는 상품 모드에서도 치환
-    # 긴 핵심요약 줄이 한 줄로 유지(쪼개지지 않음)
-    assert "첫인상: 100% 재활용 가능한 폴리에틸렌이라 아주 착한 소재예요" in prod
+    # 키캡 요약 줄은 "소제목: 설명"의 콜론이 em-dash로 바뀌고 한 줄로 유지(쪼개지지 않음)
+    assert "첫인상 — 100% 재활용 가능한 폴리에틸렌이라 아주 착한 소재예요" in prod
+    assert "첫인상:" not in prod  # 키캡 줄 콜론 제거
+    assert "👉 구매처: 공식 스토어" in prod  # 키캡 줄 아닌 곳의 콜론은 보존
 
     base = enforce_format(raw, allow_checklist=False)
     assert "✅" not in base and "🌟" not in base  # 맛집 모드는 기존대로 제거
