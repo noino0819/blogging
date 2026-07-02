@@ -739,8 +739,11 @@ class BlogPublisher:
         photo_paths: list[str] | None = None,
         category: str | None = None, save: bool = True,
         clean_imported: bool = True,
-    ) -> list[str]:
+    ) -> tuple[list[str], list[str]]:
         """불러온 임시저장 글을 'in-place'로 편집한다(영상·콜라주 고정, 사진은 플랜대로 재배치).
+
+        반환: (warnings, infos). warnings는 사람이 확인·보완해야 하는 항목,
+        infos는 정상 동작에 대한 안내(예: 옛 내용 정리 알림)라 확인이 필요 없다.
 
         영상은 재업로드가 불가(유실)하고 콜라주는 낱장으로 못 옮기니 '고정 앵커'로 그대로 두고,
         사진은 전부 삭제한 뒤 plan 순서대로 다시 넣는다. 이러면 LLM이 정한 사진·텍스트 순서가
@@ -759,6 +762,7 @@ class BlogPublisher:
         기존 사진/장식 사이에 본문만 끼워 넣는다(옛 본문·장식 유지)."""
         page = self._page
         warnings: list[str] = []
+        infos: list[str] = []  # 정상 동작 안내 — warnings와 달리 '확인 필요'가 아님
         self.open_write_page()
         if draft_title:
             idx = self._resolve_draft_idx(draft_title, draft_date)
@@ -787,7 +791,8 @@ class BlogPublisher:
                 extras = self._remove_imported_extras()
                 cleared = self._clear_imported_body()
                 if extras or cleared:
-                    warnings.append(
+                    # 정리는 clean_imported 기본 동작이라 오류·확인 대상이 아님 → 안내(infos)로 전달
+                    infos.append(
                         f"불러온 글의 옛 내용을 정리했어요(장식 {extras}개 삭제, 본문 {cleared}곳 비움) "
                         "— 사진·영상은 그대로 두고 새로 작성했어요."
                     )
@@ -891,7 +896,7 @@ class BlogPublisher:
             if category:
                 self._apply_category_for_draft(category)
             self.save_draft()
-        return warnings
+        return warnings, infos
 
     def import_draft_photos(self, idx: int, dest_dir: Path) -> list[str]:
         """idx번 임시저장 글을 에디터에 로드해 본문 사진을 dest_dir에 내려받고 로컬 경로 목록을 반환.

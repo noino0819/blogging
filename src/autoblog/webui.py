@@ -1605,7 +1605,7 @@ function runSave(r, retryId){
       if(d && d.jobId) r.serverId=d.jobId;         // 실패 응답에도 jobId가 실려와 재시도가 가능
       if(!res.ok) throw new Error(d.error||'알 수 없는 오류');
       const sec=r.timer?r.timer.stop():0; r.timer=null;
-      const warns=d.warnings||[];
+      const warns=d.warnings||[], infos=d.infos||[];  // infos=정상 동작 안내(확인 불필요)
       if(warns.length){
         tabSetState(r,'warn','⚠'); cntEl.textContent='확인 필요';
         warnModal(`'${r.title}' 임시저장됨 — 일부 항목 확인 필요`,
@@ -1617,6 +1617,7 @@ function runSave(r, retryId){
         notify('임시저장 완료 ✓', `'${r.title}' — 네이버 글쓰기 › 저장 목록`);
         setTimeout(()=>removeSave(r.id), 4000);    // 성공 탭은 잠깐 ✓ 후 사라짐
       }
+      if(infos.length) infos.forEach(m=>toast(m,'info'));
     })
     .catch(e=>{ if(r.timer){r.timer.stop(); r.timer=null;}
       tabSetState(r,'err','!'); cntEl.textContent='실패';
@@ -2815,7 +2816,7 @@ def _make_handler(state: dict):
                                 ph.path for ph in result.card.photos
                                 if getattr(ph, "media_kind", "image") != "video"
                             ]
-                            warnings = pub.publish_inplace(
+                            warnings, infos = pub.publish_inplace(
                                 result.plan,
                                 draft_title=inplace_draft.get("title") or "",
                                 draft_date=inplace_draft.get("date") or "",
@@ -2825,6 +2826,7 @@ def _make_handler(state: dict):
                                 clean_imported=clean_imported,
                             )
                         else:
+                            infos = []
                             warnings = pub.publish(
                                 result.plan,
                                 category=category,
@@ -2842,7 +2844,8 @@ def _make_handler(state: dict):
                 return
             jobs.pop(job_id, None)  # 성공 → 스냅샷 정리(더는 재시도 불필요)
             self._send(200, json.dumps(
-                {"ok": True, "warnings": warnings or [], "jobId": job_id}
+                {"ok": True, "warnings": warnings or [],
+                 "infos": infos or [], "jobId": job_id}
             ).encode())
 
         def _list_drafts(self):

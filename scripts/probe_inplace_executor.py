@@ -72,7 +72,7 @@ def main() -> int:
 
         # 3) 실행(저장 안 함) — publish_inplace가 글을 다시 로드해 끼워넣는다
         print("[probe] publish_inplace 실행(save=False)…")
-        warnings = pub.publish_inplace(plan, draft_idx=draft_idx, photo_paths=None, save=False)
+        warnings, infos = pub.publish_inplace(plan, draft_idx=draft_idx, photo_paths=None, save=False)
 
         # 4) 결과 덤프 + 검증
         rows = page.evaluate(_DUMP_JS)

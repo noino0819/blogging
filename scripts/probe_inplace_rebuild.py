@@ -60,7 +60,7 @@ def main() -> int:
         plan = PublishPlan(title="재배치 검증", blocks=blocks)
 
         print("[probe] publish_inplace(save=False) 실행 — 사진 삭제→재배치…")
-        warnings = pub.publish_inplace(
+        warnings, infos = pub.publish_inplace(
             plan, draft_idx=idx, photo_paths=imgs[:5], save=False, clean_imported=True
         )
 

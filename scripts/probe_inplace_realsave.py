@@ -63,12 +63,14 @@ def main() -> int:
 
         # 실제 저장 — 제목+날짜로 글 재식별해서 그 글을 갱신
         print("[run] publish_inplace(save=True) …")
-        warnings = pub.publish_inplace(
+        warnings, infos = pub.publish_inplace(
             plan, draft_title=target["title"], draft_date=target["date"],
             photo_paths=None, save=True,
         )
         if warnings:
             print("[warn]", warnings)
+        if infos:
+            print("[info]", infos)
         page.wait_for_timeout(1500)
 
         # AFTER: 목록 개수 비교(새 글 생겼는지)
