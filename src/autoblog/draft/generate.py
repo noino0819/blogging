@@ -70,6 +70,9 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
     generate_draft가 쓰는 것과 동일한 조립 로직. 외부 챗봇에 붙여넣을 프롬프트
     내보내기에도 재사용한다(같은 지시문이 들어가도록 단일 출처 유지).
     """
+    from autoblog.collect.fact_card import CardType
+
+    is_product = req.fact_card.type == CardType.product
     base = req.base_prompt or load_base_prompt(card=req.fact_card)
     system = build_system_prompt(base, req.style, req.guidelines, req.rules)
     if req.emphasis:
@@ -90,7 +93,7 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
 
         system = f"{system}\n\n{build_place_instruction()}"
     # 자가 점검은 항상 맨 끝에(모델이 마지막으로 읽는 최종 게이트) — 맛집·상품 공통.
-    system = f"{system}\n\n{build_selfcheck_instruction()}"
+    system = f"{system}\n\n{build_selfcheck_instruction(is_product)}"
     user = build_user_prompt(
         req.fact_card, req.experience_memo, req.template_text, inplace=req.inplace
     )
