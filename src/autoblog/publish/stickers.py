@@ -228,12 +228,12 @@ class StickerPicker:
     def _candidates(self, label: str) -> list[Sticker]:
         if label:
             cands = self.catalog.find(label, favorites_only=self.favorites_only)
-        else:  # 라벨 없는 [스티커] → 즐겨쓰기(헤더형 제외 — 제목 라벨은 자동 선택 대상 아님)
+        else:  # 라벨 없는 [스티커] → 즐겨쓰기 중 감정형만(헤더=수동 전용, 구분선=전환 자리 전용)
             by_ref = self.catalog.by_ref()
             cands = [
                 by_ref[r]
                 for r in self.catalog.favorites
-                if r in by_ref and not by_ref[r].stale and not by_ref[r].is_heading
+                if r in by_ref and not by_ref[r].stale and by_ref[r].kind == KIND_EMOTION
             ]
         pack = self._locked_pack
         if pack:
@@ -367,7 +367,9 @@ def build_sticker_instruction(labels: list[str]) -> str | None:
             "2) 구분선 스티커 — 화제가 바뀌는 문단 사이에 단독으로 넣어 구역을 나눕니다"
             "(감정과 무관, 글 전체 0~2번).\n"
             f"   쓸 수 있는 상황(이 중에서만, 글자 그대로): {', '.join(divider_labels[:20])}\n"
-            f"   예) …메뉴 이야기 끝.\n   [스티커:{dex}]\n   이제 분위기 이야기…"
+            f"   예) …메뉴 이야기 끝.\n   [스티커:{dex}]\n   이제 분위기 이야기…\n"
+            "   한 전환점에는 구분선 하나만 — [구분선] 마커와 같은 자리에 겹쳐 쓰지 마세요"
+            "(붙여 쓰면 선이 두 줄로 보입니다)."
         )
     parts.append(
         "규칙:\n"
@@ -413,7 +415,9 @@ STICKER_LABEL_PROMPT = (
     "kind 판정: 캐릭터·표정이 주인공이고 감정이나 반응을 표현하면 '감정'. "
     "글자가 주인공인 소제목 라벨이나 안내문(고지) 배너, 말풍선 틀처럼 본문을 꾸미는 "
     "틀이면 '헤더' — 이때 tags 첫 항목은 적힌 라벨을 띄어쓰기 없이 그대로 쓰세요. "
-    "내용 글자 없이 구역만 나누는 가로선·장식 띠면 '구분선'."
+    "구역을 나누는 가로선이나 작은 장식(꽃·별·점·리본 등)이 가로로 나란히 반복되는 "
+    "띠면 '구분선' — 장식이나 캐릭터에 표정이 있어도 나란히 반복되는 배열이면 "
+    "감정이 아니라 '구분선'입니다."
 )
 
 # 스티커 crop이 ~100px로 작아 한글 OCR이 뭉개짐 → 업스케일 후 비전에 전달(정확도 크게 향상).

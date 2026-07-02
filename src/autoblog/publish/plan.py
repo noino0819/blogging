@@ -263,6 +263,7 @@ class PublishBlock(BaseModel):
     variant: int = 1  # 구분선/인용구 종류(1=기본)
     sticker_pack: str | None = None  # 스티커 팩 코드(picker 해석 결과)
     sticker_index: int | None = None  # 스티커 data-index
+    sticker_kind: str = ""  # 스티커 분류(감정/구분선/헤더) — 구분선 겹침 방어에 사용
     align: str | None = None  # 단락 정렬: center/right/justify (None=기본 왼쪽)
     place_address: str | None = None  # 장소 카드: 수집 도로명 주소(검색 결과 매칭용)
 
@@ -318,7 +319,10 @@ def fill_imageless_text(
         chosen = picker.pick("")
         if chosen:
             out.append(
-                PublishBlock(kind="sticker", sticker_pack=chosen.pack, sticker_index=chosen.index)
+                PublishBlock(
+                    kind="sticker", sticker_pack=chosen.pack, sticker_index=chosen.index,
+                    sticker_kind=chosen.kind,
+                )
             )
             skip_next = True
     return out
@@ -518,7 +522,8 @@ def build_publish_plan(
             if chosen:  # 해석 실패(picker 없음/매칭 없음)면 마커 자체를 버림(본문 누수 방지)
                 blocks.append(
                     PublishBlock(
-                        kind="sticker", sticker_pack=chosen.pack, sticker_index=chosen.index
+                        kind="sticker", sticker_pack=chosen.pack, sticker_index=chosen.index,
+                        sticker_kind=chosen.kind,
                     )
                 )
         elif quote_m:
@@ -551,9 +556,16 @@ def build_publish_plan(
         )
 
     # 구분선이 연달아 붙으면(마커 두 번·자동+마커 겹침 등) 하나로 합친다.
+    # 구분선 '분류' 스티커도 구분선으로 취급 — LLM이 [구분선]과 [스티커:구분선…]을 같은
+    # 전환점에 겹쳐 emit하면 선이 두 줄이 되므로, 겹칠 땐 스티커 쪽을 남긴다(장식이 더 풍부).
+    def _dividerish(b: PublishBlock) -> bool:
+        return b.kind == "divider" or (b.kind == "sticker" and b.sticker_kind == "구분선")
+
     deduped: list[PublishBlock] = []
     for b in blocks:
-        if b.kind == "divider" and deduped and deduped[-1].kind == "divider":
+        if _dividerish(b) and deduped and _dividerish(deduped[-1]):
+            if b.kind == "sticker" and deduped[-1].kind == "divider":
+                deduped[-1] = b  # 네이티브 구분선을 스티커로 교체
             continue
         deduped.append(b)
     blocks = deduped

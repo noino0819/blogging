@@ -202,6 +202,24 @@ def test_empty_label_pick_skips_heading():
     assert picker.pick("").ref == "ogq_m:15"
 
 
+def test_empty_label_pick_skips_divider():
+    # 라벨 없는 자동 선택은 감정형만 — 구분선형은 화제 전환 자리 전용이라 건너뛴다
+    cat = StickerCatalog(
+        stickers=[
+            Sticker(pack="p", index=0, tags=["구분선"], image="p/0.png"),
+            Sticker(pack="p", index=1, tags=["기쁨"], image="p/1.png"),
+        ],
+        favorites=["p:0", "p:1"],
+    )
+    assert StickerPicker(cat).pick("").ref == "p:1"
+
+
+def test_sticker_instruction_divider_no_stacking():
+    # 구분선 스티커 안내에 네이티브 [구분선]과 겹치지 말라는 지시가 포함된다
+    instr = build_sticker_instruction(["기쁨", "구분선"])
+    assert "겹쳐 쓰지 마세요" in instr
+
+
 def test_kind_property_precedence():
     from autoblog.publish.stickers import Sticker
 

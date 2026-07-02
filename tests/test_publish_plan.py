@@ -401,6 +401,39 @@ def test_coupang_partners_link_no_raw_url_text():
     assert all(b.keep_url_text is False for b in p3.blocks if b.kind == "link")
 
 
+def _divider_sticker_picker():
+    from autoblog.publish.stickers import Sticker, StickerCatalog, StickerPicker
+
+    cat = StickerCatalog(
+        stickers=[
+            Sticker(pack="ogq_d", index=7, tags=["구분선", "꽃"]),
+            Sticker(pack="ogq_m", index=1, tags=["기쁨"]),
+        ],
+        favorites=["ogq_d:7", "ogq_m:1"],
+    )
+    return StickerPicker(cat)
+
+
+def test_divider_sticker_not_stacked_with_native_divider():
+    # LLM이 [구분선]과 구분선 스티커를 같은 전환점에 겹쳐 emit하면 스티커만 남는다
+    draft = DraftResult(text="제목\n\n첫 문단.\n[구분선]\n[스티커:구분선]\n둘째 문단.")
+    plan = build_publish_plan(draft, picker=_divider_sticker_picker())
+    assert [b.kind for b in plan.blocks] == ["text", "sticker", "text"]
+    assert plan.blocks[1].sticker_kind == "구분선"
+    # 반대 순서(스티커 다음 [구분선])도 하나만
+    draft2 = DraftResult(text="제목\n\n첫 문단.\n[스티커:구분선]\n[구분선]\n둘째 문단.")
+    plan2 = build_publish_plan(draft2, picker=_divider_sticker_picker())
+    assert [b.kind for b in plan2.blocks] == ["text", "sticker", "text"]
+
+
+def test_emotion_sticker_next_to_divider_kept():
+    # 감정 스티커는 구분선과 붙어 있어도 합치지 않는다(문단 끝 반응 + 화제 전환은 공존 가능)
+    draft = DraftResult(text="제목\n\n정말 좋았어요.\n[스티커:기쁨]\n[구분선]\n다음 이야기.")
+    plan = build_publish_plan(draft, picker=_divider_sticker_picker())
+    assert [b.kind for b in plan.blocks] == ["text", "sticker", "divider", "text"]
+    assert plan.blocks[1].sticker_kind == "감정"
+
+
 def test_selectors_ready():
     # 라이브 분석으로 핵심 셀렉터(제목/본문/저장/발행) 확정됨
     assert selectors_ready() is True
