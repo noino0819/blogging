@@ -128,4 +128,4 @@ def test_user_prompt_includes_captions():
 def test_photo_categories_loaded():
     cats = load_photo_categories()
     assert "기타" in cats["place"]
-    assert "상세페이지" in cats["product"]
+    assert "언박싱" in cats["product"]
