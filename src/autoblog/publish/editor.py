@@ -268,8 +268,8 @@ class BlogPublisher:
             except Exception as exc:  # noqa: BLE001 - 강조는 보조라 실패해도 본문 유지
                 self._page.keyboard.press("Escape")
                 _ = exc
-        # 저장 직전: 중앙정렬이 빠진 문단을 DOM에서 검증해 자동복구(왼쪽정렬 사진 상속/무음 실패 대비).
-        self._heal_alignment_if_uniform(plan, warnings)
+        # 저장 직전: 문단 정렬을 플랜과 대조해 자동복구(사진 정렬 상속/무음 실패 대비).
+        self._heal_alignment(plan, warnings)
         if save:
             # 임시저장에도 카테고리가 반영되도록, 발행 레이어에서 카테고리만 고르고 레이어를 닫는다.
             # (submit이면 아래 발행 분기에서 카테고리를 고르므로 중복 적용하지 않는다.)
@@ -803,6 +803,7 @@ class BlogPublisher:
             # 제목 선택만 풀어두면 아래 _place_anchor가 커서를 알아서 잡는다(30초 타임아웃 방지).
             if page.query_selector(SMART_EDITOR["content_component"]):
                 page.click(SMART_EDITOR["content_component"])
+                self._reset_text_toggles()  # publish와 동일 — 남은 토글 서식(굵게 등) 해제
             else:
                 page.keyboard.press("Escape")
 
@@ -884,8 +885,8 @@ class BlogPublisher:
                 self._apply_emphasis(span.text, span.style)
             except Exception:  # noqa: BLE001
                 page.keyboard.press("Escape")
-        # 저장 직전: 중앙정렬 검증·자동복구(in-place는 사진 앵커마다 사진 정렬을 상속해 특히 취약).
-        self._heal_alignment_if_uniform(plan, warnings)
+        # 저장 직전: 문단 정렬 검증·자동복구(in-place는 사진 앵커마다 사진 정렬을 상속해 특히 취약).
+        self._heal_alignment(plan, warnings)
         if save:
             if category:
                 self._apply_category_for_draft(category)
@@ -1157,10 +1158,13 @@ class BlogPublisher:
     def _type_text_block(self, block: PublishBlock):
         """본문 한 블록 입력. \\n은 Enter(문단), 블록 끝에 빈 줄 하나.
 
-        block.align(center 등)이 있으면 타이핑 전에 현재 단락에 걸어 둔다 — SE는 정렬을
-        다음 단락으로 이어받으므로 글 전체가 center면 그대로 유지된다(left로 되돌리지 않음)."""
-        if block.align and block.align != "left":
-            self._apply_align(block.align)
+        정렬은 상속에 맡기지 않고 블록마다 명시한다 — SE는 새 문단이 직전 문단이나
+        사진 '컴포넌트'의 정렬을 이어받아, 사진 뒤에 앵커된 문단이 사진 정렬(left 등)을
+        그대로 상속한다. 그래서 left 블록도 건너뛰지 않고 걸어야 한다(안 걸면 직전이
+        center일 때 left가 조용히 빠진다). 현재 정렬을 읽어 다를 때만 적용해 비용을 줄인다."""
+        target = block.align or "left"
+        if self._current_align() != target:
+            self._apply_align(target)
         self._type_with_keycaps(block.text)
         self._page.keyboard.press("Enter")
 
@@ -1363,15 +1367,17 @@ class BlogPublisher:
             if cur == value or cur == "":  # 일치하면 끝(못 읽으면 더 깨지않게 멈춘다)
                 return
 
-    # 본문 텍스트 문단별 (index, 정렬토큰, 내용유무)를 떠내는 JS.
+    # 본문 텍스트 문단별 (index, 정렬토큰, 내용유무, 내용)를 떠내는 JS.
     # 정렬은 문단 className 의 se-text-paragraph-align-{left|center|right} 로 박힌다(라이브 검증됨).
+    # text는 플랜의 텍스트 블록 줄과 대조해 '이 문단이 원래 어떤 정렬이어야 하는지' 찾는 데 쓴다.
     _PARA_ALIGN_DUMP_JS = r"""
     () => {
       const out = [];
       const paras = document.querySelectorAll('.se-component.se-text .se-text-paragraph');
       paras.forEach((p, i) => {
         const m = (p.className.toString().match(/se-text-paragraph-align-(\w+)/) || [])[1] || 'left';
-        out.push({i, align: m, hasText: (p.textContent || '').trim().length > 0});
+        const t = (p.textContent || '').trim();
+        out.push({i, align: m, hasText: t.length > 0, text: t});
       });
       return out;
     }
@@ -1410,23 +1416,57 @@ class BlogPublisher:
                     self._page.keyboard.press("Escape")
         return fixed
 
-    def _heal_alignment_if_uniform(self, plan, warnings: list[str]) -> None:
-        """플랜의 텍스트 블록 정렬이 한 값(보통 center)으로 통일돼 있으면 그 값으로 검증·복구한다.
+    # 문단 내용 대조용 정규화 — 공백과 변이 선택자(U+FE0F)를 지운다. 키캡 이모지는
+    # 타이핑 시 표준형(숫자+FE0F+⃣)으로 정규화돼 플랜 원문과 DOM이 다를 수 있어서다.
+    @staticmethod
+    def _norm_para_key(s: str) -> str:
+        return re.sub(r"[\s️]+", "", s or "")
 
-        본문 텍스트 블록 정렬이 섞여 있으면(예: 일부 left) 문단↔블록 매핑이 모호해 자동복구는
-        건너뛰고, 어긋난 문단 수만 경고로 알린다(엉뚱한 문단을 강제 정렬하지 않도록)."""
-        text_aligns = {(b.align or "left") for b in plan.blocks if b.kind == "text"}
-        if text_aligns == {"center"}:
-            n = self._verify_and_fix_alignment("center")
-            if n:
-                warnings.append(f"중앙정렬이 빠진 문단 {n}개를 자동으로 다시 중앙정렬했어요.")
-        elif len(text_aligns) > 1:
-            bad = [p for p in self._read_paragraph_aligns() if p["hasText"] and p["align"] != "center"]
-            if bad:
-                warnings.append(
-                    f"본문 정렬이 섞여 있어(텍스트 블록 정렬 {sorted(text_aligns)}) 자동복구는 건너뛰었어요. "
-                    f"중앙정렬이 아닌 문단 {len(bad)}개가 있으니 확인이 필요합니다."
-                )
+    def _heal_alignment(self, plan, warnings: list[str]) -> None:
+        """저장 직전, 본문 문단들의 실제 정렬을 플랜과 '내용으로' 대조해 어긋난 문단을 복구한다.
+
+        문단 내용(공백 제거)으로 플랜 텍스트 블록의 줄을 찾아 그 줄의 기대 정렬과 비교하므로,
+        정렬이 섞인 글(해시태그 left + 본문 center 등)도 문단 단위로 정확히 복구한다
+        (종전에는 '전부 center'일 때만 복구하고 섞이면 경고만 남겼다). 같은 내용의 줄이
+        여럿이면 문서 순서대로 플랜 순서에 대응시킨다. 한 문단을 고치면 SE 상속으로 뒤
+        빈 문단 정렬이 바뀔 수 있어 몇 번 훑는다."""
+        expected: dict[str, list[str]] = {}
+        for b in plan.blocks:
+            if b.kind != "text":
+                continue
+            for ln in b.text.split("\n"):
+                key = self._norm_para_key(ln)
+                if key:
+                    expected.setdefault(key, []).append(b.align or "left")
+        if not expected:
+            return
+        fixed = 0
+        for _ in range(3):
+            pending = {k: list(v) for k, v in expected.items()}
+            bad: list[tuple[int, str]] = []
+            for p in self._read_paragraph_aligns():
+                aligns = pending.get(self._norm_para_key(p.get("text", "")))
+                if not aligns:
+                    continue  # 플랜에 없는 문단(빈 줄·불러온 글 잔여 등)은 건드리지 않는다
+                want = aligns.pop(0)
+                if p["align"] != want:
+                    bad.append((p["i"], want))
+            if not bad:
+                break
+            for i, want in bad:
+                nodes = self._page.query_selector_all(".se-component.se-text .se-text-paragraph")
+                if i >= len(nodes):
+                    continue
+                try:
+                    nodes[i].scroll_into_view_if_needed()
+                    nodes[i].click()
+                    self._page.wait_for_timeout(150)
+                    self._apply_align(want)
+                    fixed += 1
+                except Exception:  # noqa: BLE001 - 한 문단 복구 실패가 전체를 막지 않게
+                    self._page.keyboard.press("Escape")
+        if fixed:
+            warnings.append(f"정렬이 어긋난 문단 {fixed}개를 자동으로 다시 정렬했어요.")
 
     def _apply_emphasis(self, text: str, style: EmphasisStyle):
         """본문에서 text를 선택 → 글자색/배경색을 커스텀 hex로 정확히 적용.
@@ -1448,28 +1488,42 @@ class BlogPublisher:
             self._apply_font_size(style.font_size)
 
     def _apply_font(self, font_value: str):
-        """선택 텍스트에 서체 적용(프리셋 fontFamily). 드롭다운 열고 data-value 옵션 클릭."""
-        page = self._page
-        page.evaluate("()=>{const b=document.querySelector('li.se-toolbar-item-font-family button');if(b)b.click();}")
-        page.wait_for_timeout(400)
-        page.evaluate(
-            "(v)=>{const o=[...document.querySelectorAll('button[data-name=\"font-family\"][data-role=\"option\"]')]"
-            ".find(e=>e.getAttribute('data-value')===v);if(o)o.click();}",
-            font_value,
+        """선택 텍스트에 서체 적용(프리셋 fontFamily). 드롭다운 열고 data-value 옵션 클릭.
+
+        드롭다운이 타이밍에 따라 늦게 렌더되면 옵션 클릭이 빈손으로 끝나 서체가 조용히
+        안 먹는다(_apply_align에서 잡았던 것과 같은 무음 실패) → 옵션을 실제로 눌렀는지
+        확인하고 못 눌렀으면 드롭다운을 다시 열어 재시도한다."""
+        self._pick_toolbar_option(
+            "li.se-toolbar-item-font-family button", "font-family", font_value
         )
-        page.wait_for_timeout(300)
 
     def _apply_font_size(self, size):
-        """선택 텍스트에 글자 크기 적용(프리셋 fontSize → data-value 'fs<N>')."""
-        page = self._page
-        page.evaluate("()=>{const b=document.querySelector('li.se-toolbar-item-font-size-code button');if(b)b.click();}")
-        page.wait_for_timeout(400)
-        page.evaluate(
-            "(v)=>{const o=[...document.querySelectorAll('button[data-name=\"font-size\"][data-role=\"option\"]')]"
-            ".find(e=>e.getAttribute('data-value')===v);if(o)o.click();}",
-            f"fs{size}",
+        """선택 텍스트에 글자 크기 적용(프리셋 fontSize → data-value 'fs<N>'). 무음 실패 재시도 동일."""
+        self._pick_toolbar_option(
+            "li.se-toolbar-item-font-size-code button", "font-size", f"fs{size}"
         )
-        page.wait_for_timeout(300)
+
+    def _pick_toolbar_option(self, button_sel: str, name: str, value: str) -> bool:
+        """툴바 드롭다운을 열고 data-name/data-value 옵션을 '확인하며' 클릭(서체·글자크기 공용).
+
+        옵션이 아직 안 떠 못 눌렀으면 드롭다운을 다시 열어 몇 번 재시도한다. 눌렀으면 True."""
+        page = self._page
+        for _ in range(3):
+            page.evaluate(
+                "(sel)=>{const b=document.querySelector(sel);if(b)b.click();}", button_sel
+            )
+            page.wait_for_timeout(400)
+            clicked = page.evaluate(
+                "(a)=>{const o=[...document.querySelectorAll("
+                "'button[data-name=\"'+a.name+'\"][data-role=\"option\"]')]"
+                ".find(e=>e.getAttribute('data-value')===a.value);"
+                "if(o){o.click();return true;}return false;}",
+                {"name": name, "value": value},
+            )
+            page.wait_for_timeout(300)
+            if clicked:
+                return True
+        return False
 
     def _select_body_text(self, text: str) -> bool:
         """본문에서 text를 실제 마우스 드래그로 선택(SE가 선택을 인식하도록)."""
