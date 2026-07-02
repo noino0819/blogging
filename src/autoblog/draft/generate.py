@@ -11,6 +11,7 @@ from autoblog.draft.prompt import build_system_prompt, build_user_prompt
 from autoblog.draft.prompts import build_selfcheck_instruction, load_base_prompt
 from autoblog.draft.rules import CommonRules
 from autoblog.draft.style import StyleProfile
+from autoblog.draft.variation import build_variation_block
 from autoblog.llm import chat
 from autoblog.publish.emphasis import (
     EmphasisConfig,
@@ -75,6 +76,16 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
     is_product = req.fact_card.type == CardType.product
     base = req.base_prompt or load_base_prompt(card=req.fact_card)
     system = build_system_prompt(base, req.style, req.guidelines, req.rules)
+    # 시드 기반 스타일 변주 — 글(재료)마다 카오모지 부분집합·빈도·구조를 다르게 배정해
+    # 전 글이 같은 패턴으로 수렴하는 기계 지문을 막는다(같은 재료면 같은 변주 = 재현성).
+    subject = ""
+    if req.fact_card.place:
+        subject = req.fact_card.place.name
+    elif req.fact_card.product:
+        subject = req.fact_card.product.name
+    variation = build_variation_block(f"{req.experience_memo}|{subject}", is_product)
+    if variation:
+        system = f"{system}\n\n{variation}"
     if req.emphasis:
         system = f"{system}\n\n{build_emphasis_instruction(load_emphasis_config())}"
     if req.structure:

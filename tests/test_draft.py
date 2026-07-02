@@ -86,6 +86,42 @@ def test_photo_prompt_advises_spreading():
     assert "고루" in user and "몰아" in user
 
 
+def test_variation_block_deterministic():
+    from autoblog.draft.variation import build_variation_block
+
+    a = build_variation_block("비 오는 날 들렀다|언제나 초밥")
+    b = build_variation_block("비 오는 날 들렀다|언제나 초밥")
+    assert a is not None and a == b  # 같은 재료 → 같은 변주(재생성 재현성)
+    c = build_variation_block("주말에 다녀온 카페|스토리카페")
+    assert c != a  # 다른 글 → 다른 조합(시드 분산)
+    assert "[이번 글 스타일 변주]" in a
+
+
+def test_variation_block_type_specific():
+    from autoblog.draft.variation import build_variation_block
+
+    prod = build_variation_block("메모|파우치", is_product=True)
+    assert "추천 체크리스트 소제목" in prod and "🌟" in prod
+    place = build_variation_block("메모|가게", is_product=False)
+    assert "PICK 리스트 전환 멘트" in place
+    assert "추천 체크리스트 소제목" not in place
+
+
+def test_variation_block_in_system_prompt(monkeypatch):
+    # generate 경로에서 시드 변주 블록이 시스템 프롬프트에 항상 붙는다.
+    from autoblog.draft import generate as gen
+
+    captured: dict[str, str] = {}
+
+    def fake_chat(messages, model=None):
+        captured["system"] = messages[0]["content"]
+        return "제목\n\n본문"
+
+    monkeypatch.setattr(gen, "chat", fake_chat)
+    gen.generate_draft(gen.DraftRequest(fact_card=_place_card(), experience_memo="메모"))
+    assert "[이번 글 스타일 변주]" in captured["system"]
+
+
 def test_guideline_checklist():
     g = Guidelines(
         required_keywords=["수지맛집", "초밥"],
