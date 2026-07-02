@@ -202,6 +202,44 @@ def test_empty_label_pick_skips_heading():
     assert picker.pick("").ref == "ogq_m:15"
 
 
+def test_kind_property_precedence():
+    from autoblog.publish.stickers import Sticker
+
+    assert Sticker(pack="p", index=0, tags=["기쁨"]).kind == "감정"
+    assert Sticker(pack="p", index=1, tags=["구분선", "가로"]).kind == "구분선"
+    assert Sticker(pack="p", index=2, tags=["추천대상", "헤더"]).kind == "헤더"
+    # 헤더 마커가 있으면 구분선 마커보다 우선(자동 사용 제외가 안전한 쪽)
+    assert Sticker(pack="p", index=3, tags=["헤더", "구분선"]).kind == "헤더"
+
+
+def test_apply_kind_swaps_markers_keeps_labels():
+    from autoblog.publish.stickers import Sticker, apply_kind
+
+    s = Sticker(pack="p", index=0, tags=["추천대상", "헤더"])
+    apply_kind(s, "감정")  # 헤더 → 감정: 마커만 빠지고 상황 태그는 보존
+    assert s.kind == "감정" and s.tags == ["추천대상"]
+    apply_kind(s, "구분선")
+    assert s.kind == "구분선" and s.tags == ["추천대상", "구분선"]
+    apply_kind(s, "헤더")
+    assert s.kind == "헤더" and s.tags == ["추천대상", "헤더"]
+    apply_kind(s, "없는분류")  # 모르는 값은 무시
+    assert s.kind == "헤더"
+
+
+def test_divider_sticker_side_tags_not_exposed_as_mood():
+    cat = StickerCatalog(
+        stickers=[
+            Sticker(pack="p", index=0, tags=["구분선", "가로"], image="p/0.png"),
+            Sticker(pack="p", index=1, tags=["기쁨"], image="p/1.png"),
+        ],
+        favorites=["p:0", "p:1"],
+    )
+    labels = cat.labels()
+    # 구분선형의 곁태그('가로')가 감정 목록에 새지 않는다(스티커 단위 분류 유지)
+    assert "가로" not in labels
+    assert "구분선" in labels and "기쁨" in labels
+
+
 def test_labels_distinct_excludes_stale():
     cat = _cat()
     cat.stickers[3].stale = True  # 슬픔 제거

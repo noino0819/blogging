@@ -611,10 +611,14 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <!-- 스티커 -->
   <section class="view stickers">
     <h2 class=title>스티커</h2>
-    <p class=desc>★를 눌러 즐겨찾기에 넣으세요. 기본은 <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.<br>
-    제목·배너용 스티커(예: '추천대상', '내돈내산' 고지)는 <b>헤더</b> 태그로 구분돼요 —
-    AI가 감정 스티커로 오용하지 않게 자동 사용에서 빠지고, 마커로 직접 지정할 때만 들어갑니다.
-    태그 분석이 자동으로 달아 주니, 빠졌거나 잘못 붙었으면 태그 칩으로 고쳐 주세요.</p>
+    <p class=desc>★를 눌러 즐겨찾기에 넣으세요. 기본은 <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.</p>
+    <div class=kguide>
+      <div><span class=kk>감정</span>감정·반응이 드러나는 문단 끝에 AI가 자동으로 붙여요(글당 1~3번). 캐릭터 반응 스티커용.</div>
+      <div><span class=kk>구분선</span>화제가 바뀌는 문단 사이에 AI가 자동으로 넣어 구역을 나눠요(글당 0~2번). 가로선·장식 띠용.</div>
+      <div><span class=kk>헤더</span>제목 라벨·고지 배너용(예: '추천대상', '내돈내산'). 자동으로는 안 쓰이고,
+      글감에 <b>[스티커:태그이름]</b>을 직접 적을 때만 들어가요 — 아래에 그 내용이 이어질 자리에 쓰세요.</div>
+      <div style="color:var(--sub);margin-top:4px">분류는 '태그 분석'이 자동 판정하고, 각 카드의 버튼으로 직접 바꿀 수 있어요.</div>
+    </div>
     <div class=stat id=ststat></div>
     <div class=togrow style="margin:0 0 14px;max-width:560px">
       <div class=tl>스티커 전체 사용 <span class=hint data-tip="끄면 즐겨찾기한 스티커만 글에 쓰입니다. 켜면 전체 스티커에서 상황에 맞게 골라 씁니다.">i</span></div>
@@ -1770,7 +1774,7 @@ function renderStickers(){
     for(const s of packs[pack]){const on=favset.has(s.ref);
       h+=`<div class=stcard><button class="favbtn${on?' on':''}" data-ref="${s.ref}" title="즐겨찾기">★</button>
         <img loading=lazy src="/img?ref=${encodeURIComponent(s.ref)}">
-        ${tagsHtml(s)}</div>`;}
+        ${ksegHtml(s)}${tagsHtml(s)}</div>`;}
     h+='</div>';
   }
   body.innerHTML=h;
@@ -1778,10 +1782,18 @@ function renderStickers(){
 function tagsHtml(s){return `<div class=tags2 data-ref="${s.ref}">`
   +(s.tags||[]).map(t=>`<span class=tg2>${esc(t)}<span class=x data-t="${esc(t)}">×</span></span>`).join('')
   +`<input class=taginput placeholder="+태그"></div>`;}
+// 분류 세그먼트(감정/구분선/헤더) — 상단 안내(kguide)의 동작 설명과 짝
+function ksegHtml(s){return `<div class=kseg data-ref="${s.ref}" title="스티커 분류">`
+  +['감정','구분선','헤더'].map(k=>`<button class="${s.kind===k?'on':''}" data-k="${k}">${k}</button>`).join('')
+  +`</div>`;}
 function stickerOf(ref){return CAT.stickers.find(z=>z.ref===ref);}
-async function saveTags(s){try{await fetch('/api/sticker-tags',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({ref:s.ref,tags:s.tags})});}catch(e){}}
+async function saveTags(s){try{const r=await (await fetch('/api/sticker-tags',{method:'POST',headers:{'content-type':'application/json'},
+  body:JSON.stringify({ref:s.ref,tags:s.tags})})).json();
+  if(r&&r.kind){s.kind=r.kind; redrawKseg(s);}  // 태그 편집(예: '헤더' 칩 삭제)이 분류를 바꿀 수 있음
+  }catch(e){}}
 function redrawTags(wrap){const s=stickerOf(wrap.dataset.ref); if(s)wrap.outerHTML=tagsHtml(s);}
+function redrawKseg(s){const w=document.querySelector(`.kseg[data-ref="${CSS.escape(s.ref)}"]`);
+  if(w)w.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.k===s.kind));}
 $('#stfilter').onclick=e=>{const b=e.target.closest('button'); if(!b)return;
   $$('#stfilter button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
   ST_FILTER=b.dataset.f; renderStickers();};
@@ -1792,6 +1804,18 @@ $('#hidedef').onclick=function(){FMT.hideDefault=!FMT.hideDefault;
 $('#stbody').addEventListener('click', e=>{const x=e.target.closest('.x'); if(!x)return;
   const wrap=x.closest('.tags2'); const s=stickerOf(wrap.dataset.ref); if(!s)return;
   s.tags=(s.tags||[]).filter(t=>t!==x.dataset.t); redrawTags(wrap); saveTags(s);});
+// 분류 버튼(감정/구분선/헤더) — 서버가 태그 마커('헤더'/'구분선')를 갈아끼우고 결과를 돌려준다
+$('#stbody').addEventListener('click', async e=>{
+  const b=e.target.closest('.kseg button'); if(!b)return;
+  const s=stickerOf(b.closest('.kseg').dataset.ref); if(!s||s.kind===b.dataset.k)return;
+  try{
+    const r=await (await fetch('/api/sticker-kind',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({ref:s.ref,kind:b.dataset.k})})).json();
+    if(!r.ok)return;
+    s.kind=r.kind; s.tags=r.tags; redrawKseg(s);
+    const tw=document.querySelector(`.tags2[data-ref="${CSS.escape(s.ref)}"]`); if(tw)redrawTags(tw);
+  }catch(err){}
+});
 // 태그 추가(엔터)
 $('#stbody').addEventListener('keydown', e=>{
   if(!e.target.classList.contains('taginput')||e.key!=='Enter')return;
@@ -2557,8 +2581,12 @@ def _make_handler(state: dict):
                     self._send(200, json.dumps({"categories": cats}).encode())
                 elif path == "/api/sticker-tags":
                     body = self._json_body()
-                    _set_sticker_tags(body.get("ref", ""), body.get("tags", []))
-                    self._send(200, b'{"ok":true}')
+                    out = _set_sticker_tags(body.get("ref", ""), body.get("tags", []))
+                    self._send(200, json.dumps(out).encode())
+                elif path == "/api/sticker-kind":
+                    body = self._json_body()
+                    out = _set_sticker_kind(body.get("ref", ""), body.get("kind", ""))
+                    self._send(200, json.dumps(out).encode())
                 elif path == "/api/prompt":
                     pbody = self._json_body()
                     _save_prompt(pbody.get("base", ""), (pbody.get("kind") or "place"))
@@ -3749,7 +3777,8 @@ def _catalog_summary() -> dict:
     cat = load_sticker_catalog()
     favset = set(cat.favorites)
     stickers = [
-        {"ref": s.ref, "pack": s.pack, "index": s.index, "tags": s.tags, "fav": s.ref in favset}
+        {"ref": s.ref, "pack": s.pack, "index": s.index, "tags": s.tags,
+         "kind": s.kind, "fav": s.ref in favset}
         for s in cat.stickers
         if not s.stale
     ]
@@ -3796,22 +3825,42 @@ def _run_label(state: dict) -> None:
         lab["running"] = False
 
 
-def _set_sticker_tags(ref: str, tags: list) -> None:
-    """스티커 태그를 유저가 직접 수정 → config/stickers.yaml 저장(reviewed=True로 보호)."""
+def _set_sticker_tags(ref: str, tags: list) -> dict:
+    """스티커 태그를 유저가 직접 수정 → config/stickers.yaml 저장(reviewed=True로 보호).
+
+    바뀐 분류(kind)를 함께 반환 — 태그 편집('헤더' 칩 삭제 등)이 분류를 바꿀 수 있어
+    UI가 분류 버튼을 동기화한다.
+    """
     from autoblog.publish.stickers import load_sticker_catalog, save_sticker_catalog
 
     cat = load_sticker_catalog()
     by = cat.by_ref()
     s = by.get(ref)
-    if s:
-        clean = []
-        for t in tags:
-            t = str(t).strip()
-            if t and t not in clean:
-                clean.append(t)
-        s.tags = clean
-        s.reviewed = True
-        save_sticker_catalog(cat)
+    if not s:
+        return {"ok": False}
+    clean = []
+    for t in tags:
+        t = str(t).strip()
+        if t and t not in clean:
+            clean.append(t)
+    s.tags = clean
+    s.reviewed = True
+    save_sticker_catalog(cat)
+    return {"ok": True, "tags": s.tags, "kind": s.kind}
+
+
+def _set_sticker_kind(ref: str, kind: str) -> dict:
+    """스티커 분류(감정/구분선/헤더)를 유저가 직접 지정 — 태그 마커를 갈아끼우고 저장."""
+    from autoblog.publish.stickers import apply_kind, load_sticker_catalog, save_sticker_catalog
+
+    cat = load_sticker_catalog()
+    s = cat.by_ref().get(ref)
+    if not s:
+        return {"ok": False}
+    apply_kind(s, kind)
+    s.reviewed = True  # 유저가 분류를 정함 → 자동 라벨링이 덮어쓰지 않게
+    save_sticker_catalog(cat)
+    return {"ok": True, "tags": s.tags, "kind": s.kind}
 
 
 def _toggle_favorite(ref: str, on: bool) -> int:
