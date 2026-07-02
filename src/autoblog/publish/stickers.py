@@ -37,6 +37,12 @@ DEFAULT_PACKS: frozenset[str] = frozenset(
     {"motion3d_02", "motion2d_01", "clip_001", "cafe_001", "cafe_002", "cafe_004", "cafe_005"}
 )
 
+# 스티커 분류(Sticker.kind 값) — UI 분류 버튼·안내 문구가 이 이름을 그대로 쓴다.
+KIND_EMOTION = "감정"  # 감정·반응 문단 끝에 LLM이 자동 삽입(글당 1~3번)
+KIND_DIVIDER = "구분선"  # 화제 전환 사이에 LLM이 자동 삽입(글당 0~2번)
+KIND_HEADING = "헤더"  # 제목 라벨·고지 배너 — 자동 사용 제외, 수동 마커 전용
+STICKER_KINDS = (KIND_EMOTION, KIND_DIVIDER, KIND_HEADING)
+
 
 class Sticker(BaseModel):
     """스티커 1개. (pack, index)가 안정 식별자."""
@@ -63,6 +69,24 @@ class Sticker(BaseModel):
         """
         return any(_is_heading_label(t) for t in self.tags)
 
+    @property
+    def is_divider(self) -> bool:
+        """구분선형 스티커인지 — '구분선'(구분/divider)이 든 태그가 있으면 True."""
+        return any(_is_divider_label(t) for t in self.tags)
+
+    @property
+    def kind(self) -> str:
+        """스티커 분류: '헤더' | '구분선' | '감정' (태그 마커에서 유도, 헤더 우선).
+
+        감정=LLM이 감정·반응 문단 끝에 자동 삽입, 구분선=화제 전환 사이 자동 삽입,
+        헤더=자동 사용 제외(수동 [스티커:태그] 마커 전용). UI 분류 버튼·안내의 단일 기준.
+        """
+        if self.is_heading:
+            return KIND_HEADING
+        if self.is_divider:
+            return KIND_DIVIDER
+        return KIND_EMOTION
+
 
 class StickerCatalog(BaseModel):
     """유저의 스티커 카탈로그(= config/stickers.yaml 직렬화 대상)."""
@@ -83,6 +107,8 @@ class StickerCatalog(BaseModel):
         '.'·영문으로 시작하는 비정상 자동 라벨은 제외한다.
         헤더형(is_heading) 스티커의 태그는 전부 제외 — '추천대상' 같은 제목 라벨을 LLM이
         감정 스티커로 오용해 사진 옆·글 끝에 붙이는 사고 방지(수동 마커는 계속 동작).
+        구분선형 스티커는 구분선 태그만 노출 — 곁태그(예: '가로')가 감정 목록에 새면
+        분류가 스티커 단위로 안 지켜진다(지시문은 태그 텍스트로 감정/구분선을 나누므로).
         """
         favset = set(self.favorites)
         seen: list[str] = []
@@ -95,6 +121,8 @@ class StickerCatalog(BaseModel):
                 t = str(t).strip()
                 if not t or t[0] == "." or t[0].isascii() and t[0].isalpha():
                     continue  # '.lazy' 같은 비전 오라벨 차단(한글 상황 라벨만)
+                if s.is_divider and not _is_divider_label(t):
+                    continue  # 구분선형의 곁태그는 감정 목록에 새지 않게
                 if t not in seen:
                     seen.append(t)
         return seen
@@ -129,6 +157,23 @@ class StickerCatalog(BaseModel):
             return (pack, int(idx)) if pack and idx.isdigit() else None
         hits = self.find(spec, favorites_only=False)  # 태그 이름으로 검색(전체에서)
         return (hits[0].pack, hits[0].index) if hits else None
+
+
+def apply_kind(s: Sticker, kind: str) -> Sticker:
+    """스티커 분류를 직접 지정 — 분류 마커 태그('헤더'/'구분선')를 갈아끼운다(제자리 수정).
+
+    UI의 분류 버튼(감정/구분선/헤더)이 호출한다. 일반 상황 태그('추천대상'·'기쁨' 등)는
+    보존하고 마커 태그만 정리하므로, 헤더형을 오가도 수동 마커 이름은 그대로 남는다.
+    kind가 STICKER_KINDS 밖이면 아무것도 하지 않는다.
+    """
+    if kind not in STICKER_KINDS:
+        return s
+    s.tags = [t for t in s.tags if not _is_heading_label(t) and not _is_divider_label(t)]
+    if kind == KIND_HEADING:
+        s.tags.append("헤더")
+    elif kind == KIND_DIVIDER:
+        s.tags.append("구분선")
+    return s
 
 
 def merge_catalog(existing: StickerCatalog, scraped: list[Sticker]) -> StickerCatalog:

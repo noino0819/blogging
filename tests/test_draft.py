@@ -109,6 +109,48 @@ def test_variation_block_type_specific():
     assert "추천 체크리스트 소제목" not in place
 
 
+def test_style_pool_user_override_and_sanitize(tmp_path, monkeypatch):
+    # 유저 수정본이 있으면 번들 기본값 대신 그걸 쓴다(웹UI 저장 경로).
+    from autoblog.draft import variation
+
+    user = tmp_path / "style_pool.yaml"
+    user.write_text("slang:\n  - {expr: 찐, meaning: 진짜, example: 찐 맛집}\n", encoding="utf-8")
+    monkeypatch.setattr(variation, "STYLE_POOL_USER_PATH", user)
+    assert variation.load_style_pool()["slang"][0]["expr"] == "찐"
+    # 수정본이 없으면 번들 폴백
+    monkeypatch.setattr(variation, "STYLE_POOL_USER_PATH", tmp_path / "없음.yaml")
+    assert "kaomoji" in variation.load_style_pool()
+
+    # sanitize: !/~ 든 카오모지 제거(보호 이모지는 유지), 깨진 유행어 제거, weight 클램프
+    pool = variation.sanitize_style_pool(
+        {
+            "kaomoji": {"taste": ["(๑´~ˋ๑)", "(오예!)", "(물결~)", "정상"]},
+            "slang": [
+                {"expr": "찐", "meaning": "진짜", "example": "찐 맛집", "weight": 9},
+                {"expr": "", "meaning": "빈 표현", "example": "x"},
+                "평문",
+            ],
+            "모르는키": [1],
+        }
+    )
+    assert pool["kaomoji"]["taste"] == ["(๑´~ˋ๑)", "정상"]
+    assert pool["slang"] == [{"expr": "찐", "meaning": "진짜", "example": "찐 맛집", "weight": 3}]
+    assert "모르는키" not in pool
+
+
+def test_slang_weight_zero_excluded():
+    # weight 0 유행어만 있으면 후보가 없어 '유행어 없이' 분기로 떨어진다.
+    from autoblog.draft.variation import build_variation_block
+
+    pool = {
+        "slang": [{"expr": "찐", "meaning": "진짜", "example": "찐 맛집", "weight": 0}],
+        "kaomoji": {"taste": ["(๑ᵔ⤙ᵔ๑)"]},
+    }
+    for seed in ("a|b", "c|d", "e|f", "g|h"):
+        blk = build_variation_block(seed, pool=pool)
+        assert "유행어·신조어를 쓰지 말고" in blk
+
+
 def test_style_pool_broken_yaml_returns_empty(tmp_path):
     # 유저 편집 yaml의 문법 오류가 초안 생성을 죽이면 안 된다 — 빈 dict로 변주만 생략.
     from autoblog.draft.variation import build_variation_block, load_style_pool

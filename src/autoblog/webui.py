@@ -257,6 +257,17 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .genpct{font-size:14px;color:var(--green-d);font-weight:800}
  .gensub{font-size:12px;color:var(--sub);margin-top:6px}
  .promptarea{width:100%;min-height:420px;border:1px solid #d6dade;border-radius:10px;padding:14px;font-size:13px;font-family:ui-monospace,Menlo,monospace;line-height:1.6;resize:vertical;background:#fbfcfd}
+ .psec{border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:#fff;overflow:hidden}
+ .psec summary{cursor:pointer;padding:10px 14px;font-weight:600;font-size:13px;user-select:none}
+ .psec[open] summary{border-bottom:1px solid var(--line);background:#fbfcfd}
+ .psec .psecarea{border:0;border-radius:0;min-height:100px;display:block}
+ .poolchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;margin:3px;font-size:13px;background:#fbfcfd}
+ .poolchip button{border:0;background:none;cursor:pointer;color:#9aa3ad;font-size:14px;padding:0}
+ .poolrow{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+ .poolrow input{flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:13px}
+ .poolrow select{padding:7px 6px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff}
+ .pooldel{border:0;background:none;cursor:pointer;color:#9aa3ad;font-size:15px}
+ .pooladd{border:1px dashed var(--line);background:#fff;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;color:#5b6570;margin-top:2px}
  .doc h1{font-size:23px;margin:0 0 20px;line-height:1.4}
  .doc .tx{font-size:15px;line-height:2;white-space:pre-wrap;margin:0 0 6px}
  /* 구분선 — 종류(variant)별로 미리보기에서도 대략 구분되게 */
@@ -298,6 +309,14 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .tg2 .x:hover{color:#e2536a}
  .taginput{border:1px dashed #cdd3da;border-radius:6px;padding:2px 6px;font-size:11px;width:54px;text-align:center}
  .taginput:focus{outline:none;border-color:var(--green);border-style:solid}
+ /* 스티커 분류(감정/구분선/헤더) — 카드 내 미니 세그먼트 + 상단 안내 */
+ .kseg{display:flex;margin-top:7px;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+ .kseg button{flex:1;font-size:10.5px;padding:3px 0;border:0;background:#fff;color:var(--sub);cursor:pointer}
+ .kseg button+button{border-left:1px solid var(--line)}
+ .kseg button.on{background:var(--green);color:#fff;font-weight:700}
+ .kguide{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 14px;font-size:12.5px;line-height:1.7;color:#374151}
+ .kguide b{color:var(--ink)}
+ .kguide .kk{display:inline-block;min-width:44px;text-align:center;background:var(--green-soft);color:var(--green-d);border-radius:6px;font-weight:700;padding:1px 6px;margin-right:6px}
  .favbtn{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:1px solid var(--line);
    background:#fff;color:#cbd2d9;font-size:15px;cursor:pointer;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px #0001}
  .favbtn.on{color:#ffb400;border-color:#ffe2a6;background:#fffaf0}
@@ -630,10 +649,22 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
         <button type=button data-k=product>🛍️ 상품</button>
         <button type=button data-k=common>🧾 공통 문체</button>
       </div>
-      <textarea id=promptedit class=promptarea placeholder="불러오는 중…"></textarea>
-      <div style="margin-top:10px;display:flex;align-items:center;gap:12px">
+      <p class=desc style="margin:0 0 8px">파트를 눌러 펼치고 그 부분만 고치면 돼요. 파트를 새로 만들거나 지울 땐 '원문으로 편집'을 쓰세요.</p>
+      <div id=promptsections><div class=muted>불러오는 중…</div></div>
+      <textarea id=promptedit class=promptarea placeholder="불러오는 중…" style="display:none"></textarea>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <button class=btn id=promptsave style="width:auto;padding:9px 18px">저장</button>
+        <button type=button id=promptmode style="padding:9px 14px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font-size:13px">원문으로 편집</button>
         <span class=muted id=promptstat></span>
+      </div>
+    </div>
+    <div class=card style="margin-top:16px">
+      <h3>스타일 풀 <span class=muted style="font-weight:400">— 유행어·표정 이모티콘·고정 문구. 글마다 일부만 뽑혀 '이번 글 스타일 변주'로 들어가요</span></h3>
+      <div id=stylepool><div class=muted>불러오는 중…</div></div>
+      <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button class=btn id=poolsave style="width:auto;padding:9px 18px">저장</button>
+        <button type=button id=poolreset style="padding:9px 14px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font-size:13px">기본값 복원</button>
+        <span class=muted id=poolstat></span>
       </div>
     </div>
     <div class=card style="margin-top:16px"><h3>자동 추가 레이어 <span class=muted style="font-weight:400">— 마커 지시문(읽기 전용, 토글 켤 때만)</span></h3><div id=promptlayers><div class=muted>불러오는 중…</div></div></div>
@@ -2028,8 +2059,45 @@ $('#emph').addEventListener('click',async e=>{const btn=e.target.closest('[data-
 });
 let PROMPTKIND='place';  // 편집 중인 프롬프트 종류(맛집=default.md / 상품=product.md / 공통 문체=common_style.md)
 const PROMPTKIND_LABEL={place:'맛집',product:'상품',common:'공통 문체'};
+let PROMPTRAW=false;   // true면 원문(통짜) 편집 모드
+let PROMPTSECS=null;   // 섹션 파싱 결과 — #promptsections의 textarea들과 1:1 대응
+function parsePromptSections(text){
+  const re=/^#{2,3}[ \t].*$/gm; const marks=[]; let m;
+  while((m=re.exec(text))) marks.push(m.index);
+  if(!marks.length) return {pre:text, sections:[]};
+  const secs=[];
+  for(let i=0;i<marks.length;i++){
+    const seg=text.slice(marks[i], i+1<marks.length?marks[i+1]:text.length);
+    const nl=seg.indexOf('\n');
+    secs.push({head:nl===-1?seg:seg.slice(0,nl), body:nl===-1?'':seg.slice(nl+1)});
+  }
+  return {pre:text.slice(0,marks[0]), sections:secs};
+}
+function sectionsToText(){
+  const areas=$$('#promptsections textarea');
+  const pre=(areas[0]?areas[0].value:'').trim();
+  const parts=[]; if(pre)parts.push(pre);
+  PROMPTSECS.sections.forEach((s,i)=>{const body=(areas[i+1]?areas[i+1].value:'').trim();
+    parts.push(body?s.head+'\n\n'+body:s.head);});
+  return parts.join('\n\n')+'\n';
+}
+function currentPromptText(){return (PROMPTRAW||!PROMPTSECS)?$('#promptedit').value:sectionsToText();}
+function renderPromptSections(text){
+  PROMPTSECS=parsePromptSections(text);
+  const box=$('#promptsections'); box.innerHTML='';
+  const mk=(title,val)=>{const d=document.createElement('details'); d.className='psec';
+    const s=document.createElement('summary'); s.textContent=title; d.appendChild(s);
+    const a=document.createElement('textarea'); a.className='promptarea psecarea'; a.value=val;
+    a.style.minHeight=Math.min(60+val.split('\n').length*20,420)+'px';
+    d.appendChild(a); box.appendChild(d);};
+  mk('📄 파일 안내 · 메타 (모델에는 전송되지 않음)', PROMPTSECS.pre.trim());
+  PROMPTSECS.sections.forEach(sec=>{
+    const sub=sec.head.startsWith('###');
+    mk((sub?'· ':'')+sec.head.replace(/^#+[ \t]*/,''), sec.body.trim());});
+}
 async function loadPrompt(){try{const p=await (await fetch('/api/prompt?kind='+PROMPTKIND)).json();
   $('#promptedit').value=p.base_raw||'';
+  if(!PROMPTRAW) renderPromptSections(p.base_raw||'');
   $('#prompthdr').textContent='— '+(p.path||'config/prompts/default.md');
   $('#promptstat').textContent='';
   $('#promptlayers').innerHTML='<div class=promptbox>'+p.layers.map(([t,b])=>`<details><summary>${esc(t)}</summary><pre>${esc(b)}</pre></details>`).join('')+'</div>';
@@ -2038,11 +2106,96 @@ function setPromptKind(k){if(k===PROMPTKIND)return; PROMPTKIND=k;
   $$('#promptkindseg button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
   loadPrompt();}
 $$('#promptkindseg button').forEach(b=>b.onclick=()=>setPromptKind(b.dataset.k));
+$('#promptmode').onclick=()=>{
+  if(PROMPTRAW){renderPromptSections($('#promptedit').value);}  // 원문 → 파트(편집 내용 반영)
+  else{$('#promptedit').value=sectionsToText();}                 // 파트 → 원문
+  PROMPTRAW=!PROMPTRAW;
+  $('#promptsections').style.display=PROMPTRAW?'none':'';
+  $('#promptedit').style.display=PROMPTRAW?'':'none';
+  $('#promptmode').textContent=PROMPTRAW?'파트별로 편집':'원문으로 편집';
+};
 $('#promptsave').onclick=async()=>{
   $('#promptsave').disabled=true; $('#promptstat').textContent='저장 중…';
-  try{const r=await fetch('/api/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({base:$('#promptedit').value,kind:PROMPTKIND})});
+  try{const base=currentPromptText();
+    const r=await fetch('/api/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({base,kind:PROMPTKIND})});
+    if(r.ok){$('#promptedit').value=base; if(!PROMPTRAW)renderPromptSections(base);}
     $('#promptstat').textContent=r.ok?('저장됨 ✓ ('+(PROMPTKIND_LABEL[PROMPTKIND]||'맛집')+') 다음 생성부터 반영돼요'):'저장 실패';
   }catch(e){$('#promptstat').textContent='오류';}finally{$('#promptsave').disabled=false;}
+};
+// ── 스타일 풀(유행어·카오모지·고정 문구) 편집 ──
+let POOL=null;
+const POOL_KAO={taste:'맛·만족',cheer:'응원·파이팅',sad:'아쉬움·슬픔',angry:'분노·불만',cute:'귀여움·꾸미기'};
+const POOL_LISTS={structure_place:'맛집 섹션 흐름 변형',structure_product:'상품 섹션 흐름 변형',quote_position:'핵심 한마디 위치 후보',checklist_heading:'상품 추천 소제목 변형(🌟 뒤 문구)',summary_connector:'요약 박스 연결 문자 후보',pick_transition:'PICK 전환 멘트 변형'};
+const SLANG_FREQ=[['0','안 씀'],['1','가끔'],['2','보통'],['3','자주']];
+function poolInput(v,ph){const i=document.createElement('input'); i.value=v||''; i.placeholder=ph||''; return i;}
+function renderPool(){
+  const box=$('#stylepool'); box.innerHTML='';
+  if(!POOL){box.innerHTML='<div class=muted>로드 실패</div>'; return;}
+  const kao=POOL.kaomoji||(POOL.kaomoji={});
+  const sec=(title,desc)=>{const d=document.createElement('details'); d.className='psec';
+    const s=document.createElement('summary'); s.innerHTML=esc(title)+(desc?` <span class=muted style="font-weight:400">— ${esc(desc)}</span>`:''); d.appendChild(s);
+    const b=document.createElement('div'); b.style.padding='10px 14px'; d.appendChild(b); box.appendChild(d); return b;};
+  Object.keys(POOL_KAO).forEach(cat=>{
+    const items=Array.isArray(kao[cat])?kao[cat]:(kao[cat]=[]);
+    const b=sec('표정 이모티콘 · '+POOL_KAO[cat], items.length+'개 — 글마다 일부만 뽑혀요');
+    const wrap=document.createElement('div'); b.appendChild(wrap);
+    const draw=()=>{wrap.innerHTML=''; items.forEach((k,i)=>{const c=document.createElement('span'); c.className='poolchip';
+      c.append(k); const x=document.createElement('button'); x.textContent='×'; x.onclick=()=>{items.splice(i,1); draw();}; c.appendChild(x); wrap.appendChild(c);});};
+    draw();
+    const row=document.createElement('div'); row.className='poolrow'; row.style.marginTop='8px';
+    const inp=poolInput('','카오모지 추가 — !·~ 포함 불가(자동 치환에 깨져요)');
+    const add=document.createElement('button'); add.textContent='추가'; add.className='pooladd'; add.style.marginTop='0';
+    const doAdd=()=>{const v=inp.value.trim(); if(!v)return;
+      if(v.includes('!')||(v.includes('~')&&v!=='(๑´~ˋ๑)')){toast('!·~가 든 카오모지는 자동 치환에 깨져서 넣을 수 없어요','err');return;}
+      if(!items.includes(v))items.push(v); inp.value=''; draw();};
+    add.onclick=doAdd; inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();doAdd();}};
+    row.append(inp,add); b.appendChild(row);
+  });
+  const slang=Array.isArray(POOL.slang)?POOL.slang:(POOL.slang=[]);
+  const sb=sec('유행어', slang.length+'개 — 빈도는 후보로 뽑힐 확률 가중치예요');
+  const sw=document.createElement('div'); sb.appendChild(sw);
+  const drawSlang=()=>{sw.innerHTML='';
+    slang.forEach((s,i)=>{const row=document.createElement('div'); row.className='poolrow';
+      const e1=poolInput(s.expr,'표현'), e2=poolInput(s.meaning,'뜻'), e3=poolInput(s.example,'예시');
+      e1.oninput=()=>s.expr=e1.value; e2.oninput=()=>s.meaning=e2.value; e3.oninput=()=>s.example=e3.value;
+      e1.style.flex='0 0 110px'; e3.style.flex='1.4';
+      const sel=document.createElement('select'); SLANG_FREQ.forEach(([v,l])=>{const o=document.createElement('option'); o.value=v; o.textContent='빈도: '+l; sel.appendChild(o);});
+      sel.value=String(s.weight??1); sel.onchange=()=>s.weight=Number(sel.value);
+      const del=document.createElement('button'); del.textContent='×'; del.className='pooldel'; del.onclick=()=>{slang.splice(i,1); drawSlang();};
+      row.append(e1,e2,e3,sel,del); sw.appendChild(row);});
+    const add=document.createElement('button'); add.textContent='+ 유행어 추가'; add.className='pooladd';
+    add.onclick=()=>{slang.push({expr:'',meaning:'',example:'',weight:1}); drawSlang();};
+    sw.appendChild(add);};
+  drawSlang();
+  Object.keys(POOL_LISTS).forEach(key=>{
+    const items=Array.isArray(POOL[key])?POOL[key]:(POOL[key]=[]);
+    const b=sec(POOL_LISTS[key], items.length+'개 — 글마다 하나가 뽑혀요');
+    const w=document.createElement('div'); b.appendChild(w);
+    const draw=()=>{w.innerHTML='';
+      items.forEach((v,i)=>{const row=document.createElement('div'); row.className='poolrow';
+        const inp=poolInput(v,''); inp.oninput=()=>items[i]=inp.value;
+        const del=document.createElement('button'); del.textContent='×'; del.className='pooldel'; del.onclick=()=>{items.splice(i,1); draw();};
+        row.append(inp,del); w.appendChild(row);});
+      const add=document.createElement('button'); add.textContent='+ 추가'; add.className='pooladd';
+      add.onclick=()=>{items.push(''); draw();}; w.appendChild(add);};
+    draw();
+  });
+}
+async function loadPool(){try{const d=await (await fetch('/api/style-pool')).json(); POOL=d.pool||{}; renderPool();
+  $('#poolstat').textContent=d.overridden?'수정본 사용 중':'';
+}catch(e){$('#stylepool').innerHTML='<div class=muted>로드 실패</div>';}}
+$('#poolsave').onclick=async()=>{
+  $('#poolsave').disabled=true; $('#poolstat').textContent='저장 중…';
+  try{const r=await fetch('/api/style-pool',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pool:POOL})});
+    const d=await r.json(); POOL=d.pool||POOL; renderPool();
+    $('#poolstat').textContent=r.ok?'저장됨 ✓ 다음 생성부터 반영돼요':'저장 실패';
+  }catch(e){$('#poolstat').textContent='오류';}finally{$('#poolsave').disabled=false;}
+};
+$('#poolreset').onclick=async()=>{
+  if(!confirm('스타일 풀을 기본값으로 되돌릴까요? 수정한 내용은 사라져요.'))return;
+  try{const r=await fetch('/api/style-pool',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({reset:true})});
+    const d=await r.json(); POOL=d.pool||{}; renderPool(); $('#poolstat').textContent='기본값 복원됨 ✓';
+  }catch(e){$('#poolstat').textContent='오류';}
 };
 async function loadVariants(){try{const f=await (await fetch('/api/format')).json();
   const row=(items,type,qcls)=>{
@@ -2139,7 +2292,7 @@ $('#personalist').onclick=async e=>{const b=e.target.closest('.pdel'); if(!b)ret
   }catch(e){}};
 
 $('#addprodlink').onclick=()=>addProdLink(''); resetProdLinks();
-setKind('place',false); loadPhotos(); setupUpload(); setupDraftImport(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadVariants(); loadCategories(); loadPhotoCats(); loadPersonas();
+setKind('place',false); loadPhotos(); setupUpload(); setupDraftImport(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadPool(); loadVariants(); loadCategories(); loadPhotoCats(); loadPersonas();
 $('#photobtn').onclick=openPhotoModal; $('#phclose').onclick=closePhotoModal; $('#phdone').onclick=closePhotoModal;
 $('#phmodal').onclick=e=>{ if(e.target===$('#phmodal'))closePhotoModal(); };
 $('#newpost').onclick=newPost;
@@ -2341,6 +2494,8 @@ def _make_handler(state: dict):
             elif u.path == "/api/prompt":
                 kind = (parse_qs(u.query).get("kind", ["place"])[0] or "place")
                 self._send(200, json.dumps(_prompt_preview(kind)).encode())
+            elif u.path == "/api/style-pool":
+                self._send(200, json.dumps(_style_pool_payload(), ensure_ascii=False).encode())
             elif u.path == "/api/categories":
                 self._send(200, json.dumps({"categories": _load_categories()}).encode())
             elif u.path == "/api/photo_categories":
@@ -2408,6 +2563,9 @@ def _make_handler(state: dict):
                     pbody = self._json_body()
                     _save_prompt(pbody.get("base", ""), (pbody.get("kind") or "place"))
                     self._send(200, b'{"ok":true}')
+                elif path == "/api/style-pool":
+                    payload = _save_style_pool(self._json_body())
+                    self._send(200, json.dumps(payload, ensure_ascii=False).encode())
                 elif path == "/api/prefs":
                     _save_prefs(self._json_body())
                     self._send(200, b'{"ok":true}')
@@ -3421,6 +3579,43 @@ def _prompt_preview(kind: str = "place") -> dict:
 
 def _save_prompt(text: str, kind: str = "place") -> None:
     _prompt_path_for(kind).write_text(text, encoding="utf-8")
+
+
+def _style_pool_payload() -> dict:
+    """스타일 풀(유행어·카오모지·고정 문구) — 유저 수정본이 있으면 그걸 보여준다."""
+    from autoblog.draft.variation import (
+        STYLE_POOL_PATH,
+        STYLE_POOL_USER_PATH,
+        load_style_pool,
+        sanitize_style_pool,
+    )
+
+    overridden = STYLE_POOL_USER_PATH.exists()
+    return {
+        "pool": sanitize_style_pool(load_style_pool()),  # UI가 아는 형태로 정규화해 전달
+        "overridden": overridden,
+        "path": str(STYLE_POOL_USER_PATH if overridden else STYLE_POOL_PATH),
+    }
+
+
+def _save_style_pool(body: dict) -> dict:
+    """스타일 풀 저장 — 번들 자산은 읽기전용이라 유저 수정본(USER_CONFIG_DIR)에 쓴다.
+
+    reset=True면 수정본을 지워 번들 기본값으로 되돌린다.
+    """
+    import yaml
+
+    from autoblog.draft.variation import STYLE_POOL_USER_PATH, sanitize_style_pool
+
+    if body.get("reset"):
+        STYLE_POOL_USER_PATH.unlink(missing_ok=True)
+        return _style_pool_payload()
+    pool = sanitize_style_pool(body.get("pool") or {})
+    STYLE_POOL_USER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    STYLE_POOL_USER_PATH.write_text(
+        yaml.safe_dump(pool, allow_unicode=True, sort_keys=False), encoding="utf-8"
+    )
+    return _style_pool_payload()
 
 
 def _models_info() -> dict:

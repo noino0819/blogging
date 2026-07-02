@@ -13,9 +13,25 @@ import hashlib
 import random
 from pathlib import Path
 
-from autoblog.config import CONFIG_DIR
+from autoblog.config import CONFIG_DIR, USER_CONFIG_DIR
 
-STYLE_POOL_PATH = CONFIG_DIR / "style_pool.yaml"
+STYLE_POOL_PATH = CONFIG_DIR / "style_pool.yaml"  # 번들 기본값(읽기전용 자산)
+# 웹UI '스타일 풀' 편집 저장본 — 있으면 번들 기본값 대신 이걸 쓴다(전체 교체 방식).
+# dev에선 USER_CONFIG_DIR == CONFIG_DIR(레포 config)라, 파일명을 달리해 번들 원본과
+# 절대 같은 파일이 되지 않게 한다('기본값 복원'=수정본 삭제가 원본을 지우면 안 됨).
+STYLE_POOL_USER_PATH = USER_CONFIG_DIR / "style_pool.user.yaml"
+
+# postprocess의 !/~ 치환이 카오모지를 깨뜨리므로 풀에 못 들어가는 문자.
+# (๑´~ˋ๑)만 postprocess가 예외적으로 보호한다.
+_TILDE_PROTECTED = "(๑´~ˋ๑)"
+_LIST_KEYS = (
+    "structure_place",
+    "structure_product",
+    "quote_position",
+    "checklist_heading",
+    "summary_connector",
+    "pick_transition",
+)
 
 # 카테고리 → (표시 이름, 뽑는 개수 범위)
 _KAOMOJI_PICKS = [
@@ -27,19 +43,54 @@ _KAOMOJI_PICKS = [
 ]
 
 
-def load_style_pool(path: str | Path | None = None) -> dict:
-    """변주 풀 로드(없거나 깨지면 빈 dict → 변주 블록 생략).
-
-    변주는 부가 기능이라, 유저가 편집하는 yaml의 문법 오류(YAMLError)가
-    초안 생성 자체를 죽이면 안 된다.
-    """
+def _read_pool(path: str | Path) -> dict:
+    """yaml 파일 하나 읽기 — 없거나 깨지면 빈 dict(변주는 부가 기능, 크래시 금지)."""
     import yaml
 
     try:
-        data = yaml.safe_load(Path(path or STYLE_POOL_PATH).read_text(encoding="utf-8"))
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError, yaml.YAMLError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def load_style_pool(path: str | Path | None = None) -> dict:
+    """변주 풀 로드 — 유저 수정본(STYLE_POOL_USER_PATH)이 있으면 우선, 없으면 번들 기본값."""
+    if path is not None:
+        return _read_pool(path)
+    return _read_pool(STYLE_POOL_USER_PATH) or _read_pool(STYLE_POOL_PATH)
+
+
+def sanitize_style_pool(pool: dict) -> dict:
+    """웹UI 저장용 정규화 — 아는 키만 남기고, 깨진 항목·금지 문자(!/~) 카오모지를 걸러낸다."""
+    out: dict = {}
+    kao = pool.get("kaomoji")
+    if isinstance(kao, dict):
+        cats = {}
+        for key, items in kao.items():
+            if not isinstance(items, list):
+                continue
+            kept = []
+            for it in items:
+                s = str(it).strip()
+                if not s or "!" in s or ("~" in s and s != _TILDE_PROTECTED):
+                    continue  # postprocess 치환에 깨지는 문자는 풀에 못 들어감
+                if s not in kept:
+                    kept.append(s)
+            cats[str(key)] = kept
+        out["kaomoji"] = cats
+    slang = []
+    for s in pool.get("slang") or []:
+        if isinstance(s, dict) and all(str(s.get(k, "")).strip() for k in ("expr", "meaning", "example")):
+            item = {k: str(s[k]).strip() for k in ("expr", "meaning", "example")}
+            item["weight"] = _slang_weight(s)
+            slang.append(item)
+    out["slang"] = slang
+    for key in _LIST_KEYS:
+        items = pool.get(key)
+        if isinstance(items, list):
+            out[key] = [str(i).strip() for i in items if str(i).strip()]
+    return out
 
 
 def _pick(rng: random.Random, items: list, k: int) -> list:
@@ -48,6 +99,33 @@ def _pick(rng: random.Random, items: list, k: int) -> list:
         return []
     k = min(k, len(items))
     return rng.sample(list(items), k)
+
+
+def _slang_weight(s: dict) -> int:
+    """유행어 빈도 가중치(0~3) — 0이면 후보에서 제외, 미지정·깨진 값은 1."""
+    try:
+        return min(3, max(0, int(s.get("weight", 1))))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _weighted_pick(rng: random.Random, pairs: list[tuple[dict, int]], k: int) -> list[dict]:
+    """가중치 비례 확률로 중복 없이 k개 뽑기(시드 결정적)."""
+    pool = [(item, w) for item, w in pairs if w > 0]
+    out: list[dict] = []
+    while pool and len(out) < k:
+        total = sum(w for _, w in pool)
+        r = rng.uniform(0, total)
+        acc = 0.0
+        for i, (item, w) in enumerate(pool):
+            acc += w
+            if r <= acc:
+                out.append(item)
+                pool.pop(i)
+                break
+        else:  # 부동소수 경계 — 마지막 항목
+            out.append(pool.pop()[0])
+    return out
 
 
 def build_variation_block(
@@ -102,15 +180,17 @@ def build_variation_block(
         + ("(이번 글에서는 쓰지 마 — 물결표도 '-'로 대체하지 말고 그냥 빼)" if dash == 0 else "")
     )
 
-    # 유행어: 이번 글 후보 2~4개만 노출, 사용 개수 상한(0이면 유행어 없이)
+    # 유행어: 이번 글 후보 2~4개만 노출, 사용 개수 상한(0이면 유행어 없이).
+    # 후보는 weight(0~3, 유저가 풀에서 지정)에 비례한 확률로 뽑힌다 — 0은 제외.
     slang_pool = [
-        s
+        (s, _slang_weight(s))
         for s in (pool.get("slang") or [])
         if isinstance(s, dict) and all(k in s for k in ("expr", "meaning", "example"))
     ]
+    slang_pool = [(s, w) for s, w in slang_pool if w > 0]
     slang_quota = rng.choice([0, 1, 1, 2, 2, 3])
     if slang_quota and slang_pool:
-        candidates = _pick(rng, slang_pool, rng.randint(2, 4))
+        candidates = _weighted_pick(rng, slang_pool, rng.randint(2, 4))
         lines.append(
             f"- 유행어: 아래 후보 중에서만, 최대 {slang_quota}개"
             "(자연스럽게 녹아들 때만 — 0개여도 됨):"
