@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
@@ -35,6 +36,14 @@ _STICKER_RE = re.compile(r"^\[스티커(?::(.+?))?\]$")
 _PLACE_RE = re.compile(r"^\[지도(?::\s*(.+?))?\]$")
 # 마커 인자가 URL(naver.me 단축 등)인지 — SE 장소 검색은 URL이면 결과 0건이라 이름으로 해석 필요
 _PLACE_URL_RE = re.compile(r"https?://|naver\.me/|\.naver\.com/", re.I)
+
+# 쿠팡파트너스 링크 도메인(link.coupang.com / coupa.ng 단축 / coupang.com 상품)
+_COUPANG_HOSTS = ("coupang.com", "coupa.ng")
+
+
+def _is_coupang_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in _COUPANG_HOSTS)
 
 
 def _resolve_place_marker_url(url: str) -> tuple[str, str | None] | None:
@@ -581,11 +590,14 @@ def build_publish_plan(
     # 텍스트 블록이 t개일 때 링크 i는 (i+1)/(n+1) 지점 텍스트 뒤에 — 맨 앞/맨 끝을 피해 가운데로.
     links = [u.strip() for u in [*(sponsor_links or []), *(product_links or [])] if u.strip()]
     # 협찬 링크(sponsor_links)는 카드 밑 URL 텍스트 줄을 남겨 체험단 크롤러가 잡게 한다.
+    # 단, 쿠팡파트너스는 체험단과 달리 발행글에서 URL 문자열을 크롤링하지 않고
+    # 카드 클릭(리다이렉트에 원본 링크 보존)으로 수익이 추적되므로 생링크를 남기지 않는다.
     # 상품리뷰 링크(product_links)는 비협찬이라 지금처럼 깔끔하게(텍스트 줄 제거).
     sponsor_set = {u.strip() for u in (sponsor_links or []) if u.strip()}
 
     def link_block(url: str) -> PublishBlock:
-        return PublishBlock(kind="link", link_url=url, keep_url_text=url in sponsor_set)
+        keep = url in sponsor_set and not _is_coupang_url(url)
+        return PublishBlock(kind="link", link_url=url, keep_url_text=keep)
 
     if links:
         text_pos = [i for i, b in enumerate(blocks) if b.kind == "text"]

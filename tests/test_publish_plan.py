@@ -379,6 +379,28 @@ def test_sponsor_links_spread_in_middle():
     assert [b.link_url for b in p2.blocks if b.kind == "link"] == ["https://coupa.ng/x"]
 
 
+def test_coupang_partners_link_no_raw_url_text():
+    # 쿠팡파트너스 링크는 협찬 칸에 넣어도 생 URL 텍스트를 남기지 않는다(카드만).
+    # 체험단 캠페인 URL은 크롤러 인식용으로 텍스트 줄을 남긴다.
+    draft = DraftResult(text="제목\n\n첫째.\n[구분선]\n둘째.\n[구분선]\n셋째.")
+    links = [
+        "https://link.coupang.com/a/xyz",
+        "https://coupa.ng/abc",
+        "https://www.coupang.com/vp/products/123",
+        "https://campaign.revu.net/cp/999",
+    ]
+    plan = build_publish_plan(draft, sponsor_links=links)
+    keep = {b.link_url: b.keep_url_text for b in plan.blocks if b.kind == "link"}
+    assert keep["https://link.coupang.com/a/xyz"] is False
+    assert keep["https://coupa.ng/abc"] is False
+    assert keep["https://www.coupang.com/vp/products/123"] is False
+    assert keep["https://campaign.revu.net/cp/999"] is True
+
+    # 비협찬 상품 링크는 기존대로 텍스트 줄 제거
+    p3 = build_publish_plan(draft, product_links=["https://smartstore.naver.com/x/1"])
+    assert all(b.keep_url_text is False for b in p3.blocks if b.kind == "link")
+
+
 def test_selectors_ready():
     # 라이브 분석으로 핵심 셀렉터(제목/본문/저장/발행) 확정됨
     assert selectors_ready() is True
