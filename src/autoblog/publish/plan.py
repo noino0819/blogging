@@ -398,6 +398,9 @@ def build_publish_plan(
         """구조 요소 한 줄을 서식 span이 박힌 텍스트 블록(+해시태그 뒤 구분선)으로 추가."""
         ss = structure_styles
         if role == "hashtags":
+            # 해시태그 바로 앞이 이미 구분선이면(모델이 [구분선]을 해시태그 앞에 붙인 흔한 경우)
+            # 자동 구분선을 또 넣지 않는다 — 안 그러면 구분선이 위·아래로 2개가 된다.
+            prev_is_divider = bool(blocks) and blocks[-1].kind == "divider"
             toks = s.split()
             per = max(1, ss.hashtags.per_line)
             rows = [" ".join(toks[i : i + per]) for i in range(0, len(toks), per)]
@@ -408,7 +411,7 @@ def build_publish_plan(
                 )
             )
             div = ss.hashtags.divider
-            if div and div in DIVIDER_META:
+            if div and div in DIVIDER_META and not prev_is_divider:
                 blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0], align="center"))
             return
         if role == "subheading":
@@ -509,6 +512,14 @@ def build_publish_plan(
         blocks.append(
             PublishBlock(kind="quote", text="\n".join(quote_buf).strip(), variant=quote_variant)
         )
+
+    # 구분선이 연달아 붙으면(마커 두 번·자동+마커 겹침 등) 하나로 합친다.
+    deduped: list[PublishBlock] = []
+    for b in blocks:
+        if b.kind == "divider" and deduped and deduped[-1].kind == "divider":
+            continue
+        deduped.append(b)
+    blocks = deduped
 
     # 마커로 못 채운 남은 미디어(사진·영상): 글 끝에 몰지 않고 본문 텍스트 블록 사이에 고루 분산
     # (업로드한 사진·영상은 모두 본문에 들어가되, 끝에 우르르 붙는 걸 방지)

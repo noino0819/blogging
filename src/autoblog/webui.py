@@ -250,8 +250,15 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .promptarea{width:100%;min-height:420px;border:1px solid #d6dade;border-radius:10px;padding:14px;font-size:13px;font-family:ui-monospace,Menlo,monospace;line-height:1.6;resize:vertical;background:#fbfcfd}
  .doc h1{font-size:23px;margin:0 0 20px;line-height:1.4}
  .doc .tx{font-size:15px;line-height:2;white-space:pre-wrap;margin:0 0 6px}
- .doc hr{border:none;border-top:1px solid #e3e6ea;margin:22px 36px}
- .doc hr.ctr{width:42%;margin-left:auto;margin-right:auto}
+ /* 구분선 — 종류(variant)별로 미리보기에서도 대략 구분되게 */
+ .doc hr{border:none;border-top:1px solid #e3e6ea;width:60%;margin:22px auto}
+ .doc hr.solid{border-top:1.5px solid #b8bec6;width:72%}
+ .doc hr.dash{border-top:1px dashed #c4c9d0;width:60%}
+ .doc hr.bar{border:none;height:3px;background:#8a929c;width:60px;border-radius:2px;margin:22px auto}
+ .doc hr.vert{border:none;width:2px;height:26px;background:#8a929c;margin:20px auto}
+ .doc .dv{display:flex;align-items:center;gap:14px;max-width:60%;margin:22px auto;color:#b9c0c8}
+ .doc .dv::before,.doc .dv::after{content:'';flex:1;border-top:1px solid #dcdfe3}
+ .doc .dv .g{font-size:12px;line-height:1}
  /* 인용구 — 에디터 종류(variant)별 모양을 미리보기에서도 구분해 보여준다 */
  .doc .q{color:#3a4250;font-size:16.5px;margin:18px 0;line-height:1.7;white-space:pre-line}
  .doc .q-quote{text-align:center;padding:4px 0}
@@ -268,7 +275,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .doc .q-corner::before,.doc .q-corner::after{content:'';position:absolute;width:20px;height:20px;border:2px solid #333}
  .doc .q-corner::before{left:34px;top:0;border-right:0;border-bottom:0}
  .doc .q-corner::after{right:34px;bottom:0;border-left:0;border-top:0}
- .doc img.st{width:148px;height:148px;object-fit:contain;display:block;margin:10px 0}
+ .doc img.st{width:148px;height:148px;object-fit:contain;display:block;margin:10px auto}
  .doc .ph{background:#eef6ff;border:1px dashed #9ec5ff;border-radius:10px;padding:14px;color:#2f6fd6;font-size:13px;margin:10px 0}
  em.hl{font-style:normal;border-radius:3px;padding:1px 3px}
  /* sticker / settings */
@@ -449,9 +456,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=dropzone id=dropzone>📷 사진·동영상을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*,video/*" multiple hidden></div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
     <button type=button class="btn ghost" id=draftload style="white-space:nowrap">📥 임시저장에서 불러오기</button>
-    <button type=button class="btn ghost" id=draftrefresh title="네이버에서 목록 새로고침" style="display:none;padding:9px 11px">🔄</button>
     <div id=draftmultiwrap style="display:none">여러 글 선택 <div class="sw sw-sm" id=draftmulti></div></div>
     <span class=muted id=draftstat></span>
+    <button type=button class="btn ghost" id=draftrefresh title="네이버에서 목록 새로고침" style="display:none;margin-left:auto;padding:4px 8px;font-size:12px;line-height:1">🔄</button>
   </div>
   <div class=draftlist id=draftlist style="display:none"></div>
   <div id=draftbatch style="display:none;margin-bottom:10px">
@@ -1473,15 +1480,32 @@ $('#iapply').onclick=async()=>{
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 // 단락 정렬(left/center/right/justify) — 에디터에 실제 적용되는 align을 미리보기에도 반영
 function alignStyle(b){return b&&b.align&&b.align!=='left'?`text-align:${b.align};`:'';}
+// 강조 span의 실제 서식(색·배경·글씨체·크기·굵기)을 미리보기 인라인 스타일로 — 에디터와 최대한 같게
+function emStyle(e){let s='';
+  if(e.text_color)s+=`color:${e.text_color};`;
+  if(e.background_color)s+=`background:${e.background_color};`;
+  if(e.font_family)s+=`font-family:'se-${e.font_family}',inherit;`;
+  if(e.font_size)s+=`font-size:${e.font_size}px;`;
+  if(e.bold)s+='font-weight:700;';
+  return s;}
+// 구분선 종류(1~8) → 미리보기 모양. DIVIDER_META 순서와 맞춤(가는선/실선/굵은짧은선/꺾인선/다이아몬드/점선/사선/세로선)
+function dividerHTML(b){const v=b.variant||1;
+  if(v===2)return '<hr class=solid>';
+  if(v===3)return '<hr class=bar>';
+  if(v===6)return '<hr class=dash>';
+  if(v===8)return '<hr class=vert>';
+  const g={4:'﹀',5:'◆',7:'╱'}[v];  // ﹀ ◆ ╱
+  if(g)return `<div class=dv><span class=g>${g}</span></div>`;
+  return '<hr>';}  // v1 기본 가는 선
 function renderText(b){let h=esc(b.text);
-  (b.emphases||[]).forEach(e=>{const stl=(e.text_color?`color:${e.text_color};`:'')+(e.background_color?`background:${e.background_color};`:'');
-    h=h.replace(esc(e.text),`<em class=hl style="${stl}">${esc(e.text)}</em>`);});
+  (b.emphases||[]).forEach(e=>{
+    h=h.replace(esc(e.text),`<em class=hl style="${emStyle(e)}">${esc(e.text)}</em>`);});
   return `<p class=tx style="${alignStyle(b)}">${h}</p>`;}
 function renderPreview(d){
   let h=`<h1>${esc(d.title)||'(제목 없음)'}</h1>`;
   for(const b of d.blocks){
     if(b.kind==='text')h+=renderText(b);
-    else if(b.kind==='divider')h+=`<hr${b.align==='center'?' class=ctr':''}>`;
+    else if(b.kind==='divider')h+=dividerHTML(b);
     else if(b.kind==='quote'){const qc={1:'q-quote',2:'q-line',3:'q-bubble',4:'q-underline',5:'q-postit',6:'q-corner'}[b.variant]||'q-quote';
       h+=`<div class="q ${qc}" style="${alignStyle(b)}">${esc(b.text)}</div>`;}
     else if(b.kind==='sticker')h+=`<img class=st src="/img?ref=${encodeURIComponent(b.sticker_ref)}">`;
@@ -2702,7 +2726,10 @@ def _make_handler(state: dict):
                 elif b.kind == "text":
                     blk["emphases"] = [
                         {"text": e.text, "text_color": e.style.text_color,
-                         "background_color": e.style.background_color}
+                         "background_color": e.style.background_color,
+                         "font_family": e.style.font_family,
+                         "font_size": e.style.font_size,
+                         "bold": e.style.bold}
                         for e in b.emphases
                     ]
                 blocks.append(blk)
