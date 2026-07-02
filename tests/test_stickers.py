@@ -135,6 +135,46 @@ def test_picker_empty_label_uses_favorites():
     assert s.ref == "ogq_b:0"  # 즐겨쓰기
 
 
+def _cat_with_heading():
+    """헤더형('헤더' 태그) + 감정형이 섞인 카탈로그. '꿀팁'은 양쪽에 있는 실제 사례."""
+    return StickerCatalog(
+        stickers=[
+            Sticker(pack="ogq_h", index=13, tags=["꿀팁", "헤더"], image="h/13.png"),
+            Sticker(pack="ogq_h", index=18, tags=["추천대상", "헤더"], image="h/18.png"),
+            Sticker(pack="ogq_m", index=15, tags=["꿀팁"], image="m/15.png"),
+            Sticker(pack="ogq_m", index=4, tags=["좋아요"], image="m/4.png"),
+        ],
+        favorites=["ogq_h:13", "ogq_h:18", "ogq_m:15", "ogq_m:4"],
+    )
+
+
+def test_heading_stickers_hidden_from_labels():
+    labels = _cat_with_heading().labels()
+    # 헤더형 태그는 LLM 노출 목록에서 제외('헤더' 표시 태그 자체도)
+    assert "추천대상" not in labels and "헤더" not in labels
+    # 감정형의 같은 이름 태그는 유지
+    assert "꿀팁" in labels and "좋아요" in labels
+
+
+def test_heading_sticker_manual_marker_still_resolves():
+    picker = StickerPicker(_cat_with_heading())
+    # [스티커:추천대상] 수동 마커 — 헤더형이어도 태그 직접 지목은 해석된다
+    assert picker.pick("추천대상").ref == "ogq_h:18"
+
+
+def test_shared_label_prefers_mood_over_heading():
+    cat = _cat_with_heading()
+    # '꿀팁'은 헤더형(ogq_h:13, 카탈로그 순서상 앞)과 감정형(ogq_m:15) 둘 다 —
+    # 감정 자리에 제목 라벨이 붙지 않게 감정형이 먼저
+    assert cat.find("꿀팁")[0].ref == "ogq_m:15"
+
+
+def test_empty_label_pick_skips_heading():
+    picker = StickerPicker(_cat_with_heading())
+    # 라벨 없는 자동 선택([스티커]·빈문단 채움)은 즐겨찾기 순서상 앞인 헤더형을 건너뛴다
+    assert picker.pick("").ref == "ogq_m:15"
+
+
 def test_labels_distinct_excludes_stale():
     cat = _cat()
     cat.stickers[3].stale = True  # 슬픔 제거

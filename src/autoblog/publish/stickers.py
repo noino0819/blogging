@@ -9,6 +9,11 @@
 
 (팩코드, 인덱스)를 안정 키로 **증분 동기화**한다: 다시 불러오면 새 스티커만 추가하고,
 기존 태그/검수/즐겨쓰기는 보존하며, 패널에서 사라진 스티커는 stale로 표시(삭제 안 함).
+
+스티커 분류(태그 컨벤션): '구분선'이 든 태그 → 구분선용(화제 전환 사이),
+'헤더'가 든 태그 → 헤더형(소제목 라벨·고지 배너, 예: '추천대상'+'헤더').
+헤더형은 LLM 감정 스티커 목록·자동 선택에서 제외되고 [스티커:태그] 수동 마커로만 쓰인다
+— 제목 라벨이 감정 반응 자리(사진 옆·글 끝)에 붙는 오용 방지. 나머지는 감정 스티커.
 """
 
 from __future__ import annotations
@@ -46,6 +51,16 @@ class Sticker(BaseModel):
     def ref(self) -> str:
         return f"{self.pack}:{self.index}"
 
+    @property
+    def is_heading(self) -> bool:
+        """헤더형(제목·배너) 스티커인지 — '헤더' 태그가 달려 있으면 True.
+
+        '추천대상'·'한줄평' 같은 소제목 라벨, '내돈내산'·협찬 고지 같은 배너 스티커는
+        감정 반응이 아니라서 LLM 감정 스티커 목록(labels)과 라벨 없는 자동 선택에서
+        제외한다. [스티커:추천대상] 처럼 태그를 직접 지목한 마커는 계속 해석된다.
+        """
+        return any(_is_heading_label(t) for t in self.tags)
+
 
 class StickerCatalog(BaseModel):
     """유저의 스티커 카탈로그(= config/stickers.yaml 직렬화 대상)."""
@@ -64,11 +79,13 @@ class StickerCatalog(BaseModel):
         쓰임")과 picker(find)의 동작에 맞춤. 그래야 프롬프트에 보이는 상황 목록과 실제로
         붙는 스티커가 일치한다(전체를 노출하면 즐겨찾기에 없는 라벨을 LLM이 써버린다).
         '.'·영문으로 시작하는 비정상 자동 라벨은 제외한다.
+        헤더형(is_heading) 스티커의 태그는 전부 제외 — '추천대상' 같은 제목 라벨을 LLM이
+        감정 스티커로 오용해 사진 옆·글 끝에 붙이는 사고 방지(수동 마커는 계속 동작).
         """
         favset = set(self.favorites)
         seen: list[str] = []
         for s in self.stickers:
-            if s.stale:
+            if s.stale or s.is_heading:
                 continue
             if favorites_only and s.ref not in favset:
                 continue
@@ -85,12 +102,14 @@ class StickerCatalog(BaseModel):
 
         favorites_only=True(기본): 즐겨쓰기한 것만 후보 — UI 약속("즐겨찾기한 것만 쓰임")과 일치.
         favorites_only=False: 전체에서 찾되 즐겨쓰기를 앞으로 정렬(즐겨쓰기 소진 시 fallback).
+        같은 라벨이 헤더형·감정형 양쪽에 있으면(예: '꿀팁') 감정형을 앞에 — 감정 자리에
+        제목 라벨 스티커가 붙는 걸 피한다(헤더형만 매칭되면 그대로 그걸 쓴다).
         """
         favs = set(self.favorites)
         hits = [s for s in self.stickers if not s.stale and label in s.tags]
         if favorites_only:
             hits = [s for s in hits if s.ref in favs]
-        hits.sort(key=lambda s: s.ref not in favs)  # 즐겨쓰기 우선(False<True)
+        hits.sort(key=lambda s: (s.ref not in favs, s.is_heading))  # 즐겨쓰기 우선(False<True)
         return hits
 
     def resolve_ref(self, spec: str) -> tuple[str, int] | None:
@@ -162,9 +181,13 @@ class StickerPicker:
     def _candidates(self, label: str) -> list[Sticker]:
         if label:
             cands = self.catalog.find(label, favorites_only=self.favorites_only)
-        else:  # 라벨 없는 [스티커] → 즐겨쓰기
+        else:  # 라벨 없는 [스티커] → 즐겨쓰기(헤더형 제외 — 제목 라벨은 자동 선택 대상 아님)
             by_ref = self.catalog.by_ref()
-            cands = [by_ref[r] for r in self.catalog.favorites if r in by_ref and not by_ref[r].stale]
+            cands = [
+                by_ref[r]
+                for r in self.catalog.favorites
+                if r in by_ref and not by_ref[r].stale and not by_ref[r].is_heading
+            ]
         pack = self._locked_pack
         if pack:
             same = [s for s in cands if s.pack == pack]
@@ -257,6 +280,17 @@ def _is_divider_label(label: str) -> bool:
     """구분선 성격의 스티커 라벨인지 — 태그에 '구분선/구분/divider'가 들어가면 구분선용으로 본다."""
     low = label.replace(" ", "").casefold()
     return "구분선" in low or "구분" in low or "divider" in low
+
+
+def _is_heading_label(label: str) -> bool:
+    """헤더형 표시 태그인지 — '헤더'(또는 header)가 들어간 태그.
+
+    이 태그가 하나라도 달린 스티커는 소제목 라벨('추천대상'·'한줄평')이나 고지 배너
+    ('내돈내산'·협찬)로, 아래에 해당 내용이 이어져야 어울린다. 감정 반응이 아니므로
+    LLM 노출 목록(labels)·라벨 없는 자동 선택에서 빠진다(Sticker.is_heading에서 사용).
+    """
+    low = label.replace(" ", "").casefold()
+    return "헤더" in low or "header" in low
 
 
 def build_sticker_instruction(labels: list[str]) -> str | None:

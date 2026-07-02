@@ -592,7 +592,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <!-- 스티커 -->
   <section class="view stickers">
     <h2 class=title>스티커</h2>
-    <p class=desc>★를 눌러 즐겨찾기에 넣으세요. 기본은 <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.</p>
+    <p class=desc>★를 눌러 즐겨찾기에 넣으세요. 기본은 <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.<br>
+    제목·배너용 스티커(예: '추천대상', '내돈내산' 고지)에는 <b>헤더</b> 태그를 함께 달아 주세요 —
+    AI가 감정 스티커로 오용하지 않게 자동 사용에서 빠지고, 마커로 직접 지정할 때만 들어갑니다.</p>
     <div class=stat id=ststat></div>
     <div class=togrow style="margin:0 0 14px;max-width:560px">
       <div class=tl>스티커 전체 사용 <span class=hint data-tip="끄면 즐겨찾기한 스티커만 글에 쓰입니다. 켜면 전체 스티커에서 상황에 맞게 골라 씁니다.">i</span></div>
@@ -622,9 +624,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <p class=desc>초안 생성에 쓰이는 베이스 프롬프트를 직접 수정할 수 있어요. 저장하면 다음 생성부터 반영됩니다.</p>
     <div class=card>
       <h3>베이스 프롬프트 <span class=muted id=prompthdr style="font-weight:400">— config/prompts/default.md</span></h3>
-      <div class=seg id=promptkindseg style="max-width:260px;margin-bottom:10px">
+      <div class=seg id=promptkindseg style="max-width:390px;margin-bottom:10px">
         <button type=button data-k=place class=on>🍜 맛집</button>
         <button type=button data-k=product>🛍️ 상품</button>
+        <button type=button data-k=common>🧾 공통 문체</button>
       </div>
       <textarea id=promptedit class=promptarea placeholder="불러오는 중…"></textarea>
       <div style="margin-top:10px;display:flex;align-items:center;gap:12px">
@@ -2022,7 +2025,8 @@ $('#emph').addEventListener('click',async e=>{const btn=e.target.closest('[data-
   catch(e){toast('저장 오류','err');}
   finally{btn.disabled=false;}
 });
-let PROMPTKIND='place';  // 편집 중인 베이스 프롬프트 종류(맛집=default.md / 상품=product.md)
+let PROMPTKIND='place';  // 편집 중인 프롬프트 종류(맛집=default.md / 상품=product.md / 공통 문체=common_style.md)
+const PROMPTKIND_LABEL={place:'맛집',product:'상품',common:'공통 문체'};
 async function loadPrompt(){try{const p=await (await fetch('/api/prompt?kind='+PROMPTKIND)).json();
   $('#promptedit').value=p.base_raw||'';
   $('#prompthdr').textContent='— '+(p.path||'config/prompts/default.md');
@@ -2036,7 +2040,7 @@ $$('#promptkindseg button').forEach(b=>b.onclick=()=>setPromptKind(b.dataset.k))
 $('#promptsave').onclick=async()=>{
   $('#promptsave').disabled=true; $('#promptstat').textContent='저장 중…';
   try{const r=await fetch('/api/prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({base:$('#promptedit').value,kind:PROMPTKIND})});
-    $('#promptstat').textContent=r.ok?('저장됨 ✓ ('+(PROMPTKIND==='product'?'상품':'맛집')+') 다음 생성부터 반영돼요'):'저장 실패';
+    $('#promptstat').textContent=r.ok?('저장됨 ✓ ('+(PROMPTKIND_LABEL[PROMPTKIND]||'맛집')+') 다음 생성부터 반영돼요'):'저장 실패';
   }catch(e){$('#promptstat').textContent='오류';}finally{$('#promptsave').disabled=false;}
 };
 async function loadVariants(){try{const f=await (await fetch('/api/format')).json();
@@ -3366,17 +3370,27 @@ def _save_emphasis_preset_tag(preset_id, tag: str) -> None:
 
 
 def _prompt_path_for(kind: str):
-    """kind('product'|'place') → 편집 대상 베이스 프롬프트 파일 경로."""
-    from autoblog.draft.prompts import DEFAULT_PROMPT_PATH, PRODUCT_PROMPT_PATH
+    """kind('product'|'common'|'place') → 편집 대상 프롬프트 파일 경로."""
+    from autoblog.draft.prompts import (
+        COMMON_STYLE_PROMPT_PATH,
+        DEFAULT_PROMPT_PATH,
+        PRODUCT_PROMPT_PATH,
+    )
 
-    return PRODUCT_PROMPT_PATH if kind == "product" else DEFAULT_PROMPT_PATH
+    if kind == "product":
+        return PRODUCT_PROMPT_PATH
+    if kind == "common":
+        return COMMON_STYLE_PROMPT_PATH
+    return DEFAULT_PROMPT_PATH
 
 
 def _prompt_preview(kind: str = "place") -> dict:
     """초안 생성에 쓰이는 프롬프트(편집용 raw 베이스 + 우리가 얹는 마커 지시문 레이어).
 
-    kind='product'면 상품 베이스(product.md), 그 외엔 맛집 베이스(default.md)를 보여준다.
-    마커 레이어(강조/구조/스티커)는 두 종류 공통이라 kind와 무관하게 동일하다.
+    kind='product'면 상품 베이스(product.md), 'common'이면 두 유형 뒤에 이어 붙는
+    공통 문체(common_style.md), 그 외엔 맛집 베이스(default.md)를 보여준다.
+    마커 레이어(강조/구조/스티커)는 공통이고, 자가 점검만 상품 여부에 따라
+    나열 박스 예외 문구가 달라진다.
     """
     from autoblog.publish.emphasis import build_emphasis_instruction, load_emphasis_config
     from autoblog.publish.plan import build_structure_instruction
@@ -3392,12 +3406,14 @@ def _prompt_preview(kind: str = "place") -> dict:
         layers.append(["스티커 (스티커 켤 때)", sticker_instr])
     from autoblog.draft.prompts import build_selfcheck_instruction
 
-    layers.append(["자가 점검 (항상 맨 끝에)", build_selfcheck_instruction()])
+    layers.append(
+        ["자가 점검 (항상 맨 끝에)", build_selfcheck_instruction(kind == "product")]
+    )
     path = _prompt_path_for(kind)
     return {
         "base_raw": path.read_text(encoding="utf-8"),
         "layers": layers,
-        "kind": "product" if kind == "product" else "place",
+        "kind": kind if kind in ("product", "common") else "place",
         "path": f"config/prompts/{path.name}",
     }
 
