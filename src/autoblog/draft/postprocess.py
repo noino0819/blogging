@@ -24,7 +24,9 @@ _DASH_BULLET_RE = re.compile(r"^[ \t]*-[ \t]+", re.MULTILINE)
 _FORBIDDEN_EMOJI = "💖💕❤️🔥😍🤤😋💯😊😄😁🥰😘🤩🥳😆👏🙌💪🍀🌟💫🤗😅😂🤣"
 # 물결표(~)를 포함한 허용 이모지 — 치환 전 보호한다
 _TILDE_EMOJI = "(๑´~ˋ๑)"
-_TILDE_SENTINEL = "TILDE_EMOJI"
+# 센티널은 NUL로 감싼다 — enforce_format 진입 시 입력의 NUL을 제거하므로 본문과 충돌 불가
+# (예전 평문 센티널 'TILDE_EMOJI'는 입력에 같은 리터럴이 오면 카오모지로 둔갑했다)
+_TILDE_SENTINEL = "\x00TILDE\x00"
 # 금지 표현 → 완화 표현
 _FORBIDDEN_PHRASES = {
     "강력 추천": "추천",
@@ -133,10 +135,20 @@ def _clean_title_line(line: str) -> str:
 
     .ᐟ(U+141F)·〰️ 같은 변형 유니코드가 제목에 박히면 검색엔진이 일반 문자와 다른
     코드포인트로 취급해 키워드 매칭이 깨질 수 있다. 느낌표도 제목에서는 삭제.
-    범위 표시 물결(3월~4월)은 제목에서 정상 표기라 건드리지 않는다.
+    범위 표시 물결(3월~4월)은 제목에서 정상 표기라 건드리지 않고, 대괄호 구간
+    ('[잇쇼우!] …')은 본문 보호 규칙과 동일하게 원형을 유지한다(제목-본문 표기 일치).
     """
+    segs: list[str] = []
+
+    def _stash(m: re.Match) -> str:
+        segs.append(m.group(0))
+        return f"\x00B{len(segs) - 1}\x00"
+
+    line = _BRACKET_SEG_RE.sub(_stash, line)
     line = line.replace(".ᐟ", "").replace("ᐟ", "").replace("!", "")
     line = re.sub("〰️?", "", line)
+    for i, seg in enumerate(segs):
+        line = line.replace(f"\x00B{i}\x00", seg)
     return re.sub(r"[ \t]{2,}", " ", line).strip()
 
 
@@ -182,11 +194,14 @@ def enforce_format(
     (1️⃣~ 키캡 이모지는 글머리 기호가 아니라 어느 모드에서도 보존됨).
     """
     bullet_re = _BULLET_RE_KEEP_CHECK if allow_checklist else _BULLET_RE
+    text = text.replace("\x00", "")  # NUL 제거 — 내부 센티널(\x00…)과의 충돌 차단
     text = _HEADER_RE.sub("", text)  # 마크다운 헤더 마커 제거
     text = bullet_re.sub("", text)  # 글머리 기호 제거
     text = _DASH_BULLET_RE.sub("", text)  # 줄 앞 '- ' 제거
     if wrap:  # 전체 문서 모드 — 첫 줄(제목)은 장식 문자 제거, 본문만 치환
-        stripped = text.lstrip("\n")
+        # lstrip()으로 공백-only 선행 줄까지 걷어내야 실제 제목이 첫 줄로 잡힌다
+        # (wrap_long_lines의 제목 판정과 동일 기준).
+        stripped = text.lstrip()
         title, sep, body = stripped.partition("\n")
         text = _clean_title_line(title) + (sep + _sub_special_chars(body) if sep else "")
     else:  # 강조 스팬 등 조각 정규화 — 제목 개념 없음

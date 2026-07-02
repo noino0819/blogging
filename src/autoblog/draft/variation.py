@@ -28,12 +28,16 @@ _KAOMOJI_PICKS = [
 
 
 def load_style_pool(path: str | Path | None = None) -> dict:
-    """변주 풀 로드(없거나 깨지면 빈 dict → 변주 블록 생략)."""
+    """변주 풀 로드(없거나 깨지면 빈 dict → 변주 블록 생략).
+
+    변주는 부가 기능이라, 유저가 편집하는 yaml의 문법 오류(YAMLError)가
+    초안 생성 자체를 죽이면 안 된다.
+    """
     import yaml
 
     try:
         data = yaml.safe_load(Path(path or STYLE_POOL_PATH).read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, ValueError):
+    except (OSError, ValueError, yaml.YAMLError):
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -61,24 +65,26 @@ def build_variation_block(
 
     lines = [
         "[이번 글 스타일 변주] — 아래는 이번 글에만 적용되는 설정이야. "
-        "공통 문체 규칙의 이모티콘·유행어 목록/개수와 다르면 이쪽이 우선해. "
-        "(글마다 조합이 달라야 여러 글이 똑같아 보이지 않아)"
+        "공통 문체 규칙의 이모티콘·유행어·특수문자(〰️·문장 끝 '-') 목록/빈도와 "
+        "다르면 이쪽이 우선해. (글마다 조합이 달라야 여러 글이 똑같아 보이지 않아)"
     ]
 
-    # 표정 이모티콘: 카테고리별 부분집합 + 총 개수 상한(0이면 이번 글은 카오모지 없이)
-    kaomoji = pool.get("kaomoji") or {}
-    chosen: list[str] = []
+    # 표정 이모티콘: 카테고리별 부분집합 + 총 개수 상한(0이거나 뽑힌 게 없으면 카오모지 없이)
+    kaomoji = pool.get("kaomoji") if isinstance(pool.get("kaomoji"), dict) else {}
     face_quota = rng.choice([0, 2, 3, 3, 4, 4, 5, 6])
-    if face_quota and kaomoji:
+    picks: list[tuple[str, list[str]]] = []
+    for key, label, (lo, hi) in _KAOMOJI_PICKS:
+        items = kaomoji.get(key)
+        picked = _pick(rng, list(items) if isinstance(items, list) else [], rng.randint(lo, hi))
+        if picked:
+            picks.append((label, picked))
+    if face_quota and picks:
         lines.append(
             f"- 표정 이모티콘: 이번 글에서는 아래 것만, 글 전체 {face_quota}개 이내로 써"
             "(어울리는 곳이 없으면 덜 써도 돼):"
         )
-        for key, label, (lo, hi) in _KAOMOJI_PICKS:
-            picked = _pick(rng, kaomoji.get(key) or [], rng.randint(lo, hi))
-            if picked:
-                chosen.extend(picked)
-                lines.append(f"  · {label}: {' '.join(picked)}")
+        for label, picked in picks:
+            lines.append(f"  · {label}: {' '.join(picked)}")
     else:
         lines.append(
             "- 표정 이모티콘: 이번 글에서는 카오모지를 쓰지 마"
@@ -93,11 +99,15 @@ def build_variation_block(
     )
     lines.append(
         f"- 문장 끝 여운 '-': 최대 {dash}회"
-        + ("(이번 글에서는 쓰지 마)" if dash == 0 else "")
+        + ("(이번 글에서는 쓰지 마 — 물결표도 '-'로 대체하지 말고 그냥 빼)" if dash == 0 else "")
     )
 
     # 유행어: 이번 글 후보 2~4개만 노출, 사용 개수 상한(0이면 유행어 없이)
-    slang_pool = pool.get("slang") or []
+    slang_pool = [
+        s
+        for s in (pool.get("slang") or [])
+        if isinstance(s, dict) and all(k in s for k in ("expr", "meaning", "example"))
+    ]
     slang_quota = rng.choice([0, 1, 1, 2, 2, 3])
     if slang_quota and slang_pool:
         candidates = _pick(rng, slang_pool, rng.randint(2, 4))

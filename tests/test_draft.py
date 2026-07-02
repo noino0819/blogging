@@ -109,6 +109,20 @@ def test_variation_block_type_specific():
     assert "추천 체크리스트 소제목" not in place
 
 
+def test_style_pool_broken_yaml_returns_empty(tmp_path):
+    # 유저 편집 yaml의 문법 오류가 초안 생성을 죽이면 안 된다 — 빈 dict로 변주만 생략.
+    from autoblog.draft.variation import build_variation_block, load_style_pool
+
+    broken = tmp_path / "pool.yaml"
+    broken.write_text("kaomoji: [unclosed", encoding="utf-8")
+    assert load_style_pool(broken) == {}
+    assert build_variation_block("메모|가게", pool={}) is None
+    # 구조가 어긋난 풀(카테고리가 dict가 아님·slang이 평문)도 크래시 없이 동작
+    weird = {"kaomoji": ["평문"], "slang": ["찐", "존맛"]}
+    blk = build_variation_block("메모|가게", pool=weird)
+    assert blk is not None and "카오모지를 쓰지 마" in blk
+
+
 def test_variation_block_in_system_prompt(monkeypatch):
     # generate 경로에서 시드 변주 블록이 시스템 프롬프트에 항상 붙는다.
     from autoblog.draft import generate as gen
@@ -183,6 +197,27 @@ def test_bracket_segments_protected_from_substitution():
     out = enforce_format("제목\n\n오늘은 [ 잇쇼우! ] 다녀왔어요\n[사진:간판!]")
     assert "[ 잇쇼우! ]" in out
     assert "[사진:간판!]" in out
+    # 제목의 대괄호 구간도 본문과 같은 보호 — 표기가 본문과 어긋나지 않게
+    out2 = enforce_format("[잇쇼우!] 라멘 후기\n\n본문이에요")
+    assert out2.split("\n", 1)[0] == "[잇쇼우!] 라멘 후기"
+
+
+def test_title_detection_skips_blank_first_lines():
+    # 첫 줄이 공백뿐이어도 실제 제목이 보호된다(wrap_long_lines 판정과 동일 기준).
+    from autoblog.draft.postprocess import enforce_format
+
+    out = enforce_format("   \n제목입니다!\n\n본문!")
+    assert out.split("\n", 1)[0] == "제목입니다"
+    assert ".ᐟ" in out  # 본문 느낌표는 치환
+
+
+def test_sentinel_literals_do_not_corrupt_text():
+    # 입력에 센티널 유사 리터럴이 있어도 오염되지 않는다(NUL 제거 + NUL 센티널).
+    from autoblog.draft.postprocess import enforce_format
+
+    out = enforce_format("제목\n\nTILDE_EMOJI 라는 단어와 [보호!] 구간")
+    assert "TILDE_EMOJI" in out and "[보호!]" in out
+    assert "(๑´~ˋ๑)" not in out
 
 
 def test_forbidden_phrase_softened():
@@ -213,6 +248,15 @@ def test_product_checklist_box_preserved():
 
     base = enforce_format(raw, allow_checklist=False)
     assert "✅" not in base and "🌟" not in base  # 맛집 모드는 기존대로 제거
+
+
+def test_load_base_prompt_explicit_path_skips_common(tmp_path):
+    # 명시 path(커스텀 프롬프트)는 그 파일 그대로 — 공통 문체를 덧붙이지 않는다.
+    custom = tmp_path / "custom.md"
+    custom.write_text("# 메타\n\n---\n나만의 프롬프트", encoding="utf-8")
+    base = load_base_prompt(custom)
+    assert base == "나만의 프롬프트"
+    assert "문체 규칙" not in base
 
 
 def test_load_base_prompt_product_card():

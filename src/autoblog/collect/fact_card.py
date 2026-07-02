@@ -121,3 +121,12 @@ class FactCard(BaseModel):
     # 입력 사진 + Vision 자동 분류 (1단계 정보 수집)
     photos: list[PhotoItem] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+
+    @property
+    def is_product(self) -> bool:
+        """상품 글 판정의 단일 출처 — 프롬프트 선택·자가 점검·후처리가 같은 기준을 써야 한다.
+
+        타입이 상품이거나(WTM 차단으로 데이터를 못 긁어도 유저가 상품으로 고른 카드),
+        상품 데이터가 붙어 있으면 상품으로 본다.
+        """
+        return self.type == CardType.product or self.product is not None

@@ -71,9 +71,7 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
     generate_draft가 쓰는 것과 동일한 조립 로직. 외부 챗봇에 붙여넣을 프롬프트
     내보내기에도 재사용한다(같은 지시문이 들어가도록 단일 출처 유지).
     """
-    from autoblog.collect.fact_card import CardType
-
-    is_product = req.fact_card.type == CardType.product
+    is_product = req.fact_card.is_product
     base = req.base_prompt or load_base_prompt(card=req.fact_card)
     system = build_system_prompt(base, req.style, req.guidelines, req.rules)
     # 시드 기반 스타일 변주 — 글(재료)마다 카오모지 부분집합·빈도·구조를 다르게 배정해
@@ -83,7 +81,10 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
         subject = req.fact_card.place.name
     elif req.fact_card.product:
         subject = req.fact_card.product.name
-    variation = build_variation_block(f"{req.experience_memo}|{subject}", is_product)
+    try:
+        variation = build_variation_block(f"{req.experience_memo}|{subject}", is_product)
+    except Exception:  # 변주는 부가 기능 — 풀 데이터가 이상해도 초안 생성은 계속돼야 한다
+        variation = None
     if variation:
         system = f"{system}\n\n{variation}"
     if req.emphasis:
@@ -131,15 +132,14 @@ def generate_draft(
             model=model,
         ).strip()
     text = raw
-    from autoblog.collect.fact_card import CardType
-
-    # 상품 리뷰: 나열 박스(✅/1️⃣~) 보존. 카드 타입으로 판단해야 WTM 차단으로
-    # product 데이터를 못 긁은 상품 글도 박스가 후처리에서 안 깎인다.
-    is_product = req.fact_card.type == CardType.product
+    # 상품 리뷰: 나열 박스(✅/1️⃣~) 보존 — 판정은 FactCard.is_product 단일 출처
+    # (베이스 프롬프트 선택과 같은 기준이어야 지시와 후처리가 어긋나지 않는다).
+    is_product = req.fact_card.is_product
     debug = {"system": system, "user": user, "raw": raw, "model": model or ""}
 
     # 강조 마킹 추출(포맷 후처리 전에 — 줄바꿈이 <<>>를 깨지 않도록)
     emphases: list[StyledSpan] = []
+    span_originals: list[str] = []
     if req.emphasis:
         text, requests = parse_emphasis_markup(text)
         # 우선순위: 요청 지정 > 프로젝트 프리셋(config/power_shortcuts.json) > 내장 기본
@@ -148,11 +148,17 @@ def generate_draft(
         requests = apply_density(text, requests, config)  # 밀도 규칙으로 과한 강조 솎기
         emphases = assign_emphasis(requests, presets, config)
         if req.postprocess:  # 강조 텍스트도 본문과 같은 문자 규칙으로 정규화(매칭 유지)
+            span_originals = [span.text for span in emphases]
             for span in emphases:
                 span.text = enforce_format(span.text, wrap=False)
 
     if req.postprocess:
         text = enforce_format(text, allow_checklist=is_product)
+        # 본문 쪽이 대괄호 보호로 원형(!/~)을 유지한 구간의 스팬은 정규화를 되돌려야
+        # 게시 단계의 스팬-본문 매칭이 산다(스팬만 치환되면 강조가 조용히 탈락).
+        for span, orig in zip(emphases, span_originals):
+            if span.text != orig and span.text not in text and orig in text:
+                span.text = orig
 
     checklist: list[CheckItem] = []
     if req.guidelines and not req.guidelines.is_empty():
