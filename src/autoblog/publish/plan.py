@@ -33,6 +33,21 @@ _STICKER_RE = re.compile(r"^\[스티커(?::(.+?))?\]$")
 # [지도] / [지도:가게명] — SE 네이티브 '장소' 카드(주소·지도 미리보기)로 삽입.
 # 이름 생략 시 build_publish_plan(place_query=)로 받은 수집된 가게명을 쓴다.
 _PLACE_RE = re.compile(r"^\[지도(?::\s*(.+?))?\]$")
+# 마커 인자가 URL(naver.me 단축 등)인지 — SE 장소 검색은 URL이면 결과 0건이라 이름으로 해석 필요
+_PLACE_URL_RE = re.compile(r"https?://|naver\.me/|\.naver\.com/", re.I)
+
+
+def _resolve_place_marker_url(url: str) -> tuple[str, str | None] | None:
+    """[지도:URL] 마커의 URL → (가게명, 도로명 주소). 세션 캐시 우선, 없으면 실시간 해석."""
+    from autoblog.pipeline import cached_place_card  # 함수 내 임포트 - 모듈 순환 참조 회피
+
+    card = cached_place_card(url)
+    if card is not None and card.place and card.place.name:
+        p = card.place
+        return p.name, (p.road_address or p.address)
+    from autoblog.collect.place_detail import place_name_address_from_url
+
+    return place_name_address_from_url(url)
 
 # 구분선/인용구 종류 메타 — value(에디터 data-value) → (variant 인덱스, 이름, 어느 상황에 쓰면 좋은지)
 # 라이브 캡쳐한 모양을 보고 작성. UI에 이름·용도 노출, 초안 LLM에 상황 안내, 마커 [구분선:이름] 해석에 사용.
@@ -466,8 +481,18 @@ def build_publish_plan(
         if place_m:
             flush_text()
             q = (place_m.group(1) or place_query or "").strip()
+            addr = place_address
+            if q and _PLACE_URL_RE.search(q):
+                # URL이 그대로 오면 SE 검색이 0건이라 가게명·주소로 해석. 실패하면
+                # 수집된 이름 폴백, 그것도 없으면 URL 그대로 두어 에디터 단계에서
+                # '지도 자동 삽입 실패' 경고로 드러나게 한다(조용히 사라지지 않게).
+                resolved = _resolve_place_marker_url(q)
+                if resolved:
+                    q, addr = resolved
+                elif place_query:
+                    q, addr = place_query, place_address
             if q:  # 가게명(마커 인자 우선, 없으면 수집된 이름)으로 장소 카드
-                blocks.append(PublishBlock(kind="place", text=q, place_address=place_address))
+                blocks.append(PublishBlock(kind="place", text=q, place_address=addr))
         elif div_m:
             flush_text()
             blocks.append(

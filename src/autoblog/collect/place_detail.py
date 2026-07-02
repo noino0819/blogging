@@ -54,6 +54,24 @@ def resolve_place_id_via_redirect(url: str) -> str | None:
     return resolve_place_id(resp.url)
 
 
+def place_name_address_from_url(url: str) -> tuple[str, str | None] | None:
+    """플레이스 URL(naver.me 단축 포함) → (가게명, 도로명 주소). 실패 시 None.
+
+    [지도:URL] 마커 해석용 — SE 장소 검색창은 가게명만 받고 URL은 결과 0건이라,
+    검색 전에 이름·주소로 바꿔줘야 한다. 주소는 도로명 우선(SE 결과 매칭 기준)."""
+    place_id = resolve_place_id(url) or resolve_place_id_via_redirect(url)
+    if not place_id:
+        return None
+    try:
+        _, html = fetch_place_html(menu_tab_url(place_id))
+    except Exception:  # noqa: BLE001 - 해석 실패 시 호출부가 폴백
+        return None
+    facts = parse_place_detail(extract_apollo_state(html), place_id)
+    if not facts or not facts.name:
+        return None
+    return facts.name, (facts.road_address or facts.address)
+
+
 def menu_tab_url(place_id: str) -> str:
     """메뉴 탭 — 홈 탭의 상위집합(기본정보+영업시간+소개글+편의시설+메뉴 설명글)."""
     return f"https://m.place.naver.com/restaurant/{place_id}/menu/list"
