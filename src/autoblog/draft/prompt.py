@@ -86,7 +86,10 @@ def build_system_prompt(
             blocks.append("[추가 규칙]\n" + "\n".join(f"- {f}" for f in fragments))
 
     if style and style.as_prompt():
-        blocks.append("[추가 문체 지시]\n" + style.as_prompt())
+        blocks.append(
+            "[추가 문체 지시] — 아래 지시가 베이스 프롬프트의 문체 규칙(어투·이모티콘·"
+            "강조 표현 포함)과 충돌하면 아래가 우선한다.\n" + style.as_prompt()
+        )
 
     return "\n\n".join(blocks)
 
