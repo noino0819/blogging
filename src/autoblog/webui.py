@@ -77,6 +77,15 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  input[type=number]{-moz-appearance:textfield}
  input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
  textarea{min-height:130px;resize:vertical;line-height:1.6}
+ /* 필수 키워드 칩 입력: 컨테이너가 input처럼 보이고, 안에 칩 + 실제 입력칸이 흐른다 */
+ .kwbox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid #d6dade;border-radius:10px;padding:6px 8px;background:#fbfcfd;cursor:text}
+ .kwbox:focus-within{outline:2px solid #03c75a33;border-color:var(--green)}
+ .kwbox input[type=text]{flex:1;min-width:140px;width:auto;border:none;background:transparent;padding:4px 4px}
+ .kwbox input[type=text]:focus{outline:none;border:none}
+ .kwchip{display:inline-flex;align-items:center;gap:2px;background:#eafaf0;border:1px solid #b7e4c7;color:var(--green-d);border-radius:999px;padding:3px 5px 3px 10px;font-size:12px;line-height:1.4;font-weight:600;max-width:100%}
+ .kwchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
+ .kwchip b{font-weight:400;opacity:.5;cursor:pointer;padding:0 5px;font-size:13px;user-select:none}
+ .kwchip b:hover{opacity:1;color:#c0392b}
  .seg{display:flex;gap:6px}
  .seg button{flex:1;padding:9px;font-size:12px;background:#fff;color:#6b7280;border:1px solid #d6dade;border-radius:9px;cursor:pointer;font-weight:600}
  .seg button.on{background:#eafaf0;color:var(--green-d);border-color:var(--green)}
@@ -527,8 +536,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           </select>
           <label class=f>문체 톤 <span class=hint data-tip="비우면 기본 톤으로 써요. 위 문체와 함께 '이번 글'만의 조정으로 쓰여요. 예: 친근한 반말로 / 담백하고 차분하게">i</span></label>
           <input type=text id=tone placeholder="예: 친근한 반말로">
-          <label class=f>필수 키워드 <span class=hint data-tip="본문에 꼭 들어갈 키워드를 쉼표로 구분해 적어주세요. 비우면 안 씁니다. 예: 강남맛집, 데이트코스">i</span></label>
-          <input type=text id=keywords placeholder="예: 강남맛집, 데이트코스 (쉼표로 구분)">
+          <label class=f>필수 키워드 <span class=hint data-tip="본문에 꼭 들어갈 키워드예요. 엔터를 치면 하나씩 태그로 추가되고, 쉼표·띄어쓰기로 이어진 여러 개를 붙여넣으면 자동으로 나뉘어 들어가요. ×로 하나씩 지울 수 있어요. 비우면 안 씁니다.">i</span></label>
+          <div class=kwbox id=kwbox>
+            <input type=text id=keywords placeholder="예: 강남맛집 (엔터로 추가)">
+          </div>
           <div class=muted id=kwnote style="display:none;margin-top:4px;color:#2563eb;line-height:1.4"></div>
           <label class=f>최소 글자 수 <span class=hint data-tip="본문이 이 글자 수(공백 제외) 이상이 되도록 써요. 비우면 1500자가 적용됩니다.">i</span></label>
           <input type=number id=minchars placeholder="1500" min=0 step=100>
@@ -1011,13 +1022,57 @@ async function importDraft(idx, title, date){
   }catch(e){ el.stop(); stat.textContent='가져오기 실패'; toast('사진을 못 가져왔어요 — '+e.message,'err'); }
   DRAFTBUSY=false;
 }
+// ── 필수 키워드 칩 입력 ──────────────────────────────────────────
+// KW가 확정된 키워드 배열. 탭 스냅샷·서버 전송은 기존과 같은 '쉼표 문자열'(kwGet/kwSet)로
+// 오가므로 서버 파싱·배경 탭 상태(fillStateFromMedia) 등 문자열 흐름과 그대로 호환된다.
+let KW=[];
+function kwHas(t){ return KW.some(k=>k.toLowerCase()===t.toLowerCase()); }
+function kwRender(){
+  const box=$('#kwbox'), inp=$('#keywords'); if(!box||!inp) return;
+  box.querySelectorAll('.kwchip').forEach(c=>c.remove());
+  KW.forEach((k,i)=>{
+    const c=document.createElement('span'); c.className='kwchip';
+    const tx=document.createElement('span'); tx.textContent=k;
+    const x=document.createElement('b'); x.textContent='×'; x.title='이 키워드 빼기';
+    // mousedown: 입력칸 blur(=커밋·재렌더)보다 먼저 지워지도록
+    x.onmousedown=e=>{ e.preventDefault(); e.stopPropagation(); KW.splice(i,1); kwRender(); };
+    c.append(tx,x); box.insertBefore(c,inp);
+  });
+  inp.placeholder=KW.length?'':'예: 강남맛집 (엔터로 추가)';
+}
+function kwAddMany(parts){ let n=0; parts.forEach(p=>{ p=(p||'').trim(); if(p&&!kwHas(p)){KW.push(p);n++;} }); if(n)kwRender(); return n; }
+// 입력칸에 쓰다 만 텍스트를 칩으로 확정(쉼표 기준 — 띄어쓰기 포함 키워드는 통째로 유지)
+function kwCommit(){ const inp=$('#keywords'); if(!inp)return; const v=inp.value; inp.value=''; if(v.trim()) kwAddMany(v.split(',')); }
+// 직렬화: 칩 + 아직 확정 안 한 입력 중 텍스트까지 합쳐 쉼표 문자열로
+function kwGet(){
+  const inp=$('#keywords'), all=KW.slice();
+  ((inp&&inp.value)||'').split(',').map(s=>s.trim()).filter(Boolean)
+    .forEach(p=>{ if(!all.some(k=>k.toLowerCase()===p.toLowerCase())) all.push(p); });
+  return all.join(', ');
+}
+function kwSet(str){
+  const seen=[]; (str||'').split(',').map(s=>s.trim()).filter(Boolean)
+    .forEach(p=>{ if(!seen.some(k=>k.toLowerCase()===p.toLowerCase())) seen.push(p); });
+  KW=seen; const inp=$('#keywords'); if(inp)inp.value=''; kwRender();
+}
+(()=>{ const inp=$('#keywords'), box=$('#kwbox'); if(!inp||!box) return;
+  box.onclick=e=>{ if(e.target===box) inp.focus(); };
+  inp.onkeydown=e=>{
+    if(e.key==='Enter'||e.key===','){ e.preventDefault(); kwCommit(); }
+    else if(e.key==='Backspace'&&!inp.value){ if(KW.length){ KW.pop(); kwRender(); } }
+  };
+  // 붙여넣기는 쉼표뿐 아니라 띄어쓰기·줄바꿈에서도 나눠 여러 칩으로
+  inp.onpaste=e=>{ const t=(e.clipboardData||window.clipboardData).getData('text'); if(!t)return;
+    e.preventDefault(); kwCommit(); kwAddMany(t.split(/[,\s]+/)); };
+  inp.onblur=()=>kwCommit();
+})();
 // 불러온 글 제목을 필수 키워드 맨 앞에 넣어줌(중복이면 그대로). 노트로 사용자에게 알려줌.
 function applyDraftTitleKeyword(title){
   const t=(title||'').trim(); if(!t||t==='(제목 없음)') return;
-  const kwEl=$('#keywords'), note=$('#kwnote'); if(!kwEl) return;
-  const cur=kwEl.value.split(',').map(s=>s.trim()).filter(Boolean);
-  const dup=cur.some(k=>k.toLowerCase()===t.toLowerCase());
-  if(!dup){ cur.unshift(t); kwEl.value=cur.join(', '); }
+  const note=$('#kwnote'); if(!$('#kwbox')) return;
+  kwCommit();
+  const dup=kwHas(t);
+  if(!dup){ KW.unshift(t); kwRender(); }
   if(note){
     note.textContent = dup
       ? `📥 불러온 글 제목 "${t}"은(는) 이미 키워드에 있어요.`
@@ -1269,7 +1324,7 @@ function captureWS(){
     PHOTOMETA:JSON.parse(JSON.stringify(PHOTOMETA||{})), THUMB,
     PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})),
     SRCKIND, KINDMANUAL, IMPORTED_DRAFT,
-    memo:$('#memo').value, srcval:$('#srcval').value, keywords:$('#keywords').value,
+    memo:$('#memo').value, srcval:$('#srcval').value, keywords:kwGet(),
     kwnote:$('#kwnote')?$('#kwnote').textContent:'', kwnoteShow:$('#kwnote')?$('#kwnote').style.display:'none',
     links:$('#links')?$('#links').value:'', prod:$$('#prodlinks .plink').map(i=>i.value),
     previewHTML:$('#preview').innerHTML, previewClass:$('#preview').className,
@@ -1289,7 +1344,7 @@ function applyWS(s){
   PHOTOMETA=JSON.parse(JSON.stringify(s.PHOTOMETA||{})); THUMB=s.THUMB||null;
   PMACTIVE=s.PMACTIVE; PMSEL=new Set(s.PMSEL||[]); PMANCHOR=s.PMANCHOR||null; SUBCATS=JSON.parse(JSON.stringify(s.SUBCATS||{})); PMDRAG=null;
   IMPORTED_DRAFT=s.IMPORTED_DRAFT||null;
-  $('#memo').value=s.memo||''; $('#srcval').value=s.srcval||''; $('#keywords').value=s.keywords||'';
+  $('#memo').value=s.memo||''; $('#srcval').value=s.srcval||''; kwSet(s.keywords||'');
   if($('#kwnote')){ $('#kwnote').textContent=s.kwnote||''; $('#kwnote').style.display=s.kwnoteShow||'none'; }
   if($('#links')) $('#links').value=s.links||'';
   $('#prodlinks').innerHTML=''; ((s.prod&&s.prod.length)?s.prod:['']).forEach(v=>addProdLink(v));
@@ -1404,7 +1459,7 @@ $('#gen').onclick=async()=>{
   if(!$('#memo').value.trim()){st('경험 메모를 입력하세요.');return;}
   $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:$('#keywords').value,minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES,
       draftId:CURWS,  // 이 탭의 글로 서버에 보관(게시 때 이 id로 '그 탭 글'을 정확히 저장)
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 in-place 편집(새 글용 사진 재정렬 휴리스틱 끔)
@@ -1435,7 +1490,7 @@ $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
   $('#export').disabled=true; expLoading(true);
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:$('#keywords').value,minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES,
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 [영상] 순서 고정 지시를 프롬프트에 포함
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
