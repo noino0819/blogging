@@ -53,6 +53,22 @@ def test_load_base_prompt_strips_meta():
     assert "이 파일은 초안 작성" not in base  # 메타 안내 제거됨
 
 
+def test_prompt_examples_follow_own_rules():
+    # 프롬프트 안의 예시가 자체 규칙을 어기면 모델이 그대로 모방한다 — 회귀 방지.
+    # (금지 문자 ~!, 허용 목록 밖 이모지, 특정인 필명 하드코딩)
+    from autoblog.draft.prompts import (
+        COMMON_STYLE_PROMPT_PATH,
+        DEFAULT_PROMPT_PATH,
+        PRODUCT_PROMPT_PATH,
+    )
+
+    for path in (DEFAULT_PROMPT_PATH, PRODUCT_PROMPT_PATH, COMMON_STYLE_PROMPT_PATH):
+        text = path.read_text(encoding="utf-8")
+        assert "~!" not in text, path.name
+        assert "🐰" not in text, path.name
+        assert "노이노" not in text, path.name  # 공유 베이스에 개인 필명 금지(persona.py 원칙)
+
+
 def test_user_prompt_experience_is_lead():
     user = build_user_prompt(_place_card(), "비 오는 날 들렀는데 따뜻했다")
     assert user.index("나의 경험") < user.index("참고 정보")

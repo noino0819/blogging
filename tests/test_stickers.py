@@ -28,6 +28,33 @@ def test_label_catalog_favorites_only(monkeypatch):
     assert by["ogq_a:2"].tags == ["기존"]  # 기존 보존
 
 
+def test_label_sticker_kind_assigns_class_tags(tmp_path, monkeypatch):
+    """비전 kind 판정 → '헤더'/'구분선' 태그 자동 부여(다른 유저 카탈로그도 분류되게)."""
+    from PIL import Image
+
+    import autoblog.vision as vision
+
+    img = tmp_path / "s.png"
+    Image.new("RGB", (8, 8)).save(img)
+    answers = iter(
+        [
+            '{"text":"추천 대상","mood":"중립","tags":["추천대상"],"kind":"헤더"}',
+            '{"text":"","mood":"기쁨","tags":["신남"],"kind":"감정"}',
+            '{"text":"","mood":"","tags":["장식"],"kind":"구분선"}',
+        ]
+    )
+    monkeypatch.setattr(vision, "default_vision_model", lambda: "m")
+    monkeypatch.setattr(vision, "vision_json", lambda *a, **k: next(answers))
+    from autoblog.publish.stickers import label_sticker
+
+    # 헤더형: mood 제외 + '헤더' 부여 → is_heading 성립
+    assert label_sticker(str(img)) == ["추천대상", "헤더"]
+    # 감정형: 기존 그대로(mood 먼저)
+    assert label_sticker(str(img)) == ["기쁨", "신남"]
+    # 구분선형: '구분선' 부여 → 구분선 지시문 분류에 걸림
+    assert label_sticker(str(img)) == ["장식", "구분선"]
+
+
 def test_crop_sprite_grid():
     from io import BytesIO
 

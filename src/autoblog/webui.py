@@ -593,8 +593,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <section class="view stickers">
     <h2 class=title>스티커</h2>
     <p class=desc>★를 눌러 즐겨찾기에 넣으세요. 기본은 <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.<br>
-    제목·배너용 스티커(예: '추천대상', '내돈내산' 고지)에는 <b>헤더</b> 태그를 함께 달아 주세요 —
-    AI가 감정 스티커로 오용하지 않게 자동 사용에서 빠지고, 마커로 직접 지정할 때만 들어갑니다.</p>
+    제목·배너용 스티커(예: '추천대상', '내돈내산' 고지)는 <b>헤더</b> 태그로 구분돼요 —
+    AI가 감정 스티커로 오용하지 않게 자동 사용에서 빠지고, 마커로 직접 지정할 때만 들어갑니다.
+    태그 분석이 자동으로 달아 주니, 빠졌거나 잘못 붙었으면 태그 칩으로 고쳐 주세요.</p>
     <div class=stat id=ststat></div>
     <div class=togrow style="margin:0 0 14px;max-width:560px">
       <div class=tl>스티커 전체 사용 <span class=hint data-tip="끄면 즐겨찾기한 스티커만 글에 쓰입니다. 켜면 전체 스티커에서 상황에 맞게 골라 씁니다.">i</span></div>
