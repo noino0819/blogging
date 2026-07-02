@@ -162,6 +162,27 @@ def test_enforce_format():
     assert enforce_format("맛 (๑´~ˋ๑) 좋아").count("(๑´~ˋ๑)") == 1
 
 
+def test_title_line_decor_stripped():
+    # 제목(첫 줄)은 검색 결과에 노출되므로 장식 문자를 치환하지 않고 제거한다.
+    from autoblog.draft.postprocess import enforce_format
+
+    out = enforce_format("연남동 라멘 멘야하루 후기!\n\n본문이에요!")
+    assert out.split("\n", 1)[0] == "연남동 라멘 멘야하루 후기"
+    assert ".ᐟ" in out  # 본문 느낌표는 여전히 .ᐟ 치환
+    # 모델이 제목에 넣은 .ᐟ·〰️도 걷어낸다
+    out2 = enforce_format("성수 카페 후기 .ᐟ 〰️\n\n본문")
+    assert out2.split("\n", 1)[0] == "성수 카페 후기"
+
+
+def test_bracket_segments_protected_from_substitution():
+    # 마커 라벨·대괄호 고유명사 속 !/~는 치환하지 않는다(매칭·표기 보호).
+    from autoblog.draft.postprocess import enforce_format
+
+    out = enforce_format("제목\n\n오늘은 [ 잇쇼우! ] 다녀왔어요\n[사진:간판!]")
+    assert "[ 잇쇼우! ]" in out
+    assert "[사진:간판!]" in out
+
+
 def test_forbidden_phrase_softened():
     from autoblog.draft.postprocess import enforce_format
 

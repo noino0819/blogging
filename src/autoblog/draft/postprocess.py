@@ -1,8 +1,8 @@
 """포맷 후처리 — 결정적 규칙 강제 (기획서 §4.3 / stage 3).
 
 모델이 베이스 프롬프트의 기계적 규칙을 어겨도 코드로 보정한다:
-- 느낌표(!) → .ᐟ
-- 물결표(~) → -
+- 느낌표(!) → .ᐟ (제목 줄은 치환 대신 제거 — 검색 색인 보호, 대괄호 구간은 원형 보존)
+- 물결표(~) → - (대괄호 구간·허용 카오모지 보호)
 - 줄 앞 글머리 기호(•,*,▶,→,✓,✅,- ) 제거
 - 마크다운 헤더(#) 마커 제거
 - 명시적으로 금지된 흔한 이모지 제거
@@ -105,6 +105,41 @@ def _wrap_line(line: str, max_len: int) -> list[str]:
     return pieces
 
 
+# 대괄호 구간([사진:라벨]·[지도]·본문 속 [ 가게명 ])은 문자 치환에서 보호한다 —
+# 마커 라벨이나 고유명사 속 !/~가 치환되면 매칭·표기가 깨진다(예: '잇쇼우!').
+_BRACKET_SEG_RE = re.compile(r"\[[^\[\]\n]*\]")
+
+
+def _sub_special_chars(text: str) -> str:
+    """느낌표→.ᐟ, 물결표→- 치환(대괄호 구간·허용 카오모지는 보호)."""
+    segs: list[str] = []
+
+    def _stash(m: re.Match) -> str:
+        segs.append(m.group(0))
+        return f"\x00B{len(segs) - 1}\x00"
+
+    text = _BRACKET_SEG_RE.sub(_stash, text)
+    text = text.replace("!", ".ᐟ")
+    text = text.replace(_TILDE_EMOJI, _TILDE_SENTINEL)  # 허용 이모지 보호
+    text = re.sub(r"~+", "-", text)
+    text = text.replace(_TILDE_SENTINEL, _TILDE_EMOJI)
+    for i, seg in enumerate(segs):
+        text = text.replace(f"\x00B{i}\x00", seg)
+    return text
+
+
+def _clean_title_line(line: str) -> str:
+    """제목(첫 줄)은 검색 결과에 그대로 노출된다 — 장식 문자는 치환 대신 제거.
+
+    .ᐟ(U+141F)·〰️ 같은 변형 유니코드가 제목에 박히면 검색엔진이 일반 문자와 다른
+    코드포인트로 취급해 키워드 매칭이 깨질 수 있다. 느낌표도 제목에서는 삭제.
+    범위 표시 물결(3월~4월)은 제목에서 정상 표기라 건드리지 않는다.
+    """
+    line = line.replace(".ᐟ", "").replace("ᐟ", "").replace("!", "")
+    line = re.sub("〰️?", "", line)
+    return re.sub(r"[ \t]{2,}", " ", line).strip()
+
+
 # 상품 리뷰의 나열 박스 표식으로 시작하는 줄은 한 항목이라 쪼개지 않는다.
 # 키캡 숫자(1️⃣…)는 변이 선택자(U+FE0F) 유무가 입력마다 달라 정규식으로 너그럽게 매칭한다.
 _LIST_LINE_RE = re.compile(r"^[ \t]*(?:[0-9]️?⃣|🔟|✅|✓|👉|🌟)")
@@ -150,10 +185,12 @@ def enforce_format(
     text = _HEADER_RE.sub("", text)  # 마크다운 헤더 마커 제거
     text = bullet_re.sub("", text)  # 글머리 기호 제거
     text = _DASH_BULLET_RE.sub("", text)  # 줄 앞 '- ' 제거
-    text = text.replace("!", ".ᐟ")  # 느낌표 치환
-    text = text.replace(_TILDE_EMOJI, _TILDE_SENTINEL)  # 허용 이모지 보호
-    text = re.sub(r"~+", "-", text)  # 물결표 치환
-    text = text.replace(_TILDE_SENTINEL, _TILDE_EMOJI)
+    if wrap:  # 전체 문서 모드 — 첫 줄(제목)은 장식 문자 제거, 본문만 치환
+        stripped = text.lstrip("\n")
+        title, sep, body = stripped.partition("\n")
+        text = _clean_title_line(title) + (sep + _sub_special_chars(body) if sep else "")
+    else:  # 강조 스팬 등 조각 정규화 — 제목 개념 없음
+        text = _sub_special_chars(text)
     forbidden = _FORBIDDEN_EMOJI
     if allow_checklist:  # 상품 구조 표식(🌟)은 보존
         forbidden = forbidden.replace(_PRODUCT_KEEP_EMOJI, "")
