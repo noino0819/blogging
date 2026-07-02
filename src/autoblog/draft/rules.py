@@ -26,14 +26,17 @@ _FRAGMENTS = {
         "소제목으로 구간을 나누세요."
     ),
     "seo": (
-        "검색 노출: 지역명·업종/상품 키워드를 제목과 본문에 자연스럽게 배치하세요. "
-        "단 과도한 반복은 저품질로 보일 수 있으니 절제하세요."
+        "검색 노출: 제목의 대표 검색 키워드를 인트로 첫 문단에 1회 자연스럽게 포함하고, "
+        "소제목 한두 개와 본문에도 몇 차례 자연스럽게 등장시키세요(제목에만 있고 본문에 "
+        "없으면 제목-본문 불일치로 불리합니다). 지역명·업종/상품명 같은 연관 키워드도 "
+        "1~2회 곁들이세요. 단 같은 키워드를 문장마다 반복(키워드 스터핑)하면 저품질로 "
+        "보이니 절대 금지."
     ),
     "emoji": "이모티콘: 분위기에 맞는 이모지를 적절히 사용하세요.",
 }
 
-# 기본값: 위 3개 켜짐, 아래 2개 꺼짐
-_DEFAULT_ON = {"mobile_friendly", "authenticity", "structure_guide"}
+# 기본값: 검색 노출이 프로젝트 목표라 seo 포함 4개 켜짐, emoji만 꺼짐
+_DEFAULT_ON = {"mobile_friendly", "authenticity", "structure_guide", "seo"}
 
 
 class CommonRules(BaseModel):
@@ -42,7 +45,7 @@ class CommonRules(BaseModel):
     mobile_friendly: bool = True
     authenticity: bool = True
     structure_guide: bool = True
-    seo: bool = False
+    seo: bool = True
     emoji: bool = False
 
     def active_fragments(self) -> list[str]:

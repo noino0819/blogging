@@ -21,9 +21,11 @@ def _place_card():
 def test_rules_default_and_toggle():
     default = CommonRules()
     frags = default.active_fragments()
-    assert len(frags) == 3  # mobile/authenticity/structure 기본 켜짐
-    # seo/emoji 켜면 5개
-    assert len(CommonRules(seo=True, emoji=True).active_fragments()) == 5
+    assert len(frags) == 4  # mobile/authenticity/structure/seo 기본 켜짐(emoji만 꺼짐)
+    assert any("검색 노출" in f for f in frags)
+    # emoji까지 켜면 5개, seo 끄면 3개
+    assert len(CommonRules(emoji=True).active_fragments()) == 5
+    assert len(CommonRules(seo=False).active_fragments()) == 3
 
 
 def test_render_fact_card_place():

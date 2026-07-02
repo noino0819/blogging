@@ -842,7 +842,7 @@ function prodLinkRow(val){
 function addProdLink(val){$('#prodlinks').appendChild(prodLinkRow(val)); return $('#prodlinks').lastElementChild;}
 function resetProdLinks(){$('#prodlinks').innerHTML=''; addProdLink('');}
 const PRODLINKS=()=>SRCKIND==='product'?$$('#prodlinks .plink').map(i=>i.value.trim()).filter(Boolean):[];
-const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:false,emoji:false};
+const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:true,emoji:false};
 let PRUNE=true;  // 임시저장 시 같은 제목 이전 글 자동 정리(설정 토글)
 let IMPORTED_DRAFT=null;  // 사진을 가져온 원본 임시저장 글 {title,date} — 저장 완료 후 삭제 대상
 let SAVEDBG=false;  // 디버그: 임시저장 시 브라우저를 화면에 띄워 작업 과정을 직접 본다(headful)
@@ -851,7 +851,7 @@ const RULE_META=[
  ['mobile_friendly','모바일 친화','문단을 2~3줄로 짧게, 여백 넉넉히(네이버 트래픽 대부분 모바일)'],
  ['authenticity','진정성','과장·상투구·AI식 표현 피하고 솔직·담백하게(단점도 자연스럽게)'],
  ['structure_guide','구조 가이드','방문/구매 동기 → 경험 → 평가 흐름, 소제목으로 구간 나누기'],
- ['seo','검색 노출(SEO)','지역명·업종 키워드를 제목·본문에 자연스럽게(과도 반복은 저품질)'],
+ ['seo','검색 노출(SEO)','대표 키워드를 인트로·소제목·본문에 자연스럽게(문장마다 반복은 저품질)'],
  ['emoji','이모지','분위기에 맞는 이모지 적절히 사용'],
 ];
 
@@ -2966,7 +2966,7 @@ DEFAULT_MIN_CHARS = 1500  # 글자 수를 따로 안 넣으면 기본 최소 글
 _PREFS_DEFAULT = {
     "rules": {
         "mobile_friendly": True, "authenticity": True,
-        "structure_guide": True, "seo": False, "emoji": False,
+        "structure_guide": True, "seo": True, "emoji": False,
     },
     "fmt": {
         "emphasis": True, "structure": True, "stickers": True,
