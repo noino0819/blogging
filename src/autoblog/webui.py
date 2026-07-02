@@ -456,9 +456,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=dropzone id=dropzone>📷 사진·동영상을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*,video/*" multiple hidden></div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
     <button type=button class="btn ghost" id=draftload style="white-space:nowrap">📥 임시저장에서 불러오기</button>
+    <button type=button class="btn ghost" id=draftrefresh title="네이버에서 목록 새로고침" style="display:none;padding:4px 8px;font-size:12px;line-height:1">🔄</button>
     <div id=draftmultiwrap style="display:none">여러 글 선택 <div class="sw sw-sm" id=draftmulti></div></div>
     <span class=muted id=draftstat></span>
-    <button type=button class="btn ghost" id=draftrefresh title="네이버에서 목록 새로고침" style="display:none;margin-left:auto;padding:4px 8px;font-size:12px;line-height:1">🔄</button>
   </div>
   <div class=draftlist id=draftlist style="display:none"></div>
   <div id=draftbatch style="display:none;margin-bottom:10px">
