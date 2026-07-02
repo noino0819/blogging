@@ -358,10 +358,15 @@ def save_sticker_catalog(catalog: StickerCatalog, path: Path | None = None) -> N
 # 그래도 로컬 7b는 글자 환각·감정 오판이 잦아 자동 라벨은 초안일 뿐, config/stickers.yaml 검수가 정답.
 STICKER_LABEL_PROMPT = (
     "이미지는 블로그용 스티커(이모티콘) 한 개입니다. JSON만 답하세요.\n"
-    '형식: {"text":"스티커에 적힌 한글을 정확히(없으면 빈칸)","mood":"한 단어 감정","tags":["상황"]}\n'
+    '형식: {"text":"스티커에 적힌 한글을 정확히(없으면 빈칸)","mood":"한 단어 감정",'
+    '"tags":["상황"],"kind":"감정|헤더|구분선 중 하나"}\n'
     "글자를 먼저 읽고, 그 글자의 실제 뜻과 캐릭터 표정에서 감정·상황을 직접 끌어내세요. "
     "주어진 보기에서 고르지 말고 내용에 맞는 한국어 단어를 스스로 쓰세요. "
-    "글자가 힘듦·피곤·짜증이면 기쁨이라 하지 마세요. tags는 2~3개."
+    "글자가 힘듦·피곤·짜증이면 기쁨이라 하지 마세요. tags는 2~3개.\n"
+    "kind 판정: 캐릭터·표정이 주인공이고 감정이나 반응을 표현하면 '감정'. "
+    "글자가 주인공인 소제목 라벨이나 안내문(고지) 배너, 말풍선 틀처럼 본문을 꾸미는 "
+    "틀이면 '헤더' — 이때 tags 첫 항목은 적힌 라벨을 띄어쓰기 없이 그대로 쓰세요. "
+    "내용 글자 없이 구역만 나누는 가로선·장식 띠면 '구분선'."
 )
 
 # 스티커 crop이 ~100px로 작아 한글 OCR이 뭉개짐 → 업스케일 후 비전에 전달(정확도 크게 향상).
@@ -384,6 +389,9 @@ def label_sticker(image_path: str, model: str | None = None) -> list[str]:
     """스티커 이미지 1개 → 감정/상황 태그 목록(비전 모델).
 
     작은 스티커는 업스케일해 한글 OCR 정확도를 높이고, mood+상황 태그를 합쳐 반환.
+    kind 판정도 함께 받아 헤더형(제목 라벨·배너)이면 '헤더', 구분선형이면 '구분선' 태그를
+    자동 부여한다 — 어느 유저의 카탈로그든 불러오기→태그 분석만으로 분류가 되게(검수로 교정).
+    헤더형·구분선형은 감정이 아니므로 mood는 태그에 넣지 않는다.
     """
     from autoblog.vision import default_vision_model, vision_json
 
@@ -395,9 +403,12 @@ def label_sticker(image_path: str, model: str | None = None) -> list[str]:
         return []
     if not isinstance(parsed, dict):
         return []
+    kind = str(parsed.get("kind") or "").replace(" ", "")
+    heading = "헤더" in kind or "제목" in kind or "배너" in kind
+    divider = "구분" in kind
     out: list[str] = []
     mood = parsed.get("mood")
-    if isinstance(mood, str) and mood.strip():
+    if not heading and not divider and isinstance(mood, str) and mood.strip():
         out.append(mood.strip())
     tags = parsed.get("tags")
     if isinstance(tags, list):
@@ -405,6 +416,10 @@ def label_sticker(image_path: str, model: str | None = None) -> list[str]:
             t = str(t).strip()
             if t and t not in out:
                 out.append(t)
+    if heading and not any(_is_heading_label(t) for t in out):
+        out.append("헤더")
+    if divider and not any(_is_divider_label(t) for t in out):
+        out.append("구분선")
     return out
 
 
