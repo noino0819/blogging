@@ -570,22 +570,42 @@ class BlogPublisher:
                  .filter(c => c.querySelectorAll('img.se-image-resource').length >= 2).length"""
         )
 
+    # 본문 img 들의 lazy src 를 전부 로드시킨다(스크롤·폴링). 외부/네이버 판별이 src 기반이라
+    # 미로드(빈 src) 상태로 분류하면 보존해야 할 외부 이미지를 지울 수 있다.
+    _FORCE_LOAD_IMGS_JS = r"""
+    async () => {
+      for (const im of document.querySelectorAll('img.se-image-resource')) {
+        im.scrollIntoView({block: 'center'});
+        for (let t = 0; t < 25; t++) {
+          if (im.src && !im.src.startsWith('data:')) break;
+          await new Promise(r => setTimeout(r, 150));
+        }
+      }
+    }
+    """
+
     def _delete_movable_photos(self) -> int:
-        """단일 사진 컴포넌트만 모두 삭제한다(영상·콜라주는 보존 = 고정 앵커).
+        """단일 '네이버 업로드' 사진 컴포넌트만 모두 삭제한다(영상·콜라주·외부 이미지는 보존).
 
         in-place 사진 재배치: 지운 자리에 플랜 순서대로 사진을 다시 넣는다. 콜라주(img 2장↑)와
-        영상은 재업로드가 불가/불완전하므로 건드리지 않는다. 진전이 없으면(삭제가 안 먹힘) 멈춘다.
+        영상은 재업로드가 불가/불완전하므로 건드리지 않는다. src가 pstatic이 아닌 외부 이미지
+        (체험단 협찬 배너 = 플랫폼 추적 URL을 핫링크)는 지우고 재업로드하면 URL이 네이버 CDN으로
+        바뀌어 협찬 인식이 깨지므로 절대 건드리지 않는다(고정 앵커). 진전이 없으면 멈춘다.
         (프리미티브 검증: scripts/probe_photo_rebuild.py)"""
         page = self._page
+        page.evaluate(self._FORCE_LOAD_IMGS_JS)  # src 로드 후에야 외부/네이버 판별 가능
         removed = 0
         prev = None
         for _ in range(200):  # 안전 상한
-            # 콜라주(2장↑)가 아닌 단일 사진 컴포넌트의 첫 img를 찾는다.
+            # 콜라주(2장↑)가 아니고 외부 핫링크도 아닌, 단일 사진 컴포넌트의 첫 img를 찾는다.
             handle = page.evaluate_handle(
-                """() => {
+                r"""() => {
                   for (const c of document.querySelectorAll('.se-component')) {
                     const imgs = c.querySelectorAll('img.se-image-resource');
-                    if (imgs.length === 1) return imgs[0];
+                    if (imgs.length !== 1) continue;
+                    const s = imgs[0].src || '';
+                    if (/^https?:/.test(s) && !/pstatic\.net/.test(s)) continue;  // 외부 이미지 보존
+                    return imgs[0];
                   }
                   return null;
                 }"""
@@ -828,7 +848,8 @@ class BlogPublisher:
             else:
                 page.keyboard.press("Escape")
 
-        # ── 사진 재배치(in-place) ─ 영상·콜라주는 옮길 수 없어 고정 앵커로 두고, 사진은 전부
+        # ── 사진 재배치(in-place) ─ 영상·콜라주·외부 이미지(협찬 배너)는 옮길 수 없거나 옮기면
+        # 안 되어 고정 앵커로 두고, 네이버 업로드 사진은 전부
         # 삭제한 뒤 플랜 순서대로 다시 넣는다. 이러면 LLM이 정한 사진·텍스트 순서가 그대로 반영되고
         # (문서 물리 순서에 끌려가지 않음), 영상은 원자리에 보존된다. i번째 [영상] 블록 = i번째
         # 물리 영상으로 매핑해 그 사이 구간에 사진·텍스트·장식을 배치한다.
@@ -840,7 +861,30 @@ class BlogPublisher:
                 f"콜라주(여러 장을 묶은 사진) {n_collage}개는 옮길 수 없어 그대로 뒀어요 — "
                 "그 주변 사진 순서는 확인해 주세요."
             )
-        self._delete_movable_photos()  # 단일 사진만 삭제(영상·콜라주 보존)
+        self._delete_movable_photos()  # 단일 네이버 사진만 삭제(영상·콜라주·외부 이미지 보존)
+
+        # 보존된 외부 핫링크 이미지(협찬 배너 추적 URL) 현황 — 첫 미디어가 외부 이미지면
+        # 본문을 그 '뒤'에 쌓아 배너를 최상단에 유지한다(체험단 규정: 고지는 글 상단).
+        ext = page.evaluate(
+            r"""() => {
+              let n = 0, lead = null;
+              for (const c of document.querySelectorAll('.se-component')) {
+                const cls = c.className.toString();
+                const imgs = c.querySelectorAll('img.se-image-resource');
+                const isMedia = /se-video/.test(cls) || imgs.length > 0;
+                const isExt = imgs.length === 1 && /^https?:/.test(imgs[0].src || '')
+                              && !/pstatic\.net/.test(imgs[0].src);
+                if (isExt) n++;
+                if (isMedia && lead === null) lead = isExt;
+              }
+              return {n, lead: lead === true};
+            }"""
+        )
+        if ext["n"]:
+            infos.append(
+                f"외부 이미지(협찬 배너 등) {ext['n']}개는 인식용 원본 URL을 지키기 위해 "
+                "그대로 뒀어요 — 위치만 확인해 주세요."
+            )
 
         # 플랜을 [영상] 블록 기준으로 구간 분할. segment 0 = 첫 영상 앞, segment K = (K-1)번 영상 뒤.
         segments: list[list] = [[]]
@@ -890,6 +934,10 @@ class BlogPublisher:
         def _anchor_segment(seg_idx):
             # 구간 커서: 0=첫 미디어 앞, K>0=(K-1)번 물리 영상 바로 뒤(영상 부족하면 마지막 영상 뒤).
             if seg_idx == 0 or n_phys_video == 0:
+                # 첫 미디어가 보존된 외부 이미지(협찬 배너)면 그 '뒤'에 쌓는다 — 맨 앞에 쌓으면
+                # 본문이 배너 위로 밀려 고지가 상단에서 밀려난다. 실패 시 기존 최상단 앵커로.
+                if ext["lead"] and self._anchor_after_photo(0):
+                    return
                 self._anchor_before_first_media()
             else:
                 self._anchor_after_video_index(min(seg_idx, n_phys_video) - 1)
@@ -1003,7 +1051,11 @@ class BlogPublisher:
           if (im.src && !im.src.startsWith('data:')) break;
           await new Promise(r => setTimeout(r, 150));
         }
-        out.push({kind: 'image', src: (im.src && !im.src.startsWith('data:')) ? im.src : ''});
+        const src = (im.src && !im.src.startsWith('data:')) ? im.src : '';
+        // 외부 핫링크(협찬 배너 추적 URL 등, src가 pstatic이 아님)는 다운로드·재업로드 금지
+        // 대상이라 별도 종류로 표시한다(고정 앵커, 사진 목록에서 제외).
+        const external = /^https?:/.test(src) && !/pstatic\.net/.test(src);
+        out.push({kind: external ? 'external' : 'image', src});
       }
       return out;
     }
@@ -1013,9 +1065,11 @@ class BlogPublisher:
         """idx번 임시저장 글의 미디어를 '문서 순서대로' 반환한다(사진·영상·콜라주 구분).
 
         반환: [{"kind": "image", "path": 로컬경로}, {"kind": "video"}, {"kind": "collage"}, …]
-        - 사진(단일 img)만 dest_dir로 다운로드해 로컬 경로를 준다(재삽입·재배치용).
+        - 사진(단일 img, 네이버 업로드)만 dest_dir로 다운로드해 로컬 경로를 준다(재삽입·재배치용).
         - 영상·콜라주는 재업로드가 불가/불완전하므로 다운로드하지 않고 '고정 앵커' placeholder만
           순서에 남긴다(in-place에서 위치 기준점으로 쓰고, 그 자리에 사진을 배치).
+        - 외부 핫링크 이미지(협찬 배너 = 플랫폼 추적 URL)도 같은 이유로 placeholder만 남긴다 —
+          재업로드하면 URL이 네이버 CDN으로 바뀌어 체험단 크롤러의 협찬 인식이 깨진다.
         import_draft_photos(사진만)의 상위 버전 — in-place가 영상 위치를 알게 하는 게 목적.
         """
         import uuid
@@ -1048,6 +1102,11 @@ class BlogPublisher:
                 # 콜라주(여러 장이 한 컴포넌트)는 낱장으로 못 옮기니 옮기지 않고 고정 앵커로만 남긴다.
                 # 사진 목록(이동 대상)에 넣지 않는다 — 실행기가 문서에서 그대로 둔다.
                 manifest.append({"kind": "collage"})
+                continue
+            if kind == "external":
+                # 외부 핫링크 이미지(협찬 배너 = 플랫폼 추적 URL). 다운로드해 재업로드하면 URL이
+                # 네이버 CDN으로 바뀌어 협찬 인식이 깨진다 → 콜라주처럼 고정 앵커로 보존만 한다.
+                manifest.append({"kind": "external"})
                 continue
             src = it.get("src") or ""
             if not src or src in seen_src:  # 빈 src·중복(같은 이미지 재노출)은 건너뜀
