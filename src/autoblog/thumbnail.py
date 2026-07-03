@@ -167,8 +167,11 @@ def _overlay_title(image: bytes, title: str) -> bytes:
     return buf.getvalue()
 
 
-def generate_thumbnail(photo_path: str, title: str = "", extra: str = "") -> bytes:
-    """대표사진 1장 + 타이틀 + 방향 요청(extra) → 손그림 감성 썸네일 PNG bytes."""
+def generate_thumbnail(photo_path: str, title: str = "", extra: str = "") -> tuple[bytes, str]:
+    """대표사진 1장 + 타이틀 + 방향 요청(extra) → (썸네일 PNG bytes, VLM이 쓴 영어 생성 프롬프트).
+
+    프롬프트도 함께 돌려줘서, FLUX 결과가 아쉬우면 그대로 복사해 외부 이미지 모델에 맡길 수 있게.
+    """
     env = load_env()
     if not env.nvidia_api_key:
         raise ThumbnailUnavailable(
@@ -176,11 +179,11 @@ def generate_thumbnail(photo_path: str, title: str = "", extra: str = "") -> byt
         )
     prompt = _compose_flux_prompt(photo_path, extra)
     image = _flux_generate(prompt, env.nvidia_api_key)
-    return _overlay_title(image, title.strip())
+    return _overlay_title(image, title.strip()), prompt
 
 
 if __name__ == "__main__":  # 수동 점검: python -m autoblog.thumbnail 사진.jpg "타이틀"
-    out = generate_thumbnail(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "테스트")
+    out, _ = generate_thumbnail(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "테스트")
     dest = "thumb_test.png"
     with open(dest, "wb") as f:
         f.write(out)

@@ -619,6 +619,11 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=modalhd><span>🎨 AI 썸네일 완성</span><button class=mx id=tpx>✕</button></div>
   <div class=muted>마음에 들면 ★ 대표로 적용하세요. 적용하지 않으면 원래 대표사진이 그대로 유지돼요.</div>
   <div style="margin-top:10px;text-align:center"><img id=tpimg style="max-width:300px;max-height:300px;border-radius:9px;border:1px solid #e5e7eb"></div>
+  <div class=muted style="margin-top:12px;font-size:11.5px">아쉬우면 외부 이미지 모델(Midjourney·DALL·E·nano-banana 등)에 맡겨보세요 — 프롬프트를 복사하고 원본사진을 챙겨 붙여넣으면 돼요.</div>
+  <div style="display:flex;gap:8px;margin-top:6px">
+    <button class="btn ghost" id=tpcopy style="flex:1">📋 프롬프트 복사</button>
+    <a class="btn ghost" id=tpdl style="flex:1;text-align:center;text-decoration:none" download="원본사진.jpg">⬇ 원본사진 저장</a>
+  </div>
   <div class=modalft><button class=btn id=tpok style="flex:1">★ 대표로 적용</button><button class="btn ghost" id=tpskip style="flex:0 0 110px">적용 안 함</button></div>
 </div></div>
 <div id=aimodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
@@ -1637,8 +1642,10 @@ async function runThumbGen(title,extra){
     if(!r.ok)throw new Error(d.error||'알 수 없는 오류');
     const sec=el.stop();
     renderPmeta();  // 🎨 버튼 복구
-    PENDTHUMB={path:d.path,src};
+    PENDTHUMB={path:d.path,src,prompt:d.prompt||''};
     $('#tpimg').src='/photo?path='+encodeURIComponent(d.path);
+    const dl=$('#tpdl'); dl.href='/photo?path='+encodeURIComponent(src);  // 외부 모델에 넘길 원본
+    dl.download=src.split(/[\\/]/).pop()||'원본사진';  // 실제 확장자 그대로
     $('#tpmodal').style.display='flex';
     toast(`AI 썸네일 완성! (${sec}초) 미리보기에서 적용 여부를 정하세요.`,'ok');
   }catch(e){el.stop(); renderPmeta(); errNotice('썸네일 생성 실패', e.message);}
@@ -2674,6 +2681,9 @@ $('#npok').onclick=doNewPost; $('#npx').onclick=closeNP; $('#npcancel').onclick=
 $('#npmodal').onclick=e=>{ if(e.target===$('#npmodal'))closeNP(); };
 $('#tgx').onclick=closeTG; $('#tgcancel').onclick=closeTG;
 $('#tpx').onclick=closeTP; $('#tpskip').onclick=closeTP; $('#tpok').onclick=applyPendThumb;
+$('#tpcopy').onclick=async()=>{ const p=PENDTHUMB&&PENDTHUMB.prompt; if(!p){toast('복사할 프롬프트가 없어요.','info');return;}
+  try{await navigator.clipboard.writeText(p); toast('프롬프트를 복사했어요 — 외부 이미지 모델에 붙여넣으세요.','ok');}
+  catch(e){ prompt('아래 프롬프트를 복사하세요 (Ctrl/Cmd+C):', p); } };
 $('#tgmodal').onclick=e=>{ if(e.target===$('#tgmodal'))closeTG(); };
 $('#tgok').onclick=()=>{ const t=$('#tgtitle').value.trim(), ex=$('#tgextra').value.trim(); closeTG(); runThumbGen(t,ex); };
 $('#aix').onclick=closeAI; $('#aicancel').onclick=closeAI;
@@ -3148,7 +3158,7 @@ def _make_handler(state: dict):
                 )
                 return
             try:
-                png = generate_thumbnail(
+                png, prompt = generate_thumbnail(
                     str(photo),
                     (body.get("title") or "").strip(),
                     extra=(body.get("extra") or "").strip(),
@@ -3159,7 +3169,7 @@ def _make_handler(state: dict):
             UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
             dest = UPLOAD_DIR / f"thumb_{uuid.uuid4().hex[:8]}.png"
             dest.write_bytes(png)
-            self._send(200, json.dumps({"path": str(dest)}).encode())
+            self._send(200, json.dumps({"path": str(dest), "prompt": prompt}).encode())
 
         def _persona_fetch(self, body):
             """블로그 주소 → 인기글 top N 메타데이터(제목·공감수). 본문은 추출 단계에서."""
