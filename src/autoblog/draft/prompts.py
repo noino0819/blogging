@@ -73,6 +73,11 @@ def build_selfcheck_instruction(is_product: bool = False, ornaments: bool = True
     items.append(f"나열 기호 — 본문 줄 앞에 •, -, *, ▶, → 를 붙여 나열한 곳이 없는가?{bullet_note}")
     if ornaments:
         items.append("이모지 — 허용 목록 밖 이모지(💖 💕 🔥 😍 🤤 💯 등)를 쓰지 않았는가?")
+        items.append(
+            "이모지 배분 — 이모지가 글 앞부분에만 몰려 있지 않은가? 소제목 섹션마다 1개 이상 "
+            "들어가 글자만 빽빽한 구간이 없게 해 — 특히 마무리 총평 섹션. "
+            "(허용 목록 안에서만, 한 문단 최대 1-2개 규칙은 그대로 지켜)"
+        )
     items += [
         "제목 길이 — 대제목은 16자 안팎(최대 20자), 소제목은 22자 이내로 짧은가? "
         "둘 다 본문보다 큰 글씨라 길면 모바일에서 줄이 쪼개져 답답해진다. (본문 30자 규칙과 별개)",
