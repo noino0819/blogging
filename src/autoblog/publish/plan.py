@@ -648,14 +648,13 @@ def build_publish_plan(
             blocks.insert(0, PublishBlock(kind="sticker", sticker_pack=ref[0], sticker_index=ref[1]))
 
     # 협찬 고지 사진 — '협찬' 라벨 사진은 본문 '내용의 가장 맨 위'(인트로·헤더보다 위, 블록 0)로
-    # 끌어올리고 가장 작은 크기로 표시한다. 마커([사진:협찬])를 어디에 넣었든, 또 대표 썸네일이
-    # 따로 지정됐든 항상 맨 처음에 등장하게 보장한다.
+    # 끌어올린다. 마커([사진:협찬])를 어디에 넣었든, 또 대표 썸네일이 따로 지정됐든 항상
+    # 맨 처음에 등장하게 보장한다. 크기는 기본(문서너비) 유지 — '작게'로 표시하면 발행 HTML의
+    # src가 축소본(?type=w…)이 되어 체험단 크롤러의 배너 매칭이 실패할 수 있다(2026-07 결정 번복).
     spon_paths = {ph.path for ph in photos if ph.label == SPONSOR_PHOTO_LABEL}
     if spon_paths and not inplace:  # inplace는 사진 위치를 실행기가 정함(끌어올림 X)
         spon_blocks = [b for b in blocks if b.kind == "image" and b.image_path in spon_paths]
         if spon_blocks:
-            for b in spon_blocks:
-                b.image_size = "small"  # 협찬 고지 이미지는 가장 작게
             ids = {id(b) for b in spon_blocks}
             blocks = spon_blocks + [b for b in blocks if id(b) not in ids]
 
