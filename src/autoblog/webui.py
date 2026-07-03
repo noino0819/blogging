@@ -620,6 +620,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=muted style="margin-top:6px;font-size:11.5px">생성엔 보통 30초~1분 걸려요 · 완성되면 ★ 대표가 새 이미지로 바뀌어요</div>
   <div class=modalft><button class=btn id=tgok style="flex:1">🎨 생성 시작</button><button class="btn ghost" id=tgcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
+<div id=tpmodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
+  <div class=modalhd><span>🎨 AI 썸네일 완성</span><button class=mx id=tpx>✕</button></div>
+  <div class=muted>마음에 들면 ★ 대표로 적용하세요. 적용하지 않으면 원래 대표사진이 그대로 유지돼요.</div>
+  <div style="margin-top:10px;text-align:center"><img id=tpimg style="max-width:300px;max-height:300px;border-radius:9px;border:1px solid #e5e7eb"></div>
+  <div class=modalft><button class=btn id=tpok style="flex:1">★ 대표로 적용</button><button class="btn ghost" id=tpskip style="flex:0 0 110px">적용 안 함</button></div>
+</div></div>
 <div id=aimodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
   <div class=modalhd><span>✨ AI 사진 분석</span><button class=mx id=aix>✕</button></div>
   <div class=muted id=aidesc></div>
@@ -1624,6 +1630,7 @@ function openThumbModal(){
   $('#tgmodal').style.display='flex'; setTimeout(()=>$('#tgtitle').focus(),30);
 }
 function closeTG(){ $('#tgmodal').style.display='none'; }
+let PENDTHUMB=null;  // 생성 완료 후 적용 대기 중인 썸네일 {path,src}
 async function runThumbGen(title,extra){
   const src=THUMB, btn=$('#thumbgen'); if(btn)btn.disabled=true;
   const el=elapsed('썸네일 생성 중…',(label,counter)=>{if(btn)btn.textContent=label+(counter?' '+counter:'');});
@@ -1633,13 +1640,23 @@ async function runThumbGen(title,extra){
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'알 수 없는 오류');
     const sec=el.stop();
-    if(!PHOTOS.includes(d.path))PHOTOS.push(d.path);
-    if(!SELP.includes(d.path))SELP.push(d.path);
-    pmAssign(d.path, pmBucketOf(src));  // 원본과 같은 칸에 담고 대표를 새 이미지로 교체
-    THUMB=d.path;
-    renderGrid(); renderPmeta();
-    toast(`AI 썸네일 완성! (${sec}초) 새 이미지를 ★ 대표로 지정했어요.`,'ok');
+    renderPmeta();  // 🎨 버튼 복구
+    PENDTHUMB={path:d.path,src};
+    $('#tpimg').src='/photo?path='+encodeURIComponent(d.path);
+    $('#tpmodal').style.display='flex';
+    toast(`AI 썸네일 완성! (${sec}초) 미리보기에서 적용 여부를 정하세요.`,'ok');
   }catch(e){el.stop(); renderPmeta(); errNotice('썸네일 생성 실패', e.message);}
+}
+// ponytail: '적용 안 함'은 그냥 버림 — 파일은 uploads에 남지만 목록엔 안 뜸, 용량이 문제되면 삭제 API 추가
+function closeTP(){ $('#tpmodal').style.display='none'; PENDTHUMB=null; }
+function applyPendThumb(){
+  const t=PENDTHUMB; closeTP(); if(!t)return;
+  if(!PHOTOS.includes(t.path))PHOTOS.push(t.path);
+  if(!SELP.includes(t.path))SELP.push(t.path);
+  pmAssign(t.path, pmBucketOf(t.src));  // 원본과 같은 칸에 담고 대표를 새 이미지로 교체
+  THUMB=t.path;
+  renderGrid(); renderPmeta();
+  toast('새 이미지를 ★ 대표로 지정했어요.','ok');
 }
 // ✨ AI 분석 시작 전 모달 — 대상(분류함에 담긴 사진)을 명시하고, 선택 요청사항(hint)을 받는다.
 function aiTargets(){ return SELP.filter(p=>!isVid(p)); }  // 영상은 비전 모델이 못 읽으니 제외
@@ -2658,6 +2675,7 @@ $('#newpost').onclick=newPost;
 $('#npok').onclick=doNewPost; $('#npx').onclick=closeNP; $('#npcancel').onclick=closeNP;
 $('#npmodal').onclick=e=>{ if(e.target===$('#npmodal'))closeNP(); };
 $('#tgx').onclick=closeTG; $('#tgcancel').onclick=closeTG;
+$('#tpx').onclick=closeTP; $('#tpskip').onclick=closeTP; $('#tpok').onclick=applyPendThumb;
 $('#tgmodal').onclick=e=>{ if(e.target===$('#tgmodal'))closeTG(); };
 $('#tgok').onclick=()=>{ const t=$('#tgtitle').value.trim(), ex=$('#tgextra').value.trim(); closeTG(); runThumbGen(t,ex); };
 $('#aix').onclick=closeAI; $('#aicancel').onclick=closeAI;
