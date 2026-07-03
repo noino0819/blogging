@@ -83,6 +83,12 @@ def _chat_openai(
     except AuthenticationError as exc:
         raise LLMUnavailable(f"{key_name}가 유효하지 않습니다") from exc
     except APIError as exc:
+        # 402=무료 크레딧 소진, 429=분당 요청 초과 — 잔여 크레딧 조회 API는 없어서 안내만
+        if base_url and getattr(exc, "status_code", None) in (402, 429):
+            raise LLMUnavailable(
+                "NVIDIA 한도 도달 — 무료 크레딧(1,000회) 소진 또는 분당 40회 초과예요. "
+                "잠시 후 재시도하거나 build.nvidia.com 로그인 후 잔여 크레딧을 확인하세요."
+            ) from exc
         raise LLMUnavailable(f"{'NVIDIA' if base_url else 'OpenAI'} API 오류: {exc}") from exc
     return resp.choices[0].message.content or ""
 

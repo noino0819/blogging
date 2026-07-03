@@ -87,6 +87,11 @@ def _flux_generate(prompt: str, api_key: str) -> bytes:
         },
         timeout=300,
     )
+    if resp.status_code in (402, 429):  # 402=무료 크레딧 소진, 429=분당 요청 초과
+        raise ThumbnailUnavailable(
+            "NVIDIA 한도 도달 — 무료 크레딧(1,000회) 소진 또는 분당 40회 초과예요. "
+            "잠시 후 재시도하거나 build.nvidia.com 로그인 후 잔여 크레딧을 확인하세요."
+        )
     if not resp.ok:
         raise ThumbnailUnavailable(f"NVIDIA API 오류 {resp.status_code}: {resp.text[:300]}")
     return _decode_image(resp.json())

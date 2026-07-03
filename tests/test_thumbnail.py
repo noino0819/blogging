@@ -6,7 +6,7 @@ from io import BytesIO
 import pytest
 from PIL import Image
 
-from autoblog.thumbnail import ThumbnailUnavailable, _decode_image, _overlay_title
+from autoblog.thumbnail import ThumbnailUnavailable, _decode_image, _flux_generate, _overlay_title
 
 
 def test_decode_image_both_response_shapes():
@@ -38,3 +38,14 @@ def test_overlay_title_keeps_size_and_changes_pixels():
 def test_overlay_empty_title_returns_image():
     out = _overlay_title(_png_bytes(), "")
     assert Image.open(BytesIO(out)).size == (256, 256)
+
+
+def test_flux_quota_error_is_friendly(monkeypatch):
+    class FakeResp:
+        status_code = 402
+        ok = False
+        text = "Payment Required"
+
+    monkeypatch.setattr("requests.post", lambda *a, **k: FakeResp())
+    with pytest.raises(ThumbnailUnavailable, match="크레딧"):
+        _flux_generate("prompt", "nvapi-x")
