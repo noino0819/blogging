@@ -600,10 +600,10 @@ class BlogPublisher:
         edge force/JS/좌표 클릭, Ctrl+Home 전부 실패). 대신 '제목 칸 끝에서 Enter'를 치면 제목
         바로 아래(=첫 미디어 위)에 본문 문단이 생기고 캐럿도 그리로 간다(프로브에서 유일하게 성공)."""
         page = self._page
-        comps = page.query_selector_all(".se-component.se-image, .se-component.se-video")
-        if not comps:
-            page.click(SMART_EDITOR["content_component"])  # 미디어 없으면 본문에 바로
-            return True
+        # 미디어가 없어도 같은 경로를 쓴다 — 예전엔 본문 컴포넌트를 클릭했는데, Playwright가
+        # 요소 '정중앙'을 클릭해 이미 입력한 문장 한가운데에 커서가 박혔다(in-place 역순 삽입에서
+        # 사진 전부 삭제 직후 = 미디어 0개 구간의 본문 뒤섞임 원인). 제목 끝→Enter는 미디어
+        # 유무와 무관하게 항상 '제목 바로 아래 = 본문 맨 위'를 만든다.
         page.click(SMART_EDITOR["title_component"])
         page.wait_for_timeout(200)
         # 제목이 두 줄로 접히면 키보드 'End'는 시각 줄 끝(제목 중간)에 멈춰, 뒤이은 Enter가 본문으로
