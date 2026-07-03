@@ -57,6 +57,7 @@ def _chat_openai(
     api_key: str | None = None,
     base_url: str | None = None,
     key_name: str = "OPENAI_API_KEY",
+    extra_body: dict | None = None,
 ) -> str:
     """OpenAI 호환 API로 텍스트 생성 — 기본은 OpenAI(GPT), base_url을 주면 호환 서비스(NVIDIA 등)."""
     try:
@@ -70,9 +71,12 @@ def _chat_openai(
         raise LLMUnavailable(f"{key_name} 미설정 — 설정 탭에서 API 키를 입력하세요")
     msgs = list(messages)
     kwargs: dict = {}
+    if extra_body:
+        kwargs["extra_body"] = extra_body
     if fmt == "json":
         kwargs["response_format"] = {"type": "json_object"}
-        msgs = msgs + [{"role": "system", "content": "JSON으로만 답하세요."}]
+        # system은 맨 앞에 — qwen 등 일부 챗 템플릿은 중간/끝 system을 거부한다
+        msgs = [{"role": "system", "content": "JSON으로만 답하세요."}] + msgs
     client = OpenAI(api_key=key, base_url=base_url)
     try:
         resp = client.chat.completions.create(model=model, messages=msgs, **kwargs)
@@ -83,7 +87,9 @@ def _chat_openai(
     return resp.choices[0].message.content or ""
 
 
-def _chat_nvidia(messages: list[dict], model: str, fmt: str | None = None) -> str:
+def _chat_nvidia(
+    messages: list[dict], model: str, fmt: str | None = None, extra_body: dict | None = None
+) -> str:
     """NVIDIA 호스티드 모델(build.nvidia.com, OpenAI 호환 API). NVIDIA_API_KEY 필요."""
     return _chat_openai(
         messages,
@@ -92,6 +98,7 @@ def _chat_nvidia(messages: list[dict], model: str, fmt: str | None = None) -> st
         api_key=load_env().nvidia_api_key,
         base_url="https://integrate.api.nvidia.com/v1",
         key_name="NVIDIA_API_KEY",
+        extra_body=extra_body,
     )
 
 
@@ -154,7 +161,11 @@ def _vision_gemini(prompt: str, images: list[bytes], model: str, *, fmt: str | N
 
 
 def _vision_nvidia(prompt: str, images: list[bytes], model: str, *, fmt: str | None = None) -> str:
-    """NVIDIA 호스티드 VLM(qwen3.5 등) 멀티모달 호출 — OpenAI 호환 image_url 데이터 URL."""
+    """NVIDIA 호스티드 VLM(qwen3.5 등) 멀티모달 호출 — OpenAI 호환 image_url 데이터 URL.
+
+    thinking 모드는 끈다 — 캡션/분류엔 불필요하게 느리고, 켜면 간헐적으로
+    content가 빈 응답이 온다(검증됨). 그래도 비면 재시도 후 LLMUnavailable.
+    """
     import base64
 
     content: list[dict] = [{"type": "text", "text": prompt}]
@@ -164,7 +175,13 @@ def _vision_nvidia(prompt: str, images: list[bytes], model: str, *, fmt: str | N
             "type": "image_url",
             "image_url": {"url": f"data:image/{mime};base64,{base64.b64encode(b).decode()}"},
         })
-    return _chat_nvidia([{"role": "user", "content": content}], model, fmt=fmt)
+    messages = [{"role": "user", "content": content}]
+    extra = {"chat_template_kwargs": {"enable_thinking": False}}
+    for _ in range(3):
+        out = _chat_nvidia(messages, model, fmt=fmt, extra_body=extra)
+        if out.strip():
+            return out
+    raise LLMUnavailable(f"NVIDIA VLM({model})이 빈 응답을 반복 — 잠시 후 다시 시도하세요")
 
 
 def vision_chat(prompt: str, images: list[bytes], model: str, *, fmt: str | None = None) -> str:
