@@ -261,6 +261,26 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .psec summary{cursor:pointer;padding:10px 14px;font-weight:600;font-size:13px;user-select:none}
  .psec[open] summary{border-bottom:1px solid var(--line);background:#fbfcfd}
  .psec .psecarea{border:0;border-radius:0;min-height:100px;display:block}
+ /* 문체 탭: 저장된 문체 카드 */
+ .pcard{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;background:#fff;overflow:hidden;transition:border-color .15s,box-shadow .15s}
+ .pcard:hover{border-color:#d3dae1;box-shadow:0 1px 6px rgba(31,35,41,.05)}
+ .pcard summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:12px 14px;user-select:none}
+ .pcard summary::-webkit-details-marker{display:none}
+ .pcard[open] summary{background:#fbfcfd;border-bottom:1px solid var(--line)}
+ .pava{width:38px;height:38px;border-radius:11px;background:var(--green-soft);color:var(--green-d);font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+ .pmeta{flex:1;min-width:0}
+ .pname{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .psub{font-size:12px;color:var(--sub);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+ .psub span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .ptag{flex:0 0 auto;display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;background:#f2f4f6;font-size:11px;font-weight:600;color:#5b6570}
+ .pdel{flex:0 0 auto;border:0;background:none;color:#9aa3ad;font-size:12px;font-weight:600;cursor:pointer;padding:6px 9px;border-radius:8px}
+ .pdel:hover{background:#fdeced;color:var(--red)}
+ .pchev{width:16px;height:16px;color:#9aa3ad;flex:0 0 auto;transition:transform .18s}
+ .pcard[open] .pchev{transform:rotate(180deg)}
+ .pbody{padding:12px 14px 14px}
+ .pbody .pprof{min-height:170px}
+ .pempty{text-align:center;color:var(--sub);font-size:13px;padding:30px 0;line-height:1.8}
+ .pempty b{color:#5b6570;font-size:13.5px}
  .poolchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;margin:3px;font-size:13px;background:#fbfcfd}
  .poolchip button{border:0;background:none;cursor:pointer;color:#9aa3ad;font-size:14px;padding:0}
  .poolrow{display:flex;gap:6px;margin-bottom:6px;align-items:center}
@@ -2309,17 +2329,23 @@ function renderPersonaSelect(){const sel=$('#persona'); if(!sel)return;
   const valid=new Set(['',...TONES.filter(t=>!t.default).map(t=>'tone:'+t.id),...PERSONAS.map(p=>p.id)]);
   sel.value=valid.has(PERSONA_ID)?PERSONA_ID:''; if(sel.value!==PERSONA_ID)PERSONA_ID=sel.value;}
 function renderPersonaList(){const c=$('#personalist'); if(!c)return;
-  if(!PERSONAS.length){c.innerHTML='<div class=muted>아직 저장된 문체가 없어요. 위에서 블로그 주소로 만들어 보세요.</div>';return;}
-  // 행을 details로: 펼치면 문체 특징을 확인·수정할 수 있다(save는 같은 id면 갱신).
+  if(!PERSONAS.length){c.innerHTML='<div class=pempty><b>아직 저장된 문체가 없어요</b><br>위에서 블로그 주소를 넣고 첫 문체를 만들어 보세요</div>';return;}
+  // 행을 details 카드로: 펼치면 문체 특징을 확인·수정할 수 있다(save는 같은 id면 갱신).
+  const chev='<svg class=pchev viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
   c.innerHTML=PERSONAS.map(p=>{const n=(p.sources||[]).length;
-    return `<details data-id="${p.id}" style="border-bottom:1px solid var(--line)">
-      <summary style="list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 4px">
-        <div style="min-width:0"><div class=t>${esc(p.name)}</div>
-        <div class=d>${esc(p.blog||'')}${n?(' · 인기글 '+n+'개로 학습'):''} · 눌러서 내용 보기</div></div>
-        <button class="btn ghost pdel" data-id="${p.id}" style="width:auto;padding:7px 13px;flex:0 0 auto">삭제</button></summary>
-      <textarea class="promptarea pprof" style="min-height:150px">${esc(p.profile||'')}</textarea>
-      <div style="display:flex;align-items:center;gap:10px;margin:8px 0 14px">
-        <button class="btn psave" data-id="${p.id}" style="width:auto;padding:7px 14px">수정 저장</button>
+    return `<details class=pcard data-id="${p.id}">
+      <summary>
+        <div class=pava>${esc((p.name||'?').trim().charAt(0).toUpperCase()||'?')}</div>
+        <div class=pmeta><div class=pname>${esc(p.name)}</div>
+          <div class=psub>${p.blog?`<span>${esc(p.blog)}</span>`:''}${n?`<span class=ptag>인기글 ${n}개 학습</span>`:''}</div></div>
+        <button class=pdel data-id="${p.id}">삭제</button>${chev}
+      </summary>
+      <div class=pbody>
+        <label class=f style="margin-top:0">문체 특징 <span class=muted style="font-weight:400">— 고친 뒤 [수정 저장]을 누르면 반영돼요</span></label>
+        <textarea class="promptarea pprof">${esc(p.profile||'')}</textarea>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+          <button class="btn psave" data-id="${p.id}" style="width:auto;padding:8px 16px;font-size:13px">수정 저장</button>
+        </div>
       </div>
     </details>`;}).join('');}
 $('#persona').onchange=()=>{PERSONA_ID=$('#persona').value; savePrefs();};
