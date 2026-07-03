@@ -113,4 +113,7 @@ def build_style_prompt(past_posts: list[str]) -> str:
     템플릿)을 쓰되, 시스템·사용자 메시지를 한 텍스트로 합쳐 반환한다. API 키가 없을 때
     사용자가 ChatGPT·Claude 등에 직접 붙여넣어 문체 분석을 받을 수 있다.
     """
-    return f"{_EXTRACT_SYSTEM}\n\n{_extract_user_message(past_posts)}"
+    return (
+        f"{_EXTRACT_SYSTEM}\n\n{_extract_user_message(past_posts)}\n\n"
+        "출력은 분석 결과만 — 인사말, 작업 설명, 마무리 코멘트 등 다른 말은 일절 쓰지 마."
+    )
