@@ -319,8 +319,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .doc .ph{background:#eef6ff;border:1px dashed #9ec5ff;border-radius:10px;padding:14px;color:#2f6fd6;font-size:13px;margin:10px 0}
  em.hl{font-style:normal;border-radius:3px;padding:1px 3px}
  /* sticker / settings */
- .stgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:8px}
- .stcard{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center}
+ .stgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:12px;margin-bottom:8px}
+ .stcard{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px;text-align:center;transition:border-color .12s,box-shadow .12s}
+ .stcard:hover{border-color:#d6dade;box-shadow:0 4px 14px rgba(31,35,41,.07)}
  .stcard img{width:100%;aspect-ratio:1;object-fit:contain;background:#fafbfc;border-radius:9px}
  .stcard .tg{font-size:11px;color:var(--sub);margin-top:6px;line-height:1.4;min-height:28px}
  .tags2{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px;justify-content:center;align-items:center}
@@ -331,20 +332,22 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .taginput:focus{outline:none;border-color:var(--green);border-style:solid}
  /* 스티커 분류(감정/구분선/헤더) — 카드 내 미니 세그먼트 + 상단 안내 */
  .kseg{display:flex;margin-top:7px;border:1px solid var(--line);border-radius:7px;overflow:hidden}
- .kseg button{flex:1;font-size:10.5px;padding:3px 0;border:0;background:#fff;color:var(--sub);cursor:pointer}
+ .kseg button{flex:1;min-width:0;font-size:10.5px;padding:3.5px 0;border:0;background:#fff;color:var(--sub);cursor:pointer;white-space:nowrap;overflow:hidden}
  .kseg button+button{border-left:1px solid var(--line)}
  .kseg button.on{background:var(--green);color:#fff;font-weight:700}
- .kguide{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 14px;font-size:12.5px;line-height:1.7;color:#374151}
+ .kguide{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 14px;font-size:12.5px;line-height:1.65;color:#374151;display:flex;flex-direction:column;gap:9px}
  .kguide b{color:var(--ink)}
- .kguide .kk{display:inline-block;min-width:44px;text-align:center;background:var(--green-soft);color:var(--green-d);border-radius:6px;font-weight:700;padding:1px 6px;margin-right:6px}
+ .kguide .krow{display:grid;grid-template-columns:52px 1fr;gap:10px;align-items:start}
+ .kguide .kk{text-align:center;background:var(--green-soft);color:var(--green-d);border-radius:6px;font-weight:700;font-size:11.5px;padding:2.5px 4px;margin-top:1px}
+ .kguide .knote{color:var(--sub);border-top:1px dashed var(--line);padding-top:9px}
  .favbtn{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:1px solid var(--line);
    background:#fff;color:#cbd2d9;font-size:15px;cursor:pointer;line-height:1;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px #0001}
  .favbtn.on{color:#ffb400;border-color:#ffe2a6;background:#fffaf0}
  .packh{font-size:13px;color:#4b5563;font-weight:700;margin:18px 0 10px}
  .packh small{color:var(--sub);font-weight:500}
  .stat{display:flex;gap:18px;margin-bottom:18px}
- .stat .b{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 18px}
- .stat .b .n{font-size:22px;font-weight:800;color:var(--green-d)}
+ .stat .b{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 18px;min-width:88px}
+ .stat .b .n{font-size:22px;font-weight:800;color:var(--green-d);font-variant-numeric:tabular-nums}
  .stat .b .l{font-size:12px;color:var(--sub)}
  .setrow{display:flex;justify-content:space-between;align-items:center;padding:16px 4px;border-bottom:1px solid var(--line)}
  .setrow:last-child{border:none}
@@ -649,16 +652,18 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <h2 class=title>스티커</h2>
     <p class=desc>★를 눌러 즐겨찾기에 넣으세요. 기본은 <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.</p>
     <div class=kguide>
-      <div><span class=kk>감정</span>감정·반응이 드러나는 문단 끝에 AI가 자동으로 붙여요(글당 1~3번). 캐릭터 반응 스티커용.</div>
-      <div><span class=kk>구분선</span>화제가 바뀌는 문단 사이에 AI가 자동으로 넣어 구역을 나눠요(글당 0~2번). 가로선·장식 띠용.</div>
-      <div><span class=kk>헤더</span>제목 라벨·고지 배너용(예: '추천대상', '내돈내산'). 자동으로는 안 쓰이고,
-      글감에 <b>[스티커:태그이름]</b>을 직접 적을 때만 들어가요 — 아래에 그 내용이 이어질 자리에 쓰세요.</div>
-      <div style="color:var(--sub);margin-top:4px">분류는 '태그 분석'이 자동 판정하고, 각 카드의 버튼으로 직접 바꿀 수 있어요.</div>
+      <div class=krow><span class=kk>감정</span><span>감정·반응이 드러나는 문단 끝에 AI가 자동으로 붙여요(글당 1~3번). 캐릭터 반응 스티커용.</span></div>
+      <div class=krow><span class=kk>구분선</span><span>화제가 바뀌는 문단 사이에 AI가 자동으로 넣어 구역을 나눠요(글당 0~2번). 가로선·장식 띠용.</span></div>
+      <div class=krow><span class=kk>헤더</span><span>제목 라벨·고지 배너용(예: '추천대상', '내돈내산'). 자동으로는 안 쓰이고,
+      글감에 <b>[스티커:태그이름]</b>을 직접 적을 때만 들어가요 — 아래에 그 내용이 이어질 자리에 쓰세요.</span></div>
+      <div class=knote>분류는 '태그 분석'이 자동 판정하고, 각 카드의 버튼으로 직접 바꿀 수 있어요.</div>
     </div>
-    <div class=stat id=ststat></div>
-    <div class=togrow style="margin:0 0 14px;max-width:560px">
-      <div class=tl>스티커 전체 사용 <span class=hint data-tip="끄면 즐겨찾기한 스티커만 글에 쓰입니다. 켜면 전체 스티커에서 상황에 맞게 골라 씁니다.">i</span></div>
-      <div class=sw id=stickerall></div>
+    <div style="display:flex;gap:12px;align-items:stretch;flex-wrap:wrap;margin:0 0 16px">
+      <div class=stat id=ststat style="margin:0;gap:12px"></div>
+      <div class=togrow style="margin:0;flex:1;min-width:280px;max-width:480px">
+        <div class=tl>스티커 전체 사용 <span class=hint data-tip="끄면 즐겨찾기한 스티커만 글에 쓰입니다. 켜면 전체 스티커에서 상황에 맞게 골라 씁니다.">i</span></div>
+        <div class=sw id=stickerall></div>
+      </div>
     </div>
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap">
       <div class=seg style="width:280px" id=stfilter>
