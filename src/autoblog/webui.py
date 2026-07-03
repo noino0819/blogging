@@ -823,6 +823,15 @@ function confirmModal(title, desc, yesLabel, noLabel, onYes, onNo, icon){
   document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){document.removeEventListener('keydown',esc);fin(onNo);}});
   $('#alerthost').appendChild(bg);bg.querySelector('[data-yes]').focus();
 }
+// NVIDIA 한도(402/429) 에러는 모달로 안내(확인 경로 포함), 그 외 에러는 기존 토스트.
+function errNotice(prefix, msg){
+  msg=String(msg||'알 수 없는 오류');
+  if(msg.includes('한도 도달')){
+    confirmModal('NVIDIA 무료 한도에 걸렸어요',
+      msg+'<br><br>분당 40회 제한이면 <b>1분쯤 뒤</b> 다시 시도하면 돼요. 크레딧(1,000회)이 소진됐다면 build.nvidia.com에서 잔여량 확인·추가 요청(무료)이 가능해요.',
+      '잔여 크레딧 확인 ↗','닫기',()=>window.open('https://build.nvidia.com','_blank','noopener'),null,'⏳');
+  } else toast(prefix+' — '+msg,'err');
+}
 // 브라우저(크롬) 알림 — 유저가 다른 탭/창에 가 있어도 결과를 알린다. 권한은 저장 클릭 시 요청.
 function ensureNotify(){try{if('Notification'in window&&Notification.permission==='default')Notification.requestPermission();}catch(e){}}
 function notify(title, body){
@@ -1521,7 +1530,7 @@ async function runThumbGen(title,extra){
     THUMB=d.path;
     renderGrid(); renderPmeta();
     toast(`AI 썸네일 완성! (${sec}초) 새 이미지를 ★ 대표로 지정했어요.`,'ok');
-  }catch(e){el.stop(); renderPmeta(); toast('썸네일 생성 실패 — '+e.message,'err');}
+  }catch(e){el.stop(); renderPmeta(); errNotice('썸네일 생성 실패', e.message);}
 }
 async function runAiCaption(){
   const btn=$('#aibtn'); if(!btn)return; btn.disabled=true; const old=btn.textContent;
@@ -1534,7 +1543,7 @@ async function runAiCaption(){
     const sec=el.stop();
     (d.photos||[]).forEach(p=>{PHOTOMETA[p.path]={label:p.label||'',caption:p.caption||''};});
     renderPmeta(); toast(`사진 자동 분석 완료! (${sec}초) 검토·수정 후 생성하세요.`,'ok');
-  }catch(e){el.stop(); toast('사진 자동 분석 실패 — '+e.message,'err');}
+  }catch(e){el.stop(); errNotice('사진 자동 분석 실패', e.message);}
   finally{btn.disabled=false; btn.textContent=old;}
 }
 
@@ -1573,7 +1582,7 @@ $('#gen').onclick=async()=>{
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 in-place 편집(새 글용 사진 재정렬 휴리스틱 끔)
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
-    if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); toast('초안 생성 실패: '+(d.error||'알 수 없는 오류'),'err'); return;}
+    if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); errNotice('초안 생성 실패', d.error); return;}
     genDone(true); PLAN=d; setTimeout(()=>renderPreview(d),350); st('생성 완료. 검토 후 임시저장하세요.'); toast('초안 생성 완료! 오른쪽 미리보기를 확인하세요.','ok'); $('#save').disabled=false; renderTabs();
     if(d.debug)showLog(d.debug);
   }catch(e){genDone(false); st('오류: '+e); toast('초안 생성 오류: '+e,'err');}finally{$('#gen').disabled=false;}
@@ -1611,7 +1620,7 @@ $('#export').onclick=async()=>{
           if(!line)continue; let ev; try{ev=JSON.parse(line);}catch(_){continue;}
           if(ev.stage)expStage(ev.stage); if(ev.prompt!=null)prompt=ev.prompt; if(ev.error)err=ev.error;}}
       if(done)break;}
-    if(err){closePM(); toast('프롬프트 생성 실패: '+err,'err');return;}
+    if(err){closePM(); errNotice('프롬프트 생성 실패', err);return;}
     if(prompt==null){closePM(); toast('프롬프트 생성 실패','err');return;}
     $('#ptext').value=prompt; expLoading(false);
   }catch(e){closePM(); toast('프롬프트 오류: '+e,'err');}finally{$('#export').disabled=false;}
