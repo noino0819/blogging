@@ -47,6 +47,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
    --r-sm:8px;--r:12px;--r-lg:16px;--r-pill:999px;
    --fs-xs:12px;--fs-sm:13px;--fs-md:14px;--fs-lg:16px;--fs-xl:20px}
  *{box-sizing:border-box}
+ input[type=checkbox]{accent-color:var(--green)}
+ :where(button,.chip,.nav,summary):focus-visible{outline:2px solid #03c75a66;outline-offset:2px}
  svg.ic{width:18px;height:18px;display:inline-block;vertical-align:middle;flex:0 0 auto;stroke:currentColor}
  .btn .ic,.mx .ic{width:16px;height:16px;margin-right:6px;margin-top:-2px}
  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Pretendard',sans-serif;
@@ -274,8 +276,17 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .doc{background:#fff;border:1px solid var(--line);border-radius:16px;padding:30px 34px;min-height:300px}
  .doc.empty{display:flex;align-items:center;justify-content:center;color:#b0b8c1;font-size:14px;min-height:420px}
  .genload{text-align:center;padding:40px 20px}
- .genchar{font-size:60px;display:inline-block;animation:bounce 1s ease-in-out infinite}
- @keyframes bounce{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-16px) rotate(4deg)}}
+ /* 냥캣 로딩 씬: 밤하늘 + 별 + 무지개 꼬리 고양이 (외부 라이브러리 없이 인라인 SVG) */
+ .nyanwrap{position:relative;width:320px;height:100px;margin:0 auto;background:linear-gradient(#0f2350,#1c3d7e);border-radius:16px;overflow:hidden}
+ .nstar{position:absolute;left:0;width:3px;height:3px;border-radius:50%;background:#fff;opacity:.85;animation:nfly linear infinite}
+ @keyframes nfly{from{transform:translateX(330px)}to{transform:translateX(-10px)}}
+ .nyan{position:absolute;left:54%;top:50%;animation:nbob .5s steps(2,jump-none) infinite alternate}
+ .nyan svg{display:block}
+ @keyframes nbob{from{transform:translateY(-58%)}to{transform:translateY(-44%)}}
+ .ntrail{position:absolute;top:9px;right:calc(100% - 8px);width:170px;height:24px;border-radius:4px 0 0 4px;background:linear-gradient(#ff2b4a 0 16.7%,#ff9d33 0 33.3%,#ffe93d 0 50%,#4ce840 0 66.7%,#3aa6ff 0 83.3%,#8d5cff 0);animation:ntw .5s steps(2,jump-none) infinite alternate}
+ @keyframes ntw{from{transform:translateY(2px)}to{transform:translateY(-2px)}}
+ .ntl{transform-box:fill-box;transform-origin:100% 50%;animation:nwag .35s steps(2,jump-none) infinite alternate}
+ @keyframes nwag{from{transform:rotate(16deg)}to{transform:rotate(-12deg)}}
  .genmsg{font-size:16px;color:#374151;margin-top:14px;font-weight:700}
  .genbar{height:14px;background:#eef1f4;border-radius:99px;overflow:hidden;max-width:340px;margin:20px auto 10px}
  .genfill{height:100%;width:0;background:linear-gradient(90deg,#03c75a,#5fe0a0);border-radius:99px;transition:width .5s ease}
@@ -293,7 +304,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pcard summary::-webkit-details-marker{display:none}
  .pcard[open] summary{background:#fbfcfd;border-bottom:1px solid var(--line)}
  .pava{width:38px;height:38px;border-radius:11px;background:var(--green-soft);color:var(--green-d);font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
- .pmeta{flex:1;min-width:0}
+ .pinfo{flex:1;min-width:0}
  .pname{font-size:14px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .psub{font-size:12px;color:var(--sub);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
  .psub span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -305,6 +316,11 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pbody{padding:12px 14px 14px}
  .pbody .pprof{min-height:170px}
  .pempty{text-align:center;color:var(--sub);font-size:13px;padding:30px 0;line-height:1.8}
+ /* 문체 만들기: 불러온 인기글 선택 목록 */
+ #pf_posts:not(:empty){border:1px solid var(--line);border-radius:10px;padding:2px 12px;max-height:280px;overflow:auto}
+ .pfrow{display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid #f0f2f5;cursor:pointer}
+ .pfrow:last-child{border-bottom:none}
+ .pfrow:hover{background:#fbfcfd}
  .pempty b{color:#5b6570;font-size:13.5px}
  .poolchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;margin:3px;font-size:13px;background:#fbfcfd}
  .poolchip button{border:0;background:none;cursor:pointer;color:#9aa3ad;font-size:14px;padding:0}
@@ -360,7 +376,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .kseg button{flex:1;min-width:0;font-size:10.5px;padding:3.5px 0;border:0;background:#fff;color:var(--sub);cursor:pointer;white-space:nowrap;overflow:hidden}
  .kseg button+button{border-left:1px solid var(--line)}
  .kseg button.on{background:var(--green);color:#fff;font-weight:700}
- .kguide{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 14px;font-size:12.5px;line-height:1.65;color:#374151;display:flex;flex-direction:column;gap:9px}
+ .kguide{background:#fff;border:1px solid var(--line);border-radius:12px;margin:0 0 14px;font-size:12.5px;line-height:1.65;color:#374151}
+ .kguide summary{list-style:none;cursor:pointer;padding:12px 16px;font-weight:700;display:flex;align-items:center;gap:8px;user-select:none}
+ .kguide summary::-webkit-details-marker{display:none}
+ .kguide summary .chev{font-size:9px;color:var(--sub);transition:transform .15s}
+ .kguide[open] summary .chev{transform:rotate(90deg)}
+ .kguide summary:hover{color:var(--ink)}
+ .kguide .kbody{display:flex;flex-direction:column;gap:9px;padding:0 16px 14px}
  .kguide b{color:var(--ink)}
  .kguide .krow{display:grid;grid-template-columns:52px 1fr;gap:10px;align-items:start}
  .kguide .kk{text-align:center;background:var(--green-soft);color:var(--green-d);border-radius:6px;font-weight:700;font-size:11.5px;padding:2.5px 4px;margin-top:1px}
@@ -419,6 +441,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .mc-t{font-weight:700;font-size:14px;color:var(--ink)}
  .mc-s{font-size:11.5px;color:var(--sub);margin-top:3px}
  .mc-ck{display:inline-block;margin-top:7px;font-size:11px;color:var(--green-d);font-weight:800}
+ .curpill{display:inline-flex;align-items:center;gap:7px;background:var(--green-soft);color:var(--green-d);font-size:12px;font-weight:800;border-radius:999px;padding:5px 12px}
+ .curpill .cdot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none}
  .keychip{font-size:10.5px;padding:1px 7px;border-radius:5px;font-weight:700}
  .keychip.ok{background:var(--green-soft);color:var(--green-d)}
  .keychip.no{background:#fdecec;color:#d6453c}
@@ -431,7 +455,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .hint{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
    background:#dfe3e8;color:#fff;font-size:10px;font-weight:800;cursor:help;position:relative;vertical-align:middle;margin-left:4px;font-style:normal}
  .hint:hover{background:var(--green)}
- .hint::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);
+ /* 툴팁 박스는 ⓘ 왼쪽 기준으로 오른쪽으로 펼침 — 가운데 정렬이면 왼쪽 라벨에서 main overflow에 잘려 사이드바에 가려진다 */
+ .hint::after{content:attr(data-tip);position:absolute;left:-10px;bottom:calc(100% + 8px);
    background:#1f2329;color:#fff;font-size:12px;font-weight:500;line-height:1.5;padding:9px 12px;border-radius:9px;
    width:max-content;max-width:260px;white-space:normal;text-align:left;box-shadow:0 6px 22px rgba(0,0,0,.22);
    opacity:0;visibility:hidden;transition:.12s;z-index:50;pointer-events:none}
@@ -505,11 +530,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  <g id=i-copy fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><rect x=8 y=3 width=8 height=4 rx=1 /><path d="M16 5h2v16H6V5h2"/><path d="M9 12h6M9 16h4"/></g>
  <g id=i-inbox fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 14v5h16v-5"/><path d="M12 4v9m0 0 3.5-3.5M12 13 8.5 9.5"/></g>
  <g id=i-search fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><circle cx=11 cy=11 r=6 /><path d="m20 20-3.6-3.6"/></g>
+ <g id=i-voice fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M21 11.5c0 3.6-4 6.5-9 6.5-1 0-2-.1-2.9-.4L4.5 19l1.1-2.7C4 15.1 3 13.4 3 11.5 3 7.9 7 5 12 5s9 2.9 9 6.5Z"/><path d="M8.5 10.5h7M8.5 13h4.5"/></g>
 </defs></svg>
 <div id=pmodal class=modal style="display:none"><div class=modalbox>
   <div class=modalhd><span><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg> 다른 챗봇에 붙여넣을 프롬프트</span><button class=mx id=pmclose>✕</button></div>
   <div id=ploading style="display:none"><div class=genload>
-    <div class=genchar id=pchar>🧩</div>
+    <div id=pchar></div>
     <div class=genmsg id=pmsg>자료를 모으는 중…</div>
     <div class=genbar><div class=genfill id=pfill></div></div>
     <div class=genpct id=ppct>0%</div>
@@ -588,7 +614,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=nav data-view=stickers><svg class=ic viewBox="0 0 24 24"><use href="#i-sticker"/></svg> 스티커</div>
   <div class=nav data-view=format><svg class=ic viewBox="0 0 24 24"><use href="#i-format"/></svg> 서식</div>
   <div class=nav data-view=prompt><svg class=ic viewBox="0 0 24 24"><use href="#i-prompt"/></svg> 프롬프트</div>
-  <div class=nav data-view=persona><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 문체</div>
+  <div class=nav data-view=persona><svg class=ic viewBox="0 0 24 24"><use href="#i-voice"/></svg> 문체</div>
   <div class=nav data-view=models><svg class=ic viewBox="0 0 24 24"><use href="#i-model"/></svg> 모델</div>
   <div class=nav data-view=settings><svg class=ic viewBox="0 0 24 24"><use href="#i-settings"/></svg> 설정</div>
   <div class=foot>로컬에서 동작 · 네이버 임시저장</div>
@@ -690,13 +716,16 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <section class="view stickers">
     <h2 class=title>스티커</h2>
     <p class=desc>★를 눌러 즐겨찾기에 넣으세요. 기본은 <b>즐겨찾기한 스티커만</b> 글에 쓰입니다.</p>
-    <div class=kguide>
+    <details class=kguide>
+      <summary><span class=chev>▶</span>분류 기준 — 감정·구분선·헤더 스티커는 글 어디에 쓰이나요 <span class=muted style="font-weight:500">(카드의 분류 버튼으로 바꿀 수 있어요)</span></summary>
+      <div class=kbody>
       <div class=krow><span class=kk>감정</span><span>감정·반응이 드러나는 문단 끝에 AI가 자동으로 붙여요(글당 1~3번). 캐릭터 반응 스티커용.</span></div>
       <div class=krow><span class=kk>구분선</span><span>화제가 바뀌는 문단 사이에 AI가 자동으로 넣어 구역을 나눠요(글당 0~2번). 가로선·장식 띠용.</span></div>
       <div class=krow><span class=kk>헤더</span><span>제목 라벨·고지 배너용(예: '추천대상', '내돈내산'). 자동으로는 안 쓰이고,
       글감에 <b>[스티커:태그이름]</b>을 직접 적을 때만 들어가요 — 아래에 그 내용이 이어질 자리에 쓰세요.</span></div>
       <div class=knote>분류는 '태그 분석'이 자동 판정하고, 각 카드의 버튼으로 직접 바꿀 수 있어요.</div>
-    </div>
+      </div>
+    </details>
     <div style="display:flex;gap:12px;align-items:stretch;flex-wrap:wrap;margin:0 0 16px">
       <div class=stat id=ststat style="margin:0;gap:12px"></div>
       <div class=togrow style="margin:0;flex:1;min-width:280px;max-width:480px">
@@ -708,6 +737,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
       <div class=seg style="width:280px" id=stfilter>
         <button data-f=fav class=on>⭐ 즐겨찾기</button>
         <button data-f=all>전체 둘러보기</button>
+      </div>
+      <div style="position:relative;flex:1;min-width:170px;max-width:250px">
+        <input type=text id=stsearch placeholder="태그·팩 이름 검색" style="padding:8px 12px 8px 31px;font-size:12.5px;border-radius:999px">
+        <svg class=ic viewBox="0 0 24 24" style="position:absolute;left:11px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--sub)"><use href="#i-search"/></svg>
       </div>
       <button class="btn ghost" id=lblbtn style="width:auto;display:inline-flex;align-items:center;padding:8px 14px;font-size:12.5px;font-weight:600;border-radius:999px"><svg class=ic viewBox="0 0 24 24" style="margin-top:0;width:15px;height:15px"><use href="#i-search"/></svg>즐겨찾기 태그 분석</button>
       <span class="chip on" id=hidedef title="네이버 기본 제공 팩 숨기기"><span class=dot></span>기본 이모티콘 숨기기</span>
@@ -796,9 +829,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <!-- 설정 -->
   <section class="view settings">
     <h2 class=title>설정</h2>
-    <p class=desc>글쓰기 규칙을 관리합니다.</p>
-    <div class=card id=rules></div>
-    <div class=card><h3>임시저장</h3><div id=draftset></div><div id=cleanimp></div><div id=savedebug></div></div>
+    <p class=desc>글쓰기 규칙과 임시저장 동작을 관리합니다.</p>
+    <div class=card><h3>글쓰기 규칙 <span class=muted style="font-weight:400">— 초안 생성 때 켠 것만 반영돼요</span></h3><div id=rules></div></div>
+    <div class=card style="margin-top:16px"><h3>임시저장</h3><div id=draftset></div><div id=cleanimp></div><div id=savedebug></div></div>
   </section>
 </main>
 <script>
@@ -1588,23 +1621,41 @@ async function runAiCaption(){
 }
 
 let GENTIMER=null, GENT0=0;
-const GENCHARS=['🐥','✍️','🐣','💭','📝'];
+// 냥캣 로딩 씬: 별 5개 + 무지개 꼬리 + 픽셀 고양이(인라인 SVG)
+const NYAN=`<div class=nyanwrap>
+  <i class=nstar style="top:14%;animation-duration:1.1s"></i>
+  <i class=nstar style="top:32%;animation-duration:1.8s;animation-delay:.5s"></i>
+  <i class=nstar style="top:52%;animation-duration:1.3s;animation-delay:.9s"></i>
+  <i class=nstar style="top:70%;animation-duration:2.1s;animation-delay:.2s"></i>
+  <i class=nstar style="top:85%;animation-duration:1.5s;animation-delay:1.2s"></i>
+  <div class=nyan><div class=ntrail></div>
+  <svg viewBox="0 0 15.5 11" width=62 height=44 shape-rendering=crispEdges>
+    <rect class=ntl x=0 y=4.6 width=2.4 height=1.1 rx=.4 fill=#8b8b8b />
+    <rect x=2 y=2 width=9.5 height=7 rx=1.2 fill=#fcd9a8 />
+    <rect x=3 y=3 width=7.5 height=5 rx=1 fill=#f79fd3 />
+    <g fill=#e05fb4><rect x=4 y=4 width=.8 height=.8 /><rect x=6.2 y=5.4 width=.8 height=.8 /><rect x=8 y=3.8 width=.8 height=.8 /><rect x=5 y=6.2 width=.8 height=.8 /><rect x=8.6 y=5.6 width=.8 height=.8 /></g>
+    <g fill=#8b8b8b><rect x=10.2 y=2.6 width=1.1 height=1.4 /><rect x=13.7 y=2.6 width=1.1 height=1.4 />
+      <rect x=9.8 y=3.6 width=5.2 height=4.6 rx=1.4 />
+      <rect x=3 y=8.8 width=1.1 height=1.6 rx=.3 /><rect x=5.2 y=8.8 width=1.1 height=1.6 rx=.3 /><rect x=7.4 y=8.8 width=1.1 height=1.6 rx=.3 /><rect x=11.6 y=8.2 width=1.1 height=2.2 rx=.3 /></g>
+    <g fill=#1e1e1e><rect x=11 y=5 width=.75 height=.75 rx=.2 /><rect x=13.2 y=5 width=.75 height=.75 rx=.2 /><rect x=11.7 y=6.7 width=1.6 height=.45 rx=.2 /></g>
+    <rect x=10.1 y=6 width=.9 height=.7 rx=.2 fill=#f2a0c0 /><rect x=13.9 y=6 width=.9 height=.7 rx=.2 fill=#f2a0c0 />
+  </svg></div></div>`;
+$('#pchar').innerHTML=NYAN;
 const GENMSGS=[[0,'메모를 읽는 중…'],[18,'글을 쓰는 중…'],[50,'문장을 다듬는 중…'],[78,'강조·서식 입히는 중…'],[92,'거의 다 됐어요!']];
 function genLoading(){
   $('#preview').classList.add('empty');
-  $('#preview').innerHTML=`<div class=genload><div class=genchar id=genchar>🐥</div>
+  $('#preview').innerHTML=`<div class=genload>${NYAN}
     <div class=genmsg id=genmsg></div>
     <div class=genbar><div class=genfill id=genfill></div></div>
     <div class=genpct id=genpct>0%</div>
     <div class=gensub id=gensub>로컬 AI가 직접 글을 써요 · 보통 30~60초</div></div>`;
   typeText($('#genmsg'), '메모를 읽는 중…');  // 첫 문구도 한 글자씩
-  let pct=0, ci=0; GENT0=Date.now();
+  let pct=0; GENT0=Date.now();
   GENTIMER=setInterval(()=>{
     pct+=Math.max(0.4,(96-pct)*0.035); if(pct>96)pct=96;
     const fl=$('#genfill'); if(!fl){clearInterval(GENTIMER);return;}
     fl.style.width=pct+'%'; $('#genpct').textContent=Math.floor(pct)+'%';
     const m=GENMSGS.filter(x=>pct>=x[0]).pop(); if(m)typeText($('#genmsg'), m[1]);
-    ci++; $('#genchar').textContent=GENCHARS[ci%GENCHARS.length];
     const sb=$('#gensub'); if(sb)sb.textContent=`로컬 AI가 직접 글을 써요 · ${Math.round((Date.now()-GENT0)/1000)}초 경과`;
   },700);
 }
@@ -1629,17 +1680,15 @@ $('#gen').onclick=async()=>{
 };
 // 프롬프트 내보내기: 모달 안에서 진행바 + 실제 단계 메시지 보여주고, 합쳐진 프롬프트 표시·복사
 let EXPTIMER=null;
-const EXPCHARS=['🧩','✍️','🔗','📋','💭'];
 function expLoading(on){
   $('#ploading').style.display=on?'block':'none'; $('#pcontent').style.display=on?'none':'block';
   if(EXPTIMER){clearInterval(EXPTIMER);EXPTIMER=null;}
-  if(on){$('#pmodal').style.display='flex'; let pct=0,ci=0;
+  if(on){$('#pmodal').style.display='flex'; let pct=0;
     $('#pfill').style.width='0%'; $('#ppct').textContent='0%'; typeText($('#pmsg'),'자료를 준비하는 중…');
     // 진행바·스피너만 부드럽게 굴리고, 문구는 서버가 보내는 실제 단계로 갱신(expStage)
     EXPTIMER=setInterval(()=>{pct+=Math.max(1,(96-pct)*0.08); if(pct>96)pct=96;
       const fl=$('#pfill'); if(!fl){clearInterval(EXPTIMER);return;}
-      fl.style.width=pct+'%'; $('#ppct').textContent=Math.floor(pct)+'%';
-      ci++; $('#pchar').textContent=EXPCHARS[ci%EXPCHARS.length];},650);
+      fl.style.width=pct+'%'; $('#ppct').textContent=Math.floor(pct)+'%';},650);
   }else{const fl=$('#pfill'); if(fl)fl.style.width='100%'; $('#ppct').textContent='100%';}
 }
 function expStage(msg){if(msg)typeText($('#pmsg'), msg);}
@@ -1863,7 +1912,7 @@ $('#save').onclick=()=>{
 };
 
 // 스티커 탭
-let CAT=null, ST_FILTER='fav';
+let CAT=null, ST_FILTER='fav', ST_Q='', ST_QT=null;
 async function loadStickers(force){
   if(CAT && !force){renderStickers();return;}
   try{CAT=await (await fetch('/api/catalog')).json(); renderStickers();}
@@ -1874,6 +1923,7 @@ function updateStat(){if(!CAT)return;
     <div class=b><div class=n>${CAT.favorites.length}</div><div class=l>⭐ 즐겨찾기</div></div>
     <div class=b><div class=n>${CAT.label_count}</div><div class=l>상황 라벨</div></div>`;}
 function renderStickers(){
+  if(!CAT)return;
   updateStat();
   $('#hidedef').classList.toggle('on',!!FMT.hideDefault);
   $('#stickerall').classList.toggle('on',!!FMT.stickerAll);
@@ -1882,8 +1932,9 @@ function renderStickers(){
   let list=CAT.stickers;
   if(ST_FILTER==='fav') list=list.filter(s=>favset.has(s.ref));
   if(FMT.hideDefault) list=list.filter(s=>!defset.has(s.pack)||favset.has(s.ref));
+  if(ST_Q) list=list.filter(s=>(s.pack||'').toLowerCase().includes(ST_Q)||(s.tags||[]).some(t=>(t||'').toLowerCase().includes(ST_Q)));
   const body=$('#stbody');
-  if(!list.length){body.innerHTML=`<div class=muted>${ST_FILTER==='fav'?'아직 즐겨찾기가 없어요. [전체 둘러보기]에서 ★를 눌러 추가하세요.':'스티커가 없어요. 터미널에서 autoblog stickers pull'}</div>`;return;}
+  if(!list.length){body.innerHTML=`<div class=muted>${ST_Q?'검색에 맞는 스티커가 없어요 — 다른 태그·팩 이름으로 찾아보세요.':ST_FILTER==='fav'?'아직 즐겨찾기가 없어요. [전체 둘러보기]에서 ★를 눌러 추가하세요.':'스티커가 없어요. 터미널에서 autoblog stickers pull'}</div>`;return;}
   const packs={};
   list.forEach(s=>{(packs[s.pack]=packs[s.pack]||[]).push(s);});
   let h='';
@@ -1918,6 +1969,9 @@ $('#stfilter').onclick=e=>{const b=e.target.closest('button'); if(!b)return;
 // 기본(네이버 제공) 이모티콘 숨기기 토글
 $('#hidedef').onclick=function(){FMT.hideDefault=!FMT.hideDefault;
   this.classList.toggle('on',FMT.hideDefault); savePrefs(); renderStickers();};
+// 태그·팩 이름 검색(150ms 디바운스 — 타자마다 그리드 전체를 다시 그리지 않게)
+$('#stsearch').oninput=e=>{clearTimeout(ST_QT);
+  ST_QT=setTimeout(()=>{ST_Q=e.target.value.trim().toLowerCase(); renderStickers();},150);};
 // 태그 칩 삭제(×)
 $('#stbody').addEventListener('click', e=>{const x=e.target.closest('.x'); if(!x)return;
   const wrap=x.closest('.tags2'); const s=stickerOf(wrap.dataset.ref); if(!s)return;
@@ -1970,15 +2024,27 @@ $('#stickerall').onclick=function(){FMT.stickerAll=!FMT.stickerAll;
   this.classList.toggle('on',FMT.stickerAll); savePrefs();};
 
 // 글쓰기 설정(규칙·협찬·톤·카테고리) 서버 저장/복원 — 새로고침해도 유지
+// personaId는 '고른 적 없음'(빈값)과 '기본 어투를 직접 고름'('default')을 구분해 저장 —
+// 고른 적 없는 사용자만 내 문체 자동 선택 대상이 된다.
+let PREFS_LOADED=false, PERSONA_PICKED=false;
 async function savePrefs(){try{await fetch('/api/prefs',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,personaId:PERSONA_ID,minChars:$('#minchars').value,category:CATEGORY,pruneDrafts:PRUNE,saveDebug:SAVEDBG,cleanImported:CLEANIMP})});}catch(e){}}
+  body:JSON.stringify({rules:RULES,fmt:FMT,tone:$('#tone').value,personaId:PERSONA_PICKED?(PERSONA_ID||'default'):PERSONA_ID,minChars:$('#minchars').value,category:CATEGORY,pruneDrafts:PRUNE,saveDebug:SAVEDBG,cleanImported:CLEANIMP})});}catch(e){}}
+// 내 문체가 있는데 아직 아무 문체도 고른 적 없으면 첫 번째 내 문체를 기본 선택
+function autoPickPersona(){
+  if(!PREFS_LOADED||PERSONA_PICKED||PERSONA_ID||!PERSONAS.length)return;
+  PERSONA_ID=PERSONAS[0].id; PERSONA_PICKED=true;
+  const sel=$('#persona'); if(sel)sel.value=PERSONA_ID;
+  savePrefs();
+}
 async function loadPrefs(){
   let asked=true;
   try{const p=await (await fetch('/api/prefs')).json();
     if(p.rules)Object.assign(RULES,p.rules);
     if(p.fmt)Object.assign(FMT,p.fmt);
     if(typeof p.tone==='string')$('#tone').value=p.tone;
-    if(typeof p.personaId==='string'){PERSONA_ID=p.personaId; const sel=$('#persona'); if(sel)sel.value=PERSONA_ID;}
+    if(typeof p.personaId==='string'){PERSONA_PICKED=(p.personaId!=='');
+      PERSONA_ID=(p.personaId==='default')?'':p.personaId;
+      const sel=$('#persona'); if(sel)sel.value=PERSONA_ID;}
     if(p.minChars!=null)$('#minchars').value=p.minChars;
     if($('#tone').value||$('#minchars').value)$('#moreopts').open=true;  // 저장된 값이 있으면 접힌 세부 옵션을 펼쳐 보여줌
     if(typeof p.category==='string')setCategory(p.category);
@@ -1987,6 +2053,7 @@ async function loadPrefs(){
     if(typeof p.cleanImported==='boolean')CLEANIMP=p.cleanImported;
     asked=!!p.pruneDraftsAsked;
   }catch(e){}
+  PREFS_LOADED=true; autoPickPersona();  // 문체 목록이 먼저 로드돼 있으면 여기서 자동 선택
   renderRules(); renderDraftSet(); renderCleanImp(); renderSaveDebug(); applyFmtState();
   if(!asked)askPrune();  // 최초 1회만: 자동 정리 켤지 물어봄
 }
@@ -2092,15 +2159,21 @@ async function loadModels(){try{const m=await (await fetch('/api/models')).json(
 
   $('#models').innerHTML=`
     <h3>텍스트 모델 <span class=muted style="font-weight:400">— 초안 글 작성</span></h3>
-    <div class=muted style="margin-bottom:4px">카드를 누르면 바로 적용돼요. 적용 중: <b>${m.text||'-'}</b> <span style="color:${(PROV[m.text_provider]||{}).color||'#666'}">· ${(PROV[m.text_provider]||{}).short||m.text_provider}</span></div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <span class=curpill><span class=cdot></span>적용 중 · ${m.text?nicer(m.text):'-'}${(PROV[m.text_provider]||{}).short?' ('+PROV[m.text_provider].short+')':''}</span>
+      <span class=muted>카드를 누르면 바로 적용돼요.</span>
+    </div>
     <div id=txtsection>${apiCards}</div>
     <div id=txtnote></div>
     <div id=apikeybox></div>
 
-    <h3 style="margin-top:26px">비전 모델 <span class=muted style="font-weight:400">— 사진·상품 이미지 분석</span></h3>
-    <div class=muted>적용 중: <b>${m.vision||'-'}</b> — qwen3.5(NVIDIA)는 <b>NVIDIA_API_KEY</b>, gemini-*는 <b>GEMINI_API_KEY</b>가 필요해요.</div>
+    <h3 style="margin-top:26px;padding-top:22px;border-top:1px solid var(--line)">비전 모델 <span class=muted style="font-weight:400">— 사진·상품 이미지 분석</span></h3>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class=curpill><span class=cdot></span>적용 중 · ${m.vision?nicer(m.vision):'-'}</span>
+      <span class=muted>qwen3.5(NVIDIA)는 <b>NVIDIA_API_KEY</b>, gemini-*는 <b>GEMINI_API_KEY</b>가 필요해요.</span>
+    </div>
 
-    <h3 style="margin-top:26px">썸네일 모델 <span class=muted style="font-weight:400">— 🎨 AI 썸네일 (대표사진 → 손그림 감성)</span></h3>
+    <h3 style="margin-top:26px;padding-top:22px;border-top:1px solid var(--line)">썸네일 모델 <span class=muted style="font-weight:400">— 🎨 AI 썸네일 (대표사진 → 손그림 감성)</span></h3>
     <div class=muted>비전 모델이 사진을 읽고 FLUX.1-dev(NVIDIA API)가 그려요. ${MODEL_KEYS.nvidia?'<b style="color:var(--green)">키 등록됨 ✓</b>':'<b>NVIDIA_API_KEY</b>가 필요해요 — <a href="https://build.nvidia.com/qwen/qwen3.5-397b-a17b" target=_blank rel=noopener>build.nvidia.com에서 무료 발급 ↗</a> 후 아래 저장.'}</div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <input type=password id=nvkey placeholder="${MODEL_KEYS.nvidia?'키 등록됨 ✓ (교체하려면 입력)':'nvapi-...'}" style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
@@ -2168,9 +2241,9 @@ function renderEmphasis(e){
     <div class=muted style="margin-top:8px;font-size:12px">문단당 최소 강조를 1 이상으로 두면 <b>모든 문단에 강조를 그만큼 넣으라고</b> LLM에게 안내돼요(아래 안내문에 반영). 최대만 두면 강조 없는 문단도 허용돼요.</div>
     <div style="margin-top:12px"><button class=btn data-action="save-emphasis-config" style="width:auto;padding:9px 16px">저장</button></div>
   </div>`;
-  // 가시성 — LLM에게 실제로 들어가는 강조 지시문(어떻게 쓰이는지 그대로 보여줌)
-  h+=`<div class=sub-h style="margin-top:16px">✍️ 생성 시 LLM에게 이렇게 안내됩니다</div>
-    <pre style="white-space:pre-wrap;background:#f7f9fb;border:1px solid #eef1f5;border-radius:8px;padding:11px 13px;font-size:12px;line-height:1.6;margin-top:8px">${esc(e.instruction||'')}</pre>`;
+  // 가시성 — LLM에게 실제로 들어가는 강조 지시문(펼쳐야 보이게 접어둠)
+  h+=`<details class=psec style="margin-top:16px"><summary>✍️ 생성 시 LLM에게 들어가는 강조 안내문 보기</summary>
+    <pre style="white-space:pre-wrap;background:#f7f9fb;border:0;padding:12px 14px;font-size:12px;line-height:1.6;margin:0;max-height:320px;overflow:auto">${esc(e.instruction||'')}</pre></details>`;
   $('#emph').innerHTML=h;
 }
 async function loadEmphasis(){try{renderEmphasis(await (await fetch('/api/emphasis')).json());
@@ -2279,6 +2352,10 @@ $('#promptsave').onclick=async()=>{
     $('#promptstat').textContent=r.ok?('저장됨 ✓ ('+(PROMPTKIND_LABEL[PROMPTKIND]||'맛집')+') 다음 생성부터 반영돼요'):'저장 실패';
   }catch(e){$('#promptstat').textContent='오류';}finally{$('#promptsave').disabled=false;}
 };
+// 수정 흔적 표시 — 저장을 눌러야 반영된다는 걸 잊지 않게
+const promptDirty=()=>{$('#promptstat').innerHTML='<b style="color:#d98a00">수정됨</b> — [저장]을 눌러야 다음 생성부터 반영돼요';};
+$('#promptedit').addEventListener('input',promptDirty);
+$('#promptsections').addEventListener('input',promptDirty);
 // ── 스타일 풀(유행어·카오모지·고정 문구) 편집 ──
 let POOL=null;
 const POOL_KAO={taste:'맛·만족',cheer:'응원·파이팅',sad:'아쉬움·슬픔',angry:'분노·불만',cute:'귀여움·꾸미기'};
@@ -2341,6 +2418,9 @@ function renderPool(){
 async function loadPool(){try{const d=await (await fetch('/api/style-pool')).json(); POOL=d.pool||{}; renderPool();
   $('#poolstat').textContent=d.overridden?'수정본 사용 중':'';
 }catch(e){$('#stylepool').innerHTML='<div class=muted>로드 실패</div>';}}
+const poolDirty=()=>{$('#poolstat').innerHTML='<b style="color:#d98a00">수정됨</b> — [저장]을 눌러야 반영돼요';};
+$('#stylepool').addEventListener('input',poolDirty);
+$('#stylepool').addEventListener('click',e=>{if(e.target.closest('.pooldel,.pooladd,.poolchip button'))poolDirty();});
 $('#poolsave').onclick=async()=>{
   $('#poolsave').disabled=true; $('#poolstat').textContent='저장 중…';
   try{const r=await fetch('/api/style-pool',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({pool:POOL})});
@@ -2373,7 +2453,7 @@ $('#tone').onchange=savePrefs;
 
 // ===== 문체(페르소나) =====
 async function loadPersonas(){try{const d=await (await fetch('/api/personas')).json();
-  PERSONAS=d.personas||[]; TONES=d.tones||[]; renderPersonaSelect(); renderPersonaList();
+  PERSONAS=d.personas||[]; TONES=d.tones||[]; renderPersonaSelect(); autoPickPersona(); renderPersonaList();
 }catch(e){$('#personalist').innerHTML='<div class=muted>로드 실패</div>';}}
 function renderPersonaSelect(){const sel=$('#persona'); if(!sel)return;
   // 내장 어투 프리셋 + 내 문체(페르소나). 기본 프리셋은 value=""(선택 안 함과 동일 경로).
@@ -2391,7 +2471,7 @@ function renderPersonaList(){const c=$('#personalist'); if(!c)return;
     return `<details class=pcard data-id="${p.id}">
       <summary>
         <div class=pava>${esc((p.name||'?').trim().charAt(0).toUpperCase()||'?')}</div>
-        <div class=pmeta><div class=pname>${esc(p.name)}</div>
+        <div class=pinfo><div class=pname>${esc(p.name)}</div>
           <div class=psub>${p.blog?`<span>${esc(p.blog)}</span>`:''}${n?`<span class=ptag>인기글 ${n}개 학습</span>`:''}</div></div>
         <button class=pdel data-id="${p.id}">삭제</button>${chev}
       </summary>
@@ -2403,7 +2483,7 @@ function renderPersonaList(){const c=$('#personalist'); if(!c)return;
         </div>
       </div>
     </details>`;}).join('');}
-$('#persona').onchange=()=>{PERSONA_ID=$('#persona').value; savePrefs();};
+$('#persona').onchange=()=>{PERSONA_ID=$('#persona').value; PERSONA_PICKED=true; savePrefs();};
 $('#pf_fetch').onclick=async()=>{
   const blog=$('#pf_blog').value.trim(); if(!blog){toast('블로그 주소를 입력하세요','err');return;}
   const btn=$('#pf_fetch'); btn.disabled=true; $('#pf_stat').textContent='인기글 불러오는 중…';
@@ -2413,7 +2493,7 @@ $('#pf_fetch').onclick=async()=>{
     PF={blogId:d.blogId, posts:d.posts||[]};
     if(!PF.posts.length){$('#pf_stat').textContent='인기글을 찾지 못했어요.'; return;}
     $('#pf_stat').textContent=`인기글 ${PF.posts.length}개 — 학습에 쓸 글을 고르세요 (기본 전체 선택).`;
-    $('#pf_posts').innerHTML=PF.posts.map((p,i)=>`<label style="display:flex;align-items:center;gap:9px;padding:8px 4px;border-bottom:1px solid var(--line);cursor:pointer">
+    $('#pf_posts').innerHTML=PF.posts.map((p,i)=>`<label class=pfrow>
       <input type=checkbox class=pchk data-i="${i}" checked>
       <span style="flex:1;min-width:0;font-size:13.5px">${esc(p.title||('글 '+(i+1)))}</span>
       <span class=muted style="font-size:12px;white-space:nowrap">공감 ${p.sympathy} · 댓글 ${p.comments}</span></label>`).join('');
@@ -2461,17 +2541,19 @@ $('#pf_save').onclick=async()=>{
   try{const r=await fetch('/api/personas/save',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({name, blog:PF.blogId||$('#pf_blog').value.trim(), profile, sources:PF.sources||[]})});
     if(!r.ok){$('#pf_savestat').textContent=''; toast('저장 실패','err'); return;}
+    const d=await r.json();
     $('#pf_savestat').textContent='저장됨 ✓'; await loadPersonas();
+    if(d.id){PERSONA_ID=d.id; PERSONA_PICKED=true; const sel=$('#persona'); if(sel)sel.value=d.id; savePrefs();}  // 방금 만든 문체를 글쓰기 기본으로
     PF={}; $('#pf_result').style.display='none'; $('#pf_posts').innerHTML=''; $('#pf_extractrow').style.display='none';
     $('#pf_blog').value=''; $('#pf_name').value=''; $('#pf_profile').value=''; $('#pf_stat').textContent='';
-    toast('문체가 저장됐어요. 글쓰기에서 골라 쓰세요.','ok');
+    toast('문체가 저장됐어요. 글쓰기 문체로 바로 선택해뒀어요.','ok');
   }catch(e){$('#pf_savestat').textContent='';}finally{btn.disabled=false;}};
 $('#personalist').onclick=async e=>{
   const b=e.target.closest('.pdel');
   if(b){e.preventDefault();  // summary 안의 버튼 — 펼침 토글 방지
     askConfirm('🗑 문체 삭제','이 문체를 삭제할까요? 되돌릴 수 없어요.','삭제',async()=>{
       try{await fetch('/api/personas/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
-        if(PERSONA_ID===b.dataset.id){PERSONA_ID=''; savePrefs();}
+        if(PERSONA_ID===b.dataset.id){PERSONA_ID=''; PERSONA_PICKED=false; savePrefs();}  // 선택 문체 삭제 → 남은 내 문체가 있으면 다시 자동 선택
         await loadPersonas();
       }catch(e){}
     });return;}
