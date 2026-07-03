@@ -26,6 +26,22 @@ from autoblog.publish.plan import PublishBlock, PublishPlan
 # (persistent context는 세션 쿠키 NID_AUT를 닫을 때 버려 매번 로그인됨 → storage_state로 해결)
 STATE_PATH = DATA_DIR / "naver_state.json"
 
+
+def _original_url_candidates(src: str) -> list[str]:
+    """에디터 img src(표시용 축소본, ?type=w966 등) → 원본 화질 후보 URL 목록.
+
+    in-place 재업로드는 여기서 받은 파일을 다시 올리므로 축소본을 받으면 화질이
+    영구 열화된다(협찬마크는 크롤러가 픽셀 매칭을 못 해 인식 실패). type 파라미터
+    제거 → type=w3840(뷰어 '원본보기'와 동일) → 표시본 그대로 순서로 시도한다.
+    """
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+    parts = urlsplit(src)
+    q = [(k, v) for k, v in parse_qsl(parts.query) if k != "type"]
+    stripped = urlunsplit(parts._replace(query=urlencode(q)))
+    biggest = urlunsplit(parts._replace(query=urlencode(q + [("type", "w3840")])))
+    return list(dict.fromkeys([stripped, biggest, src]))  # 순서 유지 중복 제거
+
 # 본문에서 특정 텍스트의 화면 좌표(Range rect)를 구하는 JS.
 # SE는 프로그램적 Range 선택을 색상 적용에 반영하지 않으므로, 좌표를 받아
 # 실제 마우스 드래그로 선택해야 SE가 선택을 인식한다.
@@ -905,8 +921,6 @@ class BlogPublisher:
         - lazy-load라 각 이미지를 화면에 스크롤시켜 실제 CDN URL이 채워질 때까지 폴링한다.
         - 다운로드는 로그인 세션(컨텍스트)으로 수행해 권한 문제를 피한다.
         """
-        import uuid
-
         page = self._page
         self._load_draft_into_editor(idx)
         # 사진이 없는 글일 수 있으니 짧게만 기다린다.
@@ -936,22 +950,38 @@ class BlogPublisher:
             if u not in seen:
                 seen.add(u)
                 ordered.append(u)
-        # 로그인 컨텍스트로 다운로드
+        # 로그인 컨텍스트로 다운로드(원본 화질 우선)
         dest_dir.mkdir(parents=True, exist_ok=True)
         saved: list[str] = []
         for u in ordered:
-            try:
-                resp = self._ctx.request.get(u)
-                if resp.status != 200:
-                    continue
-                ctype = resp.headers.get("content-type", "")
-                ext = ".png" if "png" in ctype else ".jpg"
-                dest = dest_dir / f"draft_{uuid.uuid4().hex[:8]}{ext}"
-                dest.write_bytes(resp.body())
-                saved.append(str(dest))
-            except Exception:  # noqa: BLE001 - 일부 이미지 실패해도 나머지 진행
-                continue
+            path = self._download_image(u, dest_dir)
+            if path:
+                saved.append(path)
         return saved
+
+    def _download_image(self, src: str, dest_dir: Path) -> str | None:
+        """본문 사진 한 장을 원본 화질로 내려받아 로컬 경로를 반환(실패 시 None).
+
+        표시용 축소본 src 대신 _original_url_candidates 순서로 시도한다 — 받은 파일이
+        in-place에서 그대로 재업로드되므로 여기 화질이 발행 화질이 된다. 확장자는
+        content-type을 따른다(협찬 배너는 GIF가 많아 .jpg로 저장하면 애니메이션 유실).
+        """
+        import uuid
+
+        for url in _original_url_candidates(src):
+            try:
+                resp = self._ctx.request.get(url)
+            except Exception:  # noqa: BLE001 - 후보 실패 시 다음 후보로
+                continue
+            ctype = resp.headers.get("content-type", "")
+            if resp.status != 200 or not ctype.startswith("image/"):
+                continue
+            subtype = ctype.split("/", 1)[1].split(";", 1)[0].strip().lower()
+            ext = {"png": ".png", "gif": ".gif", "webp": ".webp"}.get(subtype, ".jpg")
+            dest = dest_dir / f"draft_{uuid.uuid4().hex[:8]}{ext}"
+            dest.write_bytes(resp.body())
+            return str(dest)
+        return None
 
     # 문서 순서대로 미디어 컴포넌트를 훑어 {kind, src?}를 반환(사진/영상/콜라주 구분).
     #  - 단일사진(img 1개)=image + CDN src, 영상=video(재업로드 불가라 src 없음),
@@ -1023,16 +1053,9 @@ class BlogPublisher:
             if not src or src in seen_src:  # 빈 src·중복(같은 이미지 재노출)은 건너뜀
                 continue
             seen_src.add(src)
-            try:
-                resp = self._ctx.request.get(src)
-                if resp.status != 200:
-                    continue
-                ext = ".png" if "png" in resp.headers.get("content-type", "") else ".jpg"
-                dest = dest_dir / f"draft_{uuid.uuid4().hex[:8]}{ext}"
-                dest.write_bytes(resp.body())
-                manifest.append({"kind": "image", "path": str(dest)})
-            except Exception:  # noqa: BLE001 - 일부 실패해도 나머지 진행
-                continue
+            path = self._download_image(src, dest_dir)  # 원본 화질 우선(축소본 재업로드 방지)
+            if path:
+                manifest.append({"kind": "image", "path": path})
         return manifest
 
     # --- 카테고리 (유저별 동적) ---
