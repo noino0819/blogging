@@ -1196,8 +1196,12 @@ class BlogPublisher:
 
         address(수집된 도로명 주소)를 주면 동명 가게가 여럿일 때 주소 유사도로 정확한
         결과를 고른다. 없거나 매칭이 약하면 첫 결과로 폴백. 결과가 아예 없으면 팝업만
-        닫고 False(본문 유지). 커서 위치에 지도 카드가 삽입된다."""
+        닫고 False(본문 유지). 커서 위치에 지도 카드가 삽입된다.
+
+        반환값은 '카드가 실제로 생겼는지'(컴포넌트 수 증가)로 판정한다 — 추가·확인
+        클릭이 DOM 사정으로 무음 no-op이면 예전엔 True를 돌려줘 경고 없이 지도가 빠졌다."""
         page = self._page
+        n_before = page.evaluate("()=>document.querySelectorAll('.se-component').length")
         page.click("button.se-map-toolbar-button")
         page.wait_for_timeout(1500)
         page.fill("input.react-autosuggest__input", query)
@@ -1227,6 +1231,9 @@ class BlogPublisher:
             "()=>{const b=document.querySelector('button.se-popup-button-confirm');if(b)b.click();}"
         )
         page.wait_for_timeout(1500)
+        if page.evaluate("()=>document.querySelectorAll('.se-component').length") <= n_before:
+            page.keyboard.press("Escape")  # 팝업이 남아 있으면 닫아 다음 삽입 보호
+            return False
         return True
 
     def _insert_link(self, url: str, keep_url_text: bool = False, at_anchor: bool = False) -> bool:

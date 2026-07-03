@@ -3325,6 +3325,11 @@ def _make_handler(state: dict):
                 card = cached_place_card(srcval)
                 if card is not None:
                     _, place_query, place_address = _place_info(card)
+                if not place_query:
+                    # 캐시 미스(앱 재시작 등)여도 [지도]가 조용히 사라지지 않게 수집링크를
+                    # 그대로 넘긴다 — plan이 URL을 실시간으로 가게명·주소로 해석하고,
+                    # 실패하면 URL 텍스트가 남아 에디터 단계 '지도 삽입 실패' 경고로 드러난다.
+                    place_query = srcval
             dv, qv = _enabled_variants()
             result = plan_from_text(
                 text,
