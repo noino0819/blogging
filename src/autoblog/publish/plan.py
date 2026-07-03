@@ -153,15 +153,25 @@ def build_structure_instruction(
 STRUCTURE_INSTRUCTION = build_structure_instruction()
 
 
-def build_place_instruction() -> str:
-    """장소(지도) 마커 지시문 — 맛집 글에서 위치 안내 자리에 지도 카드를 넣게 안내."""
+def build_place_instruction(place_name: str | None = None) -> str:
+    """장소(지도) 마커 지시문 — 맛집 글에서 위치 안내 자리에 지도 카드를 넣게 안내.
+
+    place_name(수집된 가게명)을 주면 [지도:가게명] 마커를 쓰게 한다 — 초안이 가게
+    정보를 스스로 갖고 있어, 외부 챗봇 결과를 수집 링크 없는 탭이나 재시작 뒤에
+    붙여넣어도 지도가 살아난다(세션 캐시 의존 제거)."""
+    marker = f"[지도:{place_name}]" if place_name else "[지도]"
+    name_rule = (
+        f"- 마커는 정확히 {marker} 그대로 쓰세요(가게명을 바꾸거나 빼지 마세요).\n"
+        if place_name
+        else "- 가게명은 시스템이 알아서 넣으니 [지도] 만 쓰면 됩니다(이름을 직접 적지 마세요).\n"
+    )
     return (
-        "[지도] 가게 위치를 안내하는 자리(보통 '상세 정보 및 위치' 섹션)에 [지도] 를 그 줄에 "
+        f"{marker} 가게 위치를 안내하는 자리(보통 '상세 정보 및 위치' 섹션)에 {marker} 를 그 줄에 "
         "혼자 한 번 넣으세요(권장이 아니라 사용). 시스템이 네이버 '장소'를 검색해 지도 카드"
         "(주소·지도 미리보기)로 바꿉니다.\n"
-        "- [지도] 는 한 글에 한 번만, 위치를 설명한 문장 바로 아래 줄에 단독으로.\n"
-        "- 가게명은 시스템이 알아서 넣으니 [지도] 만 쓰면 됩니다(이름을 직접 적지 마세요).\n"
-        "- 마커는 화면에 글자로 안 보이고 지도 카드로 바뀝니다. 문장 안에 섞지 마세요."
+        f"- {marker} 는 한 글에 한 번만, 위치를 설명한 문장 바로 아래 줄에 단독으로.\n"
+        + name_rule
+        + "- 마커는 화면에 글자로 안 보이고 지도 카드로 바뀝니다. 문장 안에 섞지 마세요."
     )
 
 
@@ -507,8 +517,22 @@ def build_publish_plan(
                     q, addr = resolved
                 elif place_query:
                     q, addr = place_query, place_address
+            if not q:
+                # 수집 링크 없이 붙여넣어도 [지도]가 조용히 사라지지 않게, 세션에서
+                # 마지막으로 수집한 가게 카드로 폴백한다(미리보기에 가게명이 보임).
+                # ponytail: 멀티탭에선 마지막 수집이 다른 가게일 수 있음 — 미리보기로 확인
+                from autoblog.pipeline import last_cached_place  # 모듈 순환 참조 회피
+
+                card = last_cached_place()
+                if card is not None and card.place and card.place.name:
+                    q = card.place.name
+                    addr = card.place.road_address or card.place.address
             if q:  # 가게명(마커 인자 우선, 없으면 수집된 이름)으로 장소 카드
                 blocks.append(PublishBlock(kind="place", text=q, place_address=addr))
+            else:
+                # 그래도 못 채우면 마커를 본문 텍스트로 남긴다 — 미리보기·에디터에서
+                # 눈에 띄어 직접 조치할 수 있게(조용한 소실 방지).
+                blocks.append(PublishBlock(kind="text", text=s))
         elif div_m:
             flush_text()
             blocks.append(

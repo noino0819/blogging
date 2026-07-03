@@ -1869,6 +1869,7 @@ function renderPreview(d){
     else if(b.kind==='image')h+=`<div class=ph>🖼 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
     else if(b.kind==='video')h+=`<div class=ph>🎬 동영상 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
     else if(b.kind==='link')h+=`<div class=ph>🔗 링크 카드 <small>${esc(b.link_url)}</small></div>`;
+    else if(b.kind==='place')h+=`<div class=ph>📍 지도(장소) <small>${esc(b.text)}</small></div>`;
   }
   const p=$('#preview'); p.classList.remove('empty'); p.innerHTML=h;
 }

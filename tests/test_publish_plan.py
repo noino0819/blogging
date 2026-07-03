@@ -437,3 +437,33 @@ def test_emotion_sticker_next_to_divider_kept():
 def test_selectors_ready():
     # 라이브 분석으로 핵심 셀렉터(제목/본문/저장/발행) 확정됨
     assert selectors_ready() is True
+
+
+def test_place_marker_fallback_chain():
+    # [지도] 마커: place_query 없음 → 세션 마지막 수집 카드 폴백 → 그것도 없으면
+    # 마커를 본문 텍스트로 남긴다(조용한 소실 방지). 이름 인자가 있으면 자립 동작.
+    from autoblog.collect.fact_card import CardType, FactCard, PlaceFacts
+    from autoblog.pipeline import _SCRAPE_CACHE
+
+    draft = DraftResult(text="제목\n\n주차장이 가까워요.\n[지도]\n예약도 돼요.")
+
+    _SCRAPE_CACHE.clear()
+    plan = build_publish_plan(draft)  # 폴백 소스 전무 → 텍스트로 잔존
+    assert not [b for b in plan.blocks if b.kind == "place"]
+    assert any(b.kind == "text" and "[지도]" in b.text for b in plan.blocks)
+
+    _SCRAPE_CACHE["place:https://naver.me/x"] = FactCard(
+        type=CardType.place,
+        place=PlaceFacts(name="바오서울 충무로", road_address="서울 중구 퇴계로27길 31"),
+    )
+    try:
+        plan2 = build_publish_plan(draft)  # 캐시 폴백
+        pb = next(b for b in plan2.blocks if b.kind == "place")
+        assert pb.text == "바오서울 충무로"
+        assert pb.place_address == "서울 중구 퇴계로27길 31"
+    finally:
+        _SCRAPE_CACHE.clear()
+
+    draft_named = DraftResult(text="제목\n\n주차장이 가까워요.\n[지도:바오서울 충무로]\n예약도 돼요.")
+    plan3 = build_publish_plan(draft_named)  # 자립 마커 — 캐시·쿼리 불필요
+    assert next(b for b in plan3.blocks if b.kind == "place").text == "바오서울 충무로"

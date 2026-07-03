@@ -127,7 +127,10 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
     if req.place:
         from autoblog.publish.plan import build_place_instruction  # 지연 임포트(순환 회피)
 
-        system = f"{system}\n\n{build_place_instruction()}"
+        # 수집된 가게명을 마커에 박아 초안을 자립시킨다([지도:가게명] — 붙여넣기 경로에서
+        # 수집 링크·세션 캐시가 없어도 지도 삽입 가능)
+        pname = req.fact_card.place.name if req.fact_card.place else None
+        system = f"{system}\n\n{build_place_instruction(pname or None)}"
     # 자가 점검은 항상 맨 끝에(모델이 마지막으로 읽는 최종 게이트) — 맛집·상품 공통.
     system = f"{system}\n\n{build_selfcheck_instruction(is_product, ornaments=style.ornaments)}"
     user = build_user_prompt(

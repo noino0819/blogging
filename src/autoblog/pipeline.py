@@ -33,6 +33,14 @@ def cached_place_card(place_url: str | None) -> FactCard | None:
     if not place_url:
         return None
     return _SCRAPE_CACHE.get("place:" + place_url)
+
+
+def last_cached_place() -> FactCard | None:
+    """세션에서 가장 최근에 수집된 가게 카드 — 수집 링크가 빈 붙여넣기에서 [지도] 폴백용."""
+    for key in reversed(_SCRAPE_CACHE):
+        if key.startswith("place:"):
+            return _SCRAPE_CACHE[key]
+    return None
 from autoblog.draft.generate import DraftRequest, DraftResult, generate_draft
 from autoblog.draft.guideline import Guidelines
 from autoblog.draft.rules import CommonRules
