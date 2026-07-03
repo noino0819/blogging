@@ -145,6 +145,7 @@ class Env(BaseModel):
     anthropic_api_key: str | None = None  # Claude API 키(.env ANTHROPIC_API_KEY)
     openai_api_key: str | None = None  # OpenAI(GPT) API 키(.env OPENAI_API_KEY)
     gemini_api_key: str | None = None  # Google Gemini API 키(.env GEMINI_API_KEY)
+    nvidia_api_key: str | None = None  # NVIDIA API 키(.env NVIDIA_API_KEY) — AI 썸네일 생성
 
     @property
     def has_naver_api(self) -> bool:
@@ -160,6 +161,7 @@ def load_env() -> Env:
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY"),
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
+        nvidia_api_key=os.getenv("NVIDIA_API_KEY"),
     )
 
 
