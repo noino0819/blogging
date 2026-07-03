@@ -129,11 +129,14 @@ def _weighted_pick(rng: random.Random, pairs: list[tuple[dict, int]], k: int) ->
 
 
 def build_variation_block(
-    seed_text: str, is_product: bool = False, *, pool: dict | None = None
+    seed_text: str, is_product: bool = False, *, pool: dict | None = None, ornaments: bool = True
 ) -> str | None:
     """이번 글에만 적용할 스타일 변주 블록(시스템 프롬프트에 덧붙임).
 
     seed_text가 같으면 항상 같은 블록을 만든다(md5 기반 — 보안 아닌 분산 용도).
+    ornaments=False(발랄체가 아닌 어투)면 어투 결합 변주(카오모지·유행어·특수문자 빈도)는
+    빼고 구조 변주(섹션 흐름·핵심 한마디 위치 등)만 남긴다 — 구조 다양화(유사문서 방지)는
+    모든 어투에 유효하지만, 카오모지·유행어 주입은 유저가 고른 문체를 덮어쓰기 때문.
     """
     pool = pool if pool is not None else load_style_pool()
     if not pool:
@@ -141,13 +144,20 @@ def build_variation_block(
     seed = int(hashlib.md5(seed_text.encode("utf-8")).hexdigest()[:16], 16)
     rng = random.Random(seed)
 
-    lines = [
-        "[이번 글 스타일 변주] — 아래는 이번 글에만 적용되는 설정이야. "
-        "공통 문체 규칙의 이모티콘·유행어·특수문자(〰️·문장 끝 '-') 목록/빈도와 "
-        "다르면 이쪽이 우선해. (글마다 조합이 달라야 여러 글이 똑같아 보이지 않아)"
-    ]
+    if ornaments:
+        lines = [
+            "[이번 글 스타일 변주] — 아래는 이번 글에만 적용되는 설정이야. "
+            "공통 문체 규칙의 이모티콘·유행어·특수문자(〰️·문장 끝 '-') 목록/빈도와 "
+            "다르면 이쪽이 우선해. (글마다 조합이 달라야 여러 글이 똑같아 보이지 않아)"
+        ]
+    else:
+        lines = [
+            "[이번 글 스타일 변주] — 아래는 이번 글에만 적용되는 구성 설정이야. "
+            "(글마다 구성이 달라야 여러 글이 똑같아 보이지 않아)"
+        ]
 
-    # 표정 이모티콘: 카테고리별 부분집합 + 총 개수 상한(0이거나 뽑힌 게 없으면 카오모지 없이)
+    # 표정 이모티콘: 카테고리별 부분집합 + 총 개수 상한(0이거나 뽑힌 게 없으면 카오모지 없이).
+    # 시드 소비는 ornaments와 무관하게 동일하게 수행 — 같은 재료면 구조 변주도 같게(재현성).
     kaomoji = pool.get("kaomoji") if isinstance(pool.get("kaomoji"), dict) else {}
     face_quota = rng.choice([0, 2, 3, 3, 4, 4, 5, 6])
     picks: list[tuple[str, list[str]]] = []
@@ -156,29 +166,31 @@ def build_variation_block(
         picked = _pick(rng, list(items) if isinstance(items, list) else [], rng.randint(lo, hi))
         if picked:
             picks.append((label, picked))
-    if face_quota and picks:
-        lines.append(
-            f"- 표정 이모티콘: 이번 글에서는 아래 것만, 글 전체 {face_quota}개 이내로 써"
-            "(어울리는 곳이 없으면 덜 써도 돼):"
-        )
-        for label, picked in picks:
-            lines.append(f"  · {label}: {' '.join(picked)}")
-    else:
-        lines.append(
-            "- 표정 이모티콘: 이번 글에서는 카오모지를 쓰지 마"
-            "(강조 이모티콘 ✨⭐️👀😎🥹👍🏻는 공통 규칙대로 사용 가능)."
-        )
+    if ornaments:
+        if face_quota and picks:
+            lines.append(
+                f"- 표정 이모티콘: 이번 글에서는 아래 것만, 글 전체 {face_quota}개 이내로 써"
+                "(어울리는 곳이 없으면 덜 써도 돼):"
+            )
+            for label, picked in picks:
+                lines.append(f"  · {label}: {' '.join(picked)}")
+        else:
+            lines.append(
+                "- 표정 이모티콘: 이번 글에서는 카오모지를 쓰지 마"
+                "(강조 이모티콘 ✨⭐️👀😎🥹👍🏻는 공통 규칙대로 사용 가능)."
+            )
 
     # 특수문자 빈도 — 하한 없이 상한만(0이면 금지). 글마다 분포가 달라진다.
     wavy = rng.choice([0, 1, 1, 2, 2, 3])
     dash = rng.choice([0, 1, 2, 2, 3, 3])
-    lines.append(
-        f"- 〰️: 최대 {wavy}회" + ("(이번 글에서는 쓰지 마)" if wavy == 0 else "(안 써도 됨)")
-    )
-    lines.append(
-        f"- 문장 끝 여운 '-': 최대 {dash}회"
-        + ("(이번 글에서는 쓰지 마 — 물결표도 '-'로 대체하지 말고 그냥 빼)" if dash == 0 else "")
-    )
+    if ornaments:
+        lines.append(
+            f"- 〰️: 최대 {wavy}회" + ("(이번 글에서는 쓰지 마)" if wavy == 0 else "(안 써도 됨)")
+        )
+        lines.append(
+            f"- 문장 끝 여운 '-': 최대 {dash}회"
+            + ("(이번 글에서는 쓰지 마 — 물결표도 '-'로 대체하지 말고 그냥 빼)" if dash == 0 else "")
+        )
 
     # 유행어: 이번 글 후보 2~4개만 노출, 사용 개수 상한(0이면 유행어 없이).
     # 후보는 weight(0~3, 유저가 풀에서 지정)에 비례한 확률로 뽑힌다 — 0은 제외.
@@ -189,16 +201,19 @@ def build_variation_block(
     ]
     slang_pool = [(s, w) for s, w in slang_pool if w > 0]
     slang_quota = rng.choice([0, 1, 1, 2, 2, 3])
-    if slang_quota and slang_pool:
-        candidates = _weighted_pick(rng, slang_pool, rng.randint(2, 4))
-        lines.append(
-            f"- 유행어: 아래 후보 중에서만, 최대 {slang_quota}개"
-            "(자연스럽게 녹아들 때만 — 0개여도 됨):"
-        )
-        for s in candidates:
-            lines.append(f"  · \"{s['expr']}\" — {s['meaning']} (예: \"{s['example']}\")")
-    else:
-        lines.append("- 유행어: 이번 글에서는 유행어·신조어를 쓰지 말고 담백하게 써.")
+    # 후보 추출은 ornaments와 무관하게 수행 — 시드 소비를 동일하게 유지해, 같은 재료면
+    # 어투가 달라도 아래 '구조 변주'가 같은 조합으로 나온다(재현성·테스트 결정성).
+    candidates = _weighted_pick(rng, slang_pool, rng.randint(2, 4)) if slang_pool else []
+    if ornaments:
+        if slang_quota and candidates:
+            lines.append(
+                f"- 유행어: 아래 후보 중에서만, 최대 {slang_quota}개"
+                "(자연스럽게 녹아들 때만 — 0개여도 됨):"
+            )
+            for s in candidates:
+                lines.append(f"  · \"{s['expr']}\" — {s['meaning']} (예: \"{s['example']}\")")
+        else:
+            lines.append("- 유행어: 이번 글에서는 유행어·신조어를 쓰지 말고 담백하게 써.")
 
     # 글 구조 변형
     structures = pool.get("structure_product" if is_product else "structure_place") or []

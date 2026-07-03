@@ -186,12 +186,21 @@ def wrap_long_lines(text: str, max_len: int = 30, *, keep_list_lines: bool = Fal
 
 
 def enforce_format(
-    text: str, wrap: bool = True, max_len: int = 30, *, allow_checklist: bool = False
+    text: str,
+    wrap: bool = True,
+    max_len: int = 30,
+    *,
+    allow_checklist: bool = False,
+    ornaments: bool = True,
 ) -> str:
     """결정적 포맷 규칙을 강제 적용.
 
     allow_checklist=True(상품 리뷰)면 줄 앞 ✅/✓ 체크리스트 기호를 보존한다
     (1️⃣~ 키캡 이모지는 글머리 기호가 아니라 어느 모드에서도 보존됨).
+    ornaments=False(발랄체가 아닌 어투)면 어투 결합 치환을 건너뛴다 — 본문 !→.ᐟ,
+    ~→- 치환과 금지 이모지 제거는 기본 어투(발랄체)의 규칙이라, 유저가 고른 문체에
+    코드가 기본어투를 다시 입히면 안 된다. 제목 정리·글머리 기호·줄바꿈은 포맷
+    규칙이라 어투와 무관하게 항상 적용한다.
     """
     bullet_re = _BULLET_RE_KEEP_CHECK if allow_checklist else _BULLET_RE
     text = text.replace("\x00", "")  # NUL 제거 — 내부 센티널(\x00…)과의 충돌 차단
@@ -203,14 +212,17 @@ def enforce_format(
         # (wrap_long_lines의 제목 판정과 동일 기준).
         stripped = text.lstrip()
         title, sep, body = stripped.partition("\n")
-        text = _clean_title_line(title) + (sep + _sub_special_chars(body) if sep else "")
-    else:  # 강조 스팬 등 조각 정규화 — 제목 개념 없음
+        if ornaments:
+            body = _sub_special_chars(body)
+        text = _clean_title_line(title) + (sep + body if sep else "")
+    elif ornaments:  # 강조 스팬 등 조각 정규화 — 제목 개념 없음
         text = _sub_special_chars(text)
-    forbidden = _FORBIDDEN_EMOJI
-    if allow_checklist:  # 상품 구조 표식(🌟)은 보존
-        forbidden = forbidden.replace(_PRODUCT_KEEP_EMOJI, "")
-    for ch in forbidden:
-        text = text.replace(ch, "")
+    if ornaments:
+        forbidden = _FORBIDDEN_EMOJI
+        if allow_checklist:  # 상품 구조 표식(🌟)은 보존
+            forbidden = forbidden.replace(_PRODUCT_KEEP_EMOJI, "")
+        for ch in forbidden:
+            text = text.replace(ch, "")
     for bad, good in _FORBIDDEN_PHRASES.items():  # 금지 표현 완화
         text = text.replace(bad, good)
     if allow_checklist:  # 상품: 키캡 요약 줄의 "소제목: 설명" 콜론 → em-dash

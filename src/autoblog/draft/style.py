@@ -14,8 +14,11 @@ from autoblog.llm import chat
 
 
 class StyleProfile(BaseModel):
-    profile: str | None = None  # 과거 글에서 추출한 평소 문체 특징
+    profile: str | None = None  # 평소 문체(페르소나 학습 결과 또는 어투 프리셋 지시문)
     tone: str | None = None  # 이번 글 톤 지시(직접 설명)
+    # 꾸밈 레이어(발랄체 전용): 카오모지·유행어 시드 변주 + !→.ᐟ 후처리 치환을 쓸지.
+    # tones.yaml 프리셋 설정에서 오고, 유저 페르소나는 False(학습된 문체 그대로).
+    ornaments: bool = False
 
     def as_prompt(self) -> str | None:
         parts = []

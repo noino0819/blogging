@@ -549,9 +549,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>사진 <span class=muted id=psel></span></label>
           <button type=button class="btn ghost" id=photobtn style="width:100%;justify-content:center;gap:8px">📷 사진 추가·분류 <span class=muted id=photosum>사진 없음</span></button>
-          <label class=f>문체 <span class=hint data-tip="[문체] 탭에서 만든 페르소나를 고르면 그 사람의 평소 문체로 써요. '기본'이면 적용 안 함.">i</span></label>
+          <label class=f>문체 <span class=hint data-tip="내장 어투(발랄 구어체·차분한 존댓말·친근한 반말·담백 정보형) 중 고르거나, [문체] 탭에서 만든 내 페르소나를 골라요. 고른 어투가 글 전체 말투가 되고, 발랄 구어체에서만 카오모지·유행어가 쓰여요.">i</span></label>
           <select id=persona style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:var(--fs-md);background:#fff;color:#1f2937">
-            <option value="">기본 (설정 안 함)</option>
+            <option value="">발랄 구어체 (기본)</option>
           </select>
           <label class=f>문체 톤 <span class=hint data-tip="비우면 기본 톤으로 써요. 위 문체와 함께 '이번 글'만의 조정으로 쓰여요. 예: 친근한 반말로 / 담백하고 차분하게">i</span></label>
           <input type=text id=tone placeholder="예: 친근한 반말로">
@@ -651,7 +651,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
       <div class=seg id=promptkindseg style="max-width:390px;margin-bottom:10px">
         <button type=button data-k=place class=on>🍜 맛집</button>
         <button type=button data-k=product>🛍️ 상품</button>
-        <button type=button data-k=common>🧾 공통 문체</button>
+        <button type=button data-k=common>🧾 공통 포맷</button>
       </div>
       <p class=desc style="margin:0 0 8px">파트를 눌러 펼치고 그 부분만 고치면 돼요. 파트를 새로 만들거나 지울 땐 '원문으로 편집'을 쓰세요.</p>
       <div id=promptsections><div class=muted>불러오는 중…</div></div>
@@ -727,7 +727,7 @@ window.fetch=async(...a)=>{try{return await _fetch(...a);}
   catch(e){const m='서버에 연결할 수 없어요. 앱(서버)이 꺼졌거나 재시작 중일 수 있어요 — 잠시 후 새로고침하거나 다시 시도하세요.';toast(m,'err');throw new Error(m);}};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let PHOTOS=[], SELP=[], PLAN=null;
-let PERSONAS=[], PERSONA_ID='', PF={};  // 문체 페르소나: 목록 / 선택된 id / 새로 만드는 중 임시상태
+let PERSONAS=[], TONES=[], PERSONA_ID='', PF={};  // 문체: 페르소나 목록 / 내장 어투 프리셋 / 선택 id / 작성 임시상태
 // 알림: 오류(err)는 화면 가운데 카드로 크게, 완료/안내(ok/info)는 상단 토스트로 가볍게.
 function toast(msg,kind='err',ms){
   if(kind==='err'){centerAlert(msg,'err');return;}
@@ -2081,8 +2081,8 @@ $('#emph').addEventListener('click',async e=>{const btn=e.target.closest('[data-
   catch(e){toast('저장 오류','err');}
   finally{btn.disabled=false;}
 });
-let PROMPTKIND='place';  // 편집 중인 프롬프트 종류(맛집=default.md / 상품=product.md / 공통 문체=common_style.md)
-const PROMPTKIND_LABEL={place:'맛집',product:'상품',common:'공통 문체'};
+let PROMPTKIND='place';  // 편집 중인 프롬프트 종류(맛집=default.md / 상품=product.md / 공통 포맷=common_style.md)
+const PROMPTKIND_LABEL={place:'맛집',product:'상품',common:'공통 포맷'};
 let PROMPTRAW=false;   // true면 원문(통짜) 편집 모드
 let PROMPTSECS=null;   // 섹션 파싱 결과 — #promptsections의 textarea들과 1:1 대응
 function parsePromptSections(text){
@@ -2241,12 +2241,16 @@ $('#tone').onchange=savePrefs;
 
 // ===== 문체(페르소나) =====
 async function loadPersonas(){try{const d=await (await fetch('/api/personas')).json();
-  PERSONAS=d.personas||[]; renderPersonaSelect(); renderPersonaList();
+  PERSONAS=d.personas||[]; TONES=d.tones||[]; renderPersonaSelect(); renderPersonaList();
 }catch(e){$('#personalist').innerHTML='<div class=muted>로드 실패</div>';}}
 function renderPersonaSelect(){const sel=$('#persona'); if(!sel)return;
-  sel.innerHTML='<option value="">기본 (설정 안 함)</option>'+
-    PERSONAS.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
-  sel.value=PERSONAS.some(p=>p.id===PERSONA_ID)?PERSONA_ID:''; if(sel.value!==PERSONA_ID)PERSONA_ID=sel.value;}
+  // 내장 어투 프리셋 + 내 문체(페르소나). 기본 프리셋은 value=""(선택 안 함과 동일 경로).
+  const tOpt=t=>`<option value="${t.default?'':'tone:'+t.id}" title="${esc(t.desc||'')}">${esc(t.name)}${t.default?' (기본)':''}</option>`;
+  const tones=TONES.length?TONES.map(tOpt).join(''):'<option value="">기본 (설정 안 함)</option>';
+  sel.innerHTML=`<optgroup label="내장 어투">${tones}</optgroup>`+
+    (PERSONAS.length?`<optgroup label="내 문체">${PERSONAS.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</optgroup>`:'');
+  const valid=new Set(['',...TONES.filter(t=>!t.default).map(t=>'tone:'+t.id),...PERSONAS.map(p=>p.id)]);
+  sel.value=valid.has(PERSONA_ID)?PERSONA_ID:''; if(sel.value!==PERSONA_ID)PERSONA_ID=sel.value;}
 function renderPersonaList(){const c=$('#personalist'); if(!c)return;
   if(!PERSONAS.length){c.innerHTML='<div class=muted>아직 저장된 문체가 없어요. 위에서 블로그 주소로 만들어 보세요.</div>';return;}
   c.innerHTML=PERSONAS.map(p=>{const n=(p.sources||[]).length;
@@ -3175,23 +3179,39 @@ _PREFS_DEFAULT = {
 
 
 def _personas_payload() -> dict:
-    """저장된 문체 페르소나 목록(관리·선택 UI용)."""
+    """저장된 문체 페르소나 + 내장 어투 프리셋 목록(관리·선택 UI용)."""
     from autoblog.draft.persona import load_personas
+    from autoblog.draft.tones import load_tones
 
-    return {"personas": [p.model_dump() for p in load_personas()]}
+    return {
+        "personas": [p.model_dump() for p in load_personas()],
+        "tones": [
+            {"id": t.id, "name": t.name, "desc": t.desc, "default": t.default}
+            for t in load_tones()
+        ],
+    }
 
 
 def _style_for(persona_id, tone):
-    """선택한 페르소나의 평소 문체(profile) + 이번 글 톤(tone) → StyleProfile.
+    """선택한 문체(내장 프리셋 'tone:<id>' 또는 페르소나 id) + 이번 글 톤 → StyleProfile.
 
-    둘 다 비면 None. 페르소나 id가 유효하지 않으면 무시하고 톤만 적용한다.
+    아무것도 안 고르면 None — generate가 기본 어투 프리셋(effective_style)을 채운다.
+    id가 유효하지 않으면 무시하고 톤만 적용한다(역시 기본 프리셋으로 폴백).
     """
     from autoblog.draft.persona import get_persona
     from autoblog.draft.style import StyleProfile
 
+    pid = str(persona_id or "")
+    if pid.startswith("tone:"):
+        from autoblog.draft.tones import get_tone
+
+        preset = get_tone(pid[len("tone:"):])
+        if preset:
+            return StyleProfile(profile=preset.prompt, tone=tone, ornaments=preset.ornaments)
+        pid = ""  # 모르는 프리셋 id → 기본 어투와 동일 취급
     profile = None
-    if persona_id:
-        persona = get_persona(str(persona_id))
+    if pid:
+        persona = get_persona(pid)
         if persona:
             profile = persona.profile
     if profile or tone:

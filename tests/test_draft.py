@@ -63,8 +63,9 @@ def test_prompt_examples_follow_own_rules():
         DEFAULT_PROMPT_PATH,
         PRODUCT_PROMPT_PATH,
     )
+    from autoblog.draft.tones import TONES_PATH
 
-    for path in (DEFAULT_PROMPT_PATH, PRODUCT_PROMPT_PATH, COMMON_STYLE_PROMPT_PATH):
+    for path in (DEFAULT_PROMPT_PATH, PRODUCT_PROMPT_PATH, COMMON_STYLE_PROMPT_PATH, TONES_PATH):
         text = path.read_text(encoding="utf-8")
         assert "~!" not in text, path.name
         assert "🐰" not in text, path.name
