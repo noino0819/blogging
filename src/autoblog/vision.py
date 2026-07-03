@@ -1,10 +1,10 @@
 """Vision LLM 연동 (기획서 §3.2, §5).
 
-이미지형 상품 상세설명/사진을 Vision 모델(Gemini API)로 이해해 구조화한다.
+이미지형 상품 상세설명/사진을 Vision 모델(Gemini/NVIDIA API)로 이해해 구조화한다.
 일반 OCR(Tesseract) 대신 Vision LLM을 쓰는 이유: 이미지 맥락을 이해해
 재질·크기·사용법·주의사항 등으로 정리하기 위함.
 
-API 전용 — Gemini만 지원한다(로컬 Ollama 미지원).
+API 전용 — Gemini 또는 NVIDIA 호스티드 VLM(qwen3.5 등)을 지원한다(로컬 LLM 미지원).
 모델명은 코드에 박지 않고 config/models.yaml(프리셋 vision)에서 읽는다.
 세로로 긴 상세 이미지는 조각으로 분할해 OCR 품질을 높인 뒤 결과를 합친다.
 """
@@ -29,9 +29,9 @@ def default_vision_model() -> str:
 
 
 def vision_json(prompt: str, images: list[bytes], model: str) -> str:
-    """이미지+프롬프트 → Gemini 비전 호출(JSON 강제) → 응답 텍스트.
+    """이미지+프롬프트 → 비전 호출(JSON 강제) → 응답 텍스트.
 
-    llm.vision_chat(Gemini API)을 감싸 비전 호출의 단일 진입점. 키 미설정·패키지
+    llm.vision_chat(Gemini/NVIDIA API)을 감싸 비전 호출의 단일 진입점. 키 미설정·패키지
     미설치·미지원 모델 등은 VisionUnavailable로 변환해 호출부 계약을 유지한다.
     """
     from autoblog.llm import LLMUnavailable, vision_chat
@@ -196,7 +196,7 @@ def classify_photos(
     return result
 
 
-# --- 온디맨드 맥락 캡션 (Gemini 배치) ------------------------------------------
+# --- 온디맨드 맥락 캡션 (멀티모달 배치) ----------------------------------------
 # 사진 전부 + 메모/메뉴/가게설명을 한 번에 넣어 '데미소스 돈까스'처럼 사람처럼 유추.
 # 글 1개당 호출 1번이라 저렴하고, 로컬 분류보다 훨씬 정확하다.
 
@@ -272,7 +272,7 @@ def smart_caption_photos(
     """사진들을 '한 번의 호출'로 맥락 기반 분류+캡션 → {path: {"label","caption"}}.
 
     context: 메모+수집 메뉴/가게/상품 정보 텍스트. categories: 허용 라벨 목록.
-    Gemini 등 멀티모달 모델 사용(llm.vision_chat). 키 미설정/패키지 미설치면 LLMUnavailable.
+    Gemini/NVIDIA 멀티모달 모델 사용(llm.vision_chat). 키 미설정/패키지 미설치면 LLMUnavailable.
     """
     from autoblog.llm import vision_chat
 
@@ -283,7 +283,8 @@ def smart_caption_photos(
         from autoblog.llm import LLMUnavailable
 
         raise LLMUnavailable(
-            "사진 자동 추천 모델 미설정 — config/models.yaml 의 caption.model 을 gemini-* 로 두세요"
+            "사진 자동 추천 모델 미설정 — config/models.yaml 의 caption.model 을 "
+            "qwen/qwen3.5-* 또는 gemini-* 로 두세요"
         )
     cats = [c for c in (categories or []) if c] or _DEFAULT_CAPTION_LABELS
     if "기타" not in cats:

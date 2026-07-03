@@ -1,4 +1,4 @@
-"""AI 썸네일(thumbnail.py) — 네트워크 없이 크롭·응답 파싱 로직만 검증."""
+"""AI 썸네일(thumbnail.py) — 네트워크 없이 응답 파싱·타이틀 오버레이 로직만 검증."""
 
 import base64
 from io import BytesIO
@@ -6,14 +6,7 @@ from io import BytesIO
 import pytest
 from PIL import Image
 
-from autoblog.thumbnail import ThumbnailUnavailable, _decode_image, _square_png
-
-
-def test_square_png_crops_to_1_1(tmp_path):
-    p = tmp_path / "wide.png"
-    Image.new("RGB", (400, 200), "red").save(p)
-    out = Image.open(BytesIO(_square_png(str(p), dim=128)))
-    assert out.size == (128, 128)
+from autoblog.thumbnail import ThumbnailUnavailable, _decode_image, _overlay_title
 
 
 def test_decode_image_both_response_shapes():
@@ -26,3 +19,22 @@ def test_decode_image_both_response_shapes():
 def test_decode_image_empty_raises():
     with pytest.raises(ThumbnailUnavailable):
         _decode_image({"artifacts": []})
+
+
+def _png_bytes(size=256, color="beige"):
+    buf = BytesIO()
+    Image.new("RGB", (size, size), color).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_overlay_title_keeps_size_and_changes_pixels():
+    src = _png_bytes()
+    out = _overlay_title(src, "거제 양념게장")
+    img = Image.open(BytesIO(out))
+    assert img.size == (256, 256)
+    assert out != src  # 글씨/배경이 실제로 그려짐
+
+
+def test_overlay_empty_title_returns_image():
+    out = _overlay_title(_png_bytes(), "")
+    assert Image.open(BytesIO(out)).size == (256, 256)

@@ -1,6 +1,6 @@
 """텍스트 LLM 호출 공통 (초안 작성·문체 추출 등).
 
-API 전용 — Claude/GPT/Gemini만 지원한다(로컬 Ollama 미지원).
+API 전용 — Claude/GPT/Gemini/NVIDIA 호스티드만 지원한다(로컬 LLM 미지원).
 모델명은 config/models.yaml(프리셋 text)에서 읽는다. 비전은 vision.py 참고.
 """
 
@@ -153,16 +153,33 @@ def _vision_gemini(prompt: str, images: list[bytes], model: str, *, fmt: str | N
     return resp.text or ""
 
 
+def _vision_nvidia(prompt: str, images: list[bytes], model: str, *, fmt: str | None = None) -> str:
+    """NVIDIA 호스티드 VLM(qwen3.5 등) 멀티모달 호출 — OpenAI 호환 image_url 데이터 URL."""
+    import base64
+
+    content: list[dict] = [{"type": "text", "text": prompt}]
+    for b in images:
+        mime = "jpeg" if b[:3] == b"\xff\xd8\xff" else "png"
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/{mime};base64,{base64.b64encode(b).decode()}"},
+        })
+    return _chat_nvidia([{"role": "user", "content": content}], model, fmt=fmt)
+
+
 def vision_chat(prompt: str, images: list[bytes], model: str, *, fmt: str | None = None) -> str:
     """이미지(여러 장)+프롬프트 멀티모달 호출 → 응답 텍스트.
 
-    Gemini API 전용. 비전 기능 래퍼는 vision.py 참고.
+    Gemini 또는 NVIDIA 호스티드 VLM(org/model 형식). 비전 기능 래퍼는 vision.py 참고.
     """
-    if provider_for(model) == "gemini":
+    provider = provider_for(model)
+    if provider == "gemini":
         return _vision_gemini(prompt, images, model, fmt=fmt)
+    if provider == "nvidia":
+        return _vision_nvidia(prompt, images, model, fmt=fmt)
     raise LLMUnavailable(
-        f"사진 자동 추천은 Gemini 모델만 지원합니다(현재 caption.model: {model!r}). "
-        "config/models.yaml 의 caption.model 을 gemini-* 로 설정하세요."
+        f"사진 분석은 Gemini/NVIDIA 모델만 지원합니다(현재 모델: {model!r}). "
+        "config/models.yaml 에서 gemini-* 또는 qwen/qwen3.5-* 등으로 설정하세요."
     )
 
 

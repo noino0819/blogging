@@ -702,7 +702,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
       </div>
       <div class=muted id=pf_stat style="margin-top:8px"></div>
       <div id=pf_posts style="margin-top:10px"></div>
-      <div id=pf_extractrow style="display:none;margin-top:12px;gap:8px;flex-wrap:wrap">
+      <div id=pf_extractrow style="display:none;margin-top:12px;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id=pf_model style="padding:8px 6px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff" data-tip="문체 분석에 쓸 텍스트 모델 — API 키가 등록된 모델만 보여요"></select>
         <button class=btn id=pf_extract style="width:auto;padding:9px 18px">선택한 글로 문체 추출</button>
         <button class="btn ghost" id=pf_promptonly style="width:auto;padding:9px 18px" data-tip="LLM 호출 없이, 글+분석 지시를 합친 프롬프트를 복사해요. ChatGPT·Claude 등에 붙여넣어 쓰세요.">프롬프트만 복사</button>
       </div>
@@ -1984,7 +1985,7 @@ function mcard(val,title,sub,active,miss){
   return `<div class="mcard${active?' on':''}${miss?' miss':''}" data-model="${val}">
     <div class=mc-t>${title}</div>${sub?`<div class=mc-s>${sub}</div>`:''}
     ${active?'<div class=mc-ck>✓ 사용 중</div>':''}</div>`;}
-let MODEL_KEYS={};
+let MODEL_KEYS={}, API_TEXT=[], TEXT_MODEL='';  // 키 보유 여부/등록 텍스트 모델 — 문체 추출 모델 선택에도 씀
 function provOf(model){const s=(model||'').toLowerCase();
   if(s.startsWith('claude'))return 'anthropic';
   if(s.startsWith('gemini'))return 'gemini';
@@ -2007,7 +2008,7 @@ function apiKeyBox(provider){
     </div>`;
 }
 async function loadModels(){try{const m=await (await fetch('/api/models')).json();
-  MODEL_KEYS=m.keys||{};
+  MODEL_KEYS=m.keys||{}; API_TEXT=m.api_text||[]; TEXT_MODEL=m.text||'';
   // ── 텍스트: 외부 API 카드(공급자별 묶음) ──
   const byProv={}; (m.api_text||[]).forEach(a=>{(byProv[a.provider]=byProv[a.provider]||[]).push(a);});
   const apiCards=Object.entries(byProv).map(([prov,list])=>{const pv=PROV[prov]||{short:prov}; const key=!!MODEL_KEYS[prov];
@@ -2335,13 +2336,22 @@ $('#pf_fetch').onclick=async()=>{
       <input type=checkbox class=pchk data-i="${i}" checked>
       <span style="flex:1;min-width:0;font-size:13.5px">${esc(p.title||('글 '+(i+1)))}</span>
       <span class=muted style="font-size:12px;white-space:nowrap">공감 ${p.sympathy} · 댓글 ${p.comments}</span></label>`).join('');
-    $('#pf_extractrow').style.display='flex';
+    pfModelSelect(); $('#pf_extractrow').style.display='flex';
   }catch(e){$('#pf_stat').textContent='';}finally{btn.disabled=false;}};
+// 키 등록된 텍스트 모델만 드롭다운에 — 지금 쓰는 모델이 키가 있으면 그걸 기본 선택.
+function pfModelSelect(){const sel=$('#pf_model');
+  const keyed=(API_TEXT||[]).filter(a=>MODEL_KEYS[a.provider]);
+  sel.innerHTML=keyed.map(a=>`<option value="${a.model}">${esc(nicer(a.model))}${a.model===TEXT_MODEL?' (사용 중)':''}</option>`).join('');
+  sel.style.display=keyed.length?'':'none';
+  if(keyed.some(a=>a.model===TEXT_MODEL))sel.value=TEXT_MODEL;
+  return keyed.length;}
 $('#pf_extract').onclick=async()=>{
   const logNos=$$('#pf_posts .pchk:checked').map(c=>PF.posts[+c.dataset.i].logNo);
   if(!logNos.length){toast('최소 한 개는 선택하세요','err');return;}
-  const btn=$('#pf_extract'); btn.disabled=true; $('#pf_stat').textContent='문체 추출 중… 글 본문을 읽고 분석해요 (20~40초)';
-  try{const r=await fetch('/api/personas/extract',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({blog:PF.blogId, logNos})});
+  if(!pfModelSelect()){toast('API 키가 등록된 텍스트 모델이 없어요. [프롬프트만 복사]로 ChatGPT·Claude에 붙여넣어 진행하거나, [모델] 탭에서 키를 등록하세요.','err');return;}
+  const model=$('#pf_model').value;
+  const btn=$('#pf_extract'); btn.disabled=true; $('#pf_stat').textContent=`문체 추출 중… ${nicer(model)}(이)가 글 본문을 읽고 분석해요 (20~40초)`;
+  try{const r=await fetch('/api/personas/extract',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({blog:PF.blogId, logNos, model})});
     const d=await r.json(); if(!r.ok){$('#pf_stat').textContent=''; toast('추출 실패: '+(d.error||''),'err'); return;}
     PF.profile=d.profile; PF.sources=d.sources||[];
     $('#pf_profile').value=d.profile||'';
@@ -2901,7 +2911,11 @@ def _make_handler(state: dict):
                 if not samples:
                     self._send(400, json.dumps({"error": "글 본문을 가져오지 못했어요"}).encode())
                     return
-                profile = extract_style_profile([s["text"] for s in samples])
+                # model: 프론트에서 고른 키 보유 텍스트 모델(없으면 선택된 기본 모델)
+                profile = extract_style_profile(
+                    [s["text"] for s in samples],
+                    model=(body.get("model") or "").strip() or None,
+                )
             except Exception as exc:  # noqa: BLE001
                 self._send(400, json.dumps({"error": str(exc)}).encode())
                 return
