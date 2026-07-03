@@ -77,6 +77,31 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  input[type=number]{-moz-appearance:textfield}
  input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
  textarea{min-height:130px;resize:vertical;line-height:1.6}
+ /* 단계 헤더 — 글쓰기 흐름(①글감 ②스타일 ③생성 ④검토·발행)을 카드마다 번호로 표시 */
+ .step{display:flex;align-items:center;gap:8px;margin:0 0 6px}
+ .step .stepn{width:22px;height:22px;flex:0 0 22px;border-radius:50%;background:var(--green-soft);color:var(--green-d);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center}
+ .step .stept{font-size:14px;font-weight:800;color:var(--ink)}
+ .step .steps{font-size:12px;color:var(--sub);font-weight:500}
+ .req{display:inline-block;font-size:10px;font-weight:800;color:#d6453c;background:#fdecec;border-radius:5px;padding:1.5px 6px;margin-left:5px;vertical-align:1px}
+ /* 세부 옵션 접기 — 저빈도 필드(문체 톤·최소 글자 수)는 기본 접힘 */
+ .moreopts{margin-top:14px;border-top:1px dashed var(--line)}
+ .moreopts summary{cursor:pointer;list-style:none;font-size:12px;font-weight:700;color:var(--sub);padding:10px 0 2px;user-select:none;display:flex;align-items:center;gap:6px}
+ .moreopts summary::-webkit-details-marker{display:none}
+ .moreopts summary .chev{font-size:9px;transition:transform .15s}
+ .moreopts[open] summary .chev{transform:rotate(90deg)}
+ .moreopts summary:hover{color:var(--ink)}
+ /* 발행 바 — 미리보기 바로 위 카테고리+임시저장(검토한 그 자리에서 저장) */
+ .pubbar{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:var(--r-lg);padding:13px 16px;margin-bottom:14px}
+ .pubbar .step{margin:0;flex:0 0 auto}
+ .pubbar .catwrap{flex:1;min-width:0}
+ .pubbar #save{width:auto;flex:0 0 auto;padding:11px 22px}
+ /* 빈 미리보기 — 진행 안내 */
+ .docguide{text-align:center;color:#b0b8c1}
+ .docguide .dg-ic{font-size:38px;margin-bottom:12px}
+ .docguide .dg-t{font-size:14.5px;font-weight:700;color:#8b95a1;margin-bottom:18px}
+ .docguide .dg-steps{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;font-size:12.5px}
+ .docguide .dg-s{padding:7px 13px;border:1px solid var(--line);border-radius:999px;background:#fbfcfd;font-weight:600;color:#9aa3ad;white-space:nowrap}
+ .docguide .dg-a{margin:0 8px;color:#cbd2d9}
  /* 필수 키워드 칩 입력: 컨테이너가 input처럼 보이고, 안에 칩 + 실제 입력칸이 흐른다 */
  .kwbox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid #d6dade;border-radius:10px;padding:6px 8px;background:#fbfcfd;cursor:text}
  .kwbox:focus-within{outline:2px solid #03c75a33;border-color:var(--green)}
@@ -572,11 +597,14 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <!-- 글쓰기 -->
   <section class="view write on">
     <h2 class=title>글쓰기</h2>
-    <p class=desc>경험 메모와 사진을 넣고 [초안 생성]을 누르면 오른쪽에 미리보기가 나옵니다.</p>
+    <p class=desc>글감을 넣고 [초안 생성]을 누르면, 오른쪽 미리보기로 검토한 뒤 네이버에 임시저장할 수 있어요.</p>
     <div id=workbar></div>
     <div class=grid>
       <div class=col>
         <div class=card>
+          <div class=step><span class=stepn>1</span><span class=stept>글감</span><span class=steps>무엇에 대해 쓸까요?</span></div>
+          <label class=f>경험 메모<span class=req>필수</span> <span class=hint data-tip="글의 중심이 되는 실제 경험을 자유롭게 적어주세요. 이 내용을 토대로 글이 작성됩니다.">i</span></label>
+          <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>수집 <span class=hint data-tip="선택 사항이에요. 맛집 플레이스 URL을 붙여넣거나 상품 검색어를 적으면 정보를 자동으로 수집합니다.">i</span></label>
           <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력">
           <div class=kindseg id=kindseg style="margin-top:8px">
@@ -584,23 +612,27 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <button data-k=product><span class=em>🛍️</span>상품</button>
           </div>
           <div class=muted id=srchint style="margin-top:6px">링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
-          <label class=f>경험 메모 <span class=hint data-tip="글의 중심이 되는 실제 경험을 자유롭게 적어주세요. 이 내용을 토대로 글이 작성됩니다.">i</span></label>
-          <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>사진 <span class=muted id=psel></span></label>
           <button type=button class="btn ghost" id=photobtn style="width:100%;justify-content:center;gap:8px">📷 사진 추가·분류 <span class=muted id=photosum>사진 없음</span></button>
+        </div>
+        <div class=card style="margin-top:16px">
+          <div class=step><span class=stepn>2</span><span class=stept>스타일</span><span class=steps>어떻게 쓸까요? — 모두 선택 사항</span></div>
           <label class=f>문체 <span class=hint data-tip="내장 어투(발랄 구어체·차분한 존댓말·친근한 반말·담백 정보형) 중 고르거나, [문체] 탭에서 만든 내 페르소나를 골라요. 고른 어투가 글 전체 말투가 되고, 발랄 구어체에서만 카오모지·유행어가 쓰여요.">i</span></label>
           <select id=persona style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:var(--fs-md);background:#fff;color:#1f2937">
             <option value="">발랄 구어체 (기본)</option>
           </select>
-          <label class=f>문체 톤 <span class=hint data-tip="비우면 기본 톤으로 써요. 위 문체와 함께 '이번 글'만의 조정으로 쓰여요. 예: 친근한 반말로 / 담백하고 차분하게">i</span></label>
-          <input type=text id=tone placeholder="예: 친근한 반말로">
           <label class=f>필수 키워드 <span class=hint data-tip="본문에 꼭 들어갈 키워드예요. 엔터를 치면 하나씩 태그로 추가되고, 쉼표·띄어쓰기로 이어진 여러 개를 붙여넣으면 자동으로 나뉘어 들어가요. ×로 하나씩 지울 수 있어요. 비우면 안 씁니다.">i</span></label>
           <div class=kwbox id=kwbox>
             <input type=text id=keywords placeholder="예: 강남맛집 (엔터로 추가)">
           </div>
           <div class=muted id=kwnote style="display:none;margin-top:4px;color:#2563eb;line-height:1.4"></div>
-          <label class=f>최소 글자 수 <span class=hint data-tip="본문이 이 글자 수(공백 제외) 이상이 되도록 써요. 비우면 1500자가 적용됩니다.">i</span></label>
-          <input type=number id=minchars placeholder="1500" min=0 step=100>
+          <details class=moreopts id=moreopts>
+            <summary><span class=chev>▶</span>세부 옵션 — 문체 톤 · 최소 글자 수</summary>
+            <label class=f>문체 톤 <span class=hint data-tip="비우면 기본 톤으로 써요. 위 문체와 함께 '이번 글'만의 조정으로 쓰여요. 예: 친근한 반말로 / 담백하고 차분하게">i</span></label>
+            <input type=text id=tone placeholder="예: 친근한 반말로">
+            <label class=f>최소 글자 수 <span class=hint data-tip="본문이 이 글자 수(공백 제외) 이상이 되도록 써요. 비우면 1500자가 적용됩니다.">i</span></label>
+            <input type=number id=minchars placeholder="1500" min=0 step=100>
+          </details>
           <div class=prodlinkbox id=prodlinkbox style="display:none">
             <label class=f>상품 링크 <span class=hint data-tip="상품 리뷰에 꼭 들어가야 하는 링크예요. 본문에 카드 형태로 한 번씩 삽입됩니다. [+ 링크 추가]로 여러 개 넣을 수 있어요.">i</span></label>
             <div id=prodlinks></div>
@@ -616,15 +648,20 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <label class=f>쿠팡파트너스 링크 <span class=hint data-tip="한 줄에 하나씩. 본문 끝에 몰지 않고 중간중간 카드로 분산 삽입돼요. 보통 3개.">i</span></label>
             <textarea id=links placeholder="쿠팡파트너스 링크를 한 줄에 하나씩 붙여넣기 (보통 3개)" style="min-height:80px"></textarea>
           </div>
-          <div style="margin-top:18px;display:flex;gap:8px"><button class=btn id=gen style="flex:1">초안 생성</button><button class="btn ghost" id=newpost style="flex:0 0 110px" title="입력·사진·분류를 비우고 새 글 시작">✏️ 새 글</button></div>
+        </div>
+        <div class=card style="margin-top:16px">
+          <div class=step><span class=stepn>3</span><span class=stept>초안 생성</span><span class=steps>보통 30~60초 걸려요</span></div>
+          <div style="margin-top:12px;display:flex;gap:8px"><button class=btn id=gen style="flex:1">초안 생성</button><button class="btn ghost" id=newpost style="flex:0 0 110px" title="입력·사진·분류를 비우고 새 글 시작">✏️ 새 글</button></div>
           <div class=actrow>
             <button class="btn ghost" id=export title="내 프롬프트와 입력 자료를 합쳐 복사 — 다른 챗봇에 붙여넣기"><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg>프롬프트 복사</button>
             <button class="btn ghost" id=import title="다른 챗봇에서 받은 글을 붙여넣어 미리보기로"><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg>받아온 글 붙여넣기</button>
           </div>
           <div id=status></div>
         </div>
-        <div class=card style="margin-top:16px">
-          <h3>네이버에 보내기</h3>
+      </div>
+      <div class=col>
+        <div class=pubbar>
+          <div class=step><span class=stepn>4</span><span class=stept>검토·발행</span></div>
           <div class=catwrap>
             <button class=catbtn id=catbtn><span>발행 카테고리: <b id=catlabel>선택 안 함</b></span><span style="color:var(--sub)">▾</span></button>
             <div class=popover id=catpop style="display:none">
@@ -635,11 +672,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
               <div class=muted id=catstat style="margin-top:6px"></div>
             </div>
           </div>
-          <div style="margin-top:12px"><button class="btn ghost" id=save disabled>임시저장</button></div>
+          <button class=btn id=save disabled title="초안을 검토한 뒤 네이버 블로그에 임시저장">임시저장</button>
         </div>
-      </div>
-      <div class=col>
-        <div class="doc empty" id=preview>왼쪽에서 메모를 쓰고 [초안 생성]을 누르세요.</div>
+        <div class="doc empty" id=preview><div class=docguide>
+          <div class=dg-ic>✍️</div>
+          <div class=dg-t>초안 미리보기가 여기에 나와요</div>
+          <div class=dg-steps><span class=dg-s>글감 입력</span><span class=dg-a>→</span><span class=dg-s>초안 생성</span><span class=dg-a>→</span><span class=dg-s>검토 후 임시저장</span></div>
+        </div></div>
         <details id=logbox style="display:none;margin-top:14px" class=card>
           <summary style="cursor:pointer;font-weight:700;font-size:13px">🔍 이번 생성 로그 — 들어간 프롬프트 + 모델 원본 출력</summary>
           <div id=logbody style="margin-top:10px"></div>
@@ -768,6 +807,7 @@ const _fetch=window.fetch.bind(window);
 window.fetch=async(...a)=>{try{return await _fetch(...a);}
   catch(e){const m='서버에 연결할 수 없어요. 앱(서버)이 꺼졌거나 재시작 중일 수 있어요 — 잠시 후 새로고침하거나 다시 시도하세요.';toast(m,'err');throw new Error(m);}};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const EMPTY_DOC=$('#preview').innerHTML;  // 빈 미리보기 안내 — 새 탭(blankWS) 초기 상태로 재사용
 let PHOTOS=[], SELP=[], PLAN=null;
 let PERSONAS=[], TONES=[], PERSONA_ID='', PF={};  // 문체: 페르소나 목록 / 내장 어투 프리셋 / 선택 id / 작성 임시상태
 // 알림: 오류(err)는 화면 가운데 카드로 크게, 완료/안내(ok/info)는 상단 토스트로 가볍게.
@@ -1427,7 +1467,7 @@ function blankWS(){
   return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},
     SRCKIND:'place',KINDMANUAL:false,IMPORTED_DRAFT:null,
     memo:'',srcval:'',keywords:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
-    previewHTML:'왼쪽에서 메모를 쓰고 [초안 생성]을 누르세요.',previewClass:'doc empty',saveDisabled:true};
+    previewHTML:EMPTY_DOC,previewClass:'doc empty',saveDisabled:true};
 }
 // 캡처된 상태를 화면·전역으로 되돌린다(+재렌더).
 function applyWS(s){
@@ -1940,6 +1980,7 @@ async function loadPrefs(){
     if(typeof p.tone==='string')$('#tone').value=p.tone;
     if(typeof p.personaId==='string'){PERSONA_ID=p.personaId; const sel=$('#persona'); if(sel)sel.value=PERSONA_ID;}
     if(p.minChars!=null)$('#minchars').value=p.minChars;
+    if($('#tone').value||$('#minchars').value)$('#moreopts').open=true;  // 저장된 값이 있으면 접힌 세부 옵션을 펼쳐 보여줌
     if(typeof p.category==='string')setCategory(p.category);
     if(typeof p.pruneDrafts==='boolean')PRUNE=p.pruneDrafts;
     if(typeof p.saveDebug==='boolean')SAVEDBG=p.saveDebug;
