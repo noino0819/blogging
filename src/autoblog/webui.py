@@ -1974,7 +1974,7 @@ const PROV={
   anthropic:{name:'Claude API',short:'Claude',color:'#7b61ff',ph:'sk-ant-...',issuer:'console.anthropic.com › API Keys'},
   openai:{name:'OpenAI API',short:'OpenAI',color:'#10a37f',ph:'sk-...',issuer:'platform.openai.com › API keys'},
   gemini:{name:'Gemini API',short:'Gemini',color:'#1a73e8',ph:'AIza...',issuer:'aistudio.google.com › API keys'},
-  nvidia:{name:'NVIDIA API',short:'NVIDIA',color:'#76b900',ph:'nvapi-...',issuer:'build.nvidia.com › API Keys'},
+  nvidia:{name:'NVIDIA API',short:'NVIDIA',color:'#76b900',ph:'nvapi-...',issuer:'build.nvidia.com › API Keys',free:'https://build.nvidia.com/qwen/qwen3.5-397b-a17b'},
 };
 // 모델 표시명 — 코드명 대신 사람이 읽기 좋게(없으면 원본)
 const MODELNAME={'claude-opus-4-8':'Opus 4.8','claude-sonnet-4-6':'Sonnet 4.6','gpt-4o':'GPT-4o','gemini-2.5-pro':'2.5 Pro',
@@ -2001,7 +2001,7 @@ async function applyModel(payload, okmsg, btn){
 function apiKeyBox(provider){
   const pv=PROV[provider]; const has=!!MODEL_KEYS[provider];
   return `<div class=sub-h style="margin-top:16px">${pv.short} API 키</div>
-    <div class=muted style="margin-bottom:8px">${has?`등록됨 ✓ — 다시 입력하면 교체돼요.`:`이 모델을 쓰려면 키가 필요해요. <b>${pv.issuer}</b>에서 발급 → .env에 저장됩니다.`}</div>
+    <div class=muted style="margin-bottom:8px">${has?`등록됨 ✓ — 다시 입력하면 교체돼요.`:`이 모델을 쓰려면 키가 필요해요. <b>${pv.issuer}</b>에서 발급 → .env에 저장됩니다.`}${!has&&pv.free?` <a href="${pv.free}" target=_blank rel=noopener>여기서 무료로 발급받을 수 있어요 ↗</a>`:''}</div>
     <div style="display:flex;gap:8px">
       <input type=password id=apikey placeholder="${has?'키 등록됨 ✓ (교체하려면 입력)':pv.ph}" style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
       <button class=btn id=apikeysave data-prov="${provider}" style="width:auto;padding:9px 16px">저장</button>
@@ -2026,7 +2026,7 @@ async function loadModels(){try{const m=await (await fetch('/api/models')).json(
     <div class=muted>적용 중: <b>${m.vision||'-'}</b> — qwen3.5(NVIDIA)는 <b>NVIDIA_API_KEY</b>, gemini-*는 <b>GEMINI_API_KEY</b>가 필요해요.</div>
 
     <h3 style="margin-top:26px">썸네일 모델 <span class=muted style="font-weight:400">— 🎨 AI 썸네일 (대표사진 → 손그림 감성)</span></h3>
-    <div class=muted>비전 모델이 사진을 읽고 FLUX.1-dev(NVIDIA API)가 그려요. <b>build.nvidia.com</b>에서 키 발급 → 아래 저장. ${MODEL_KEYS.nvidia?'<b style="color:var(--green)">키 등록됨 ✓</b>':'<b>NVIDIA_API_KEY</b>가 필요해요.'}</div>
+    <div class=muted>비전 모델이 사진을 읽고 FLUX.1-dev(NVIDIA API)가 그려요. ${MODEL_KEYS.nvidia?'<b style="color:var(--green)">키 등록됨 ✓</b>':'<b>NVIDIA_API_KEY</b>가 필요해요 — <a href="https://build.nvidia.com/qwen/qwen3.5-397b-a17b" target=_blank rel=noopener>build.nvidia.com에서 무료 발급 ↗</a> 후 아래 저장.'}</div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <input type=password id=nvkey placeholder="${MODEL_KEYS.nvidia?'키 등록됨 ✓ (교체하려면 입력)':'nvapi-...'}" style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
       <button class=btn id=nvkeysave style="width:auto;padding:9px 16px">저장</button>
