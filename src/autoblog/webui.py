@@ -125,6 +125,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .btn:hover{background:var(--green-d)}
  .btn:disabled{opacity:.45;cursor:default}
  .btn.ghost{background:#fff;color:var(--ink);border:1px solid #d6dade;font-weight:600}
+ .btn.danger{background:var(--red)}
+ .btn.danger:hover{background:#c93a3f}
  #status{font-size:12.5px;color:var(--sub);min-height:18px;margin-top:6px;display:flex;align-items:center;gap:8px}
  .spin{width:13px;height:13px;border:2px solid #d6dade;border-top-color:var(--green);border-radius:50%;animation:sp .7s linear infinite;display:none}
  @keyframes sp{to{transform:rotate(360deg)}}
@@ -185,15 +187,18 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .toast .x:hover{opacity:1;background:rgba(255,255,255,.32)}
  @keyframes tin{from{opacity:0;transform:translateY(-12px) scale(.97)}to{opacity:1;transform:none}}
  @keyframes tout{to{opacity:0;transform:translateY(-8px) scale(.97)}}
- /* 프롬프트 내보내기 모달 */
- .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:24px}
- .modalbox{background:#fff;border-radius:16px;width:min(780px,94vw);max-height:88vh;display:flex;flex-direction:column;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+ /* 공용 모달 — 알림 카드와 같은 페이드+팝 등장, Esc/배경클릭으로 닫힘 */
+ .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:24px;animation:mfade .15s ease}
+ .modalbox{background:#fff;border-radius:16px;width:min(780px,94vw);max-height:88vh;display:flex;flex-direction:column;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:mpop .2s cubic-bezier(.2,.9,.3,1.15)}
+ @keyframes mfade{from{opacity:0}}
+ @keyframes mpop{from{opacity:0;transform:translateY(10px) scale(.97)}}
  .phbox{width:min(920px,96vw)}
  .phscroll{flex:1;overflow:auto;margin-top:10px}
  .phbox .pgrid{max-height:none;margin-bottom:10px}
  .phbox .pmeta{max-height:none;border:0;padding:0}
  .modalhd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:15.5px;font-weight:700}
- .mx{border:0;background:#eef0f2;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px}
+ .mx{border:0;background:#eef0f2;width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px;color:#6b7280;transition:background .12s,color .12s}
+ .mx:hover{background:#e2e5ea;color:var(--ink)}
  .modalbox textarea{flex:1;min-height:360px;margin-top:10px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.55;background:#fafbfc}
  .modalft{margin-top:14px;display:flex;gap:10px}
  /* photo grid */
@@ -204,6 +209,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pcell.sel{border-color:var(--green)}
  .dropzone{border:2px dashed #cdd3da;border-radius:11px;padding:18px;text-align:center;color:var(--sub);font-size:13px;cursor:pointer;margin-bottom:10px}
  .dropzone:hover,.dropzone.drag{border-color:var(--green);background:#f3fcf6;color:var(--green-d)}
+ .dropzone.compact{padding:8px 12px;font-size:12px}  /* 사진이 있으면 낮게 접어 분류 공간 확보 */
  .draftlist{border:1px solid #e3e7ec;border-radius:10px;margin-bottom:10px;max-height:220px;overflow:auto}
  .draftlist .ditem{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #f0f2f5;cursor:pointer;font-size:13px}
  .draftlist .ditem:last-child{border-bottom:none}
@@ -228,9 +234,18 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .minibtn{font-size:12px;padding:5px 10px;border:1px solid #cdd3da;border-radius:8px;background:#fff;cursor:pointer;color:#374151}
  .minibtn:hover{border-color:var(--green);color:var(--green-d)}
  .minibtn:disabled{opacity:.55;cursor:default}
+ /* 사진 모달 단계 라벨 — ①가져오기 ②선택 ③분류 (글쓰기 탭 단계 헤더와 같은 문법) */
+ .msec{display:flex;align-items:center;gap:7px;margin:0 0 8px;font-size:12.5px;font-weight:700;color:var(--ink)}
+ .msec .mn{width:18px;height:18px;flex:0 0 18px;border-radius:50%;background:var(--green-soft);color:var(--green-d);font-size:10.5px;font-weight:800;display:flex;align-items:center;justify-content:center}
+ .msec .mcnt{background:#eef0f2;color:#4b5563;border-radius:9px;padding:1px 7px;font-size:10.5px;font-weight:700}
+ .msec .mh{font-weight:500;color:var(--sub);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  .pmeta{display:none;margin-top:8px;border:1px solid #e5e7eb;border-radius:10px;padding:8px;max-height:360px;overflow:auto;user-select:none;-webkit-user-select:none}
  .pmeta.open{display:block}
  .pmhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:12px;color:#374151}
+ .pmstate.on{background:var(--green-soft);color:var(--green-d);padding:3px 9px;border-radius:7px}
+ /* ✨ AI 분석 진행바 — 상태는 전역(AIPROG)이라 모달을 닫았다 열어도 이어서 보인다 */
+ .aibar{flex:1;max-width:220px;height:6px;background:#eef1f4;border-radius:99px;overflow:hidden}
+ .aifill{display:block;height:100%;background:linear-gradient(90deg,#03c75a,#5fe0a0);border-radius:99px;transition:width .4s ease}
  .pmboard{display:flex;flex-direction:column;gap:6px}
  .pmlane{border:1px solid #e5e7eb;border-radius:8px;padding:5px 6px;background:#fafbfc;cursor:pointer;transition:background .12s,border-color .12s}
  .pmlane.over{border-color:var(--green);background:#eafaf0;box-shadow:0 0 0 2px rgba(46,160,67,.18) inset}
@@ -519,6 +534,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .okcard .okb .btn{padding:13px}
  .okcf{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;opacity:0;animation:okfall 1.15s ease-out forwards}
  @keyframes okfall{0%{opacity:0;transform:translateY(-10px) rotate(0)}12%{opacity:1}100%{opacity:0;transform:translateY(230px) rotate(420deg)}}
+ @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style></head><body><div id=toasts></div><div id=savebar></div>
 <svg width=0 height=0 style="position:absolute" aria-hidden=true><defs>
  <g id=i-write fill=none stroke-width=1.7 stroke-linecap=round stroke-linejoin=round><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="M13.5 6.5l3 3"/></g>
@@ -553,8 +569,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=modalft><button class=btn id=iapply style="flex:1">이 글로 미리보기</button><button class="btn ghost" id=imclose2 style="flex:0 0 120px">닫기</button></div>
 </div></div>
 <div id=phmodal class=modal style="display:none"><div class="modalbox phbox">
-  <div class=modalhd><span>📷 사진 추가·분류</span><button class=mx id=phclose>✕</button></div>
-  <div class=muted>사진을 올리고 → 글에 넣을 사진을 클릭·Shift로 선택 → 아래 칸으로 끌거나 선택 후 칸을 눌러 분류하세요.</div>
+  <div class=modalhd><span>📷 사진 추가·분류</span><button class=mx id=phclose title=닫기>✕</button></div>
+  <div class=msec style="margin-top:4px"><span class=mn>1</span>사진 가져오기<span class=mh>PC에서 올리거나 네이버 임시저장 글에서 불러와요</span></div>
   <div class=dropzone id=dropzone>📷 사진·동영상을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*,video/*" multiple hidden></div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
     <button type=button class="btn ghost" id=draftload style="white-space:nowrap;flex:4 1 0">📥 임시저장에서 불러오기</button>
@@ -567,10 +583,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <button type=button class="btn" id=draftbatchgo>📥 선택한 글 새 탭으로 불러오기</button>
   </div>
   <div class=phscroll>
+    <div class=msec><span class=mn>2</span>분류 전 사진<span class=mcnt id=pinboxn>0</span><span class=mh>클릭=활성 칸에 담기 · Shift=여러 장 선택</span></div>
     <div class=pgrid id=pgrid></div>
+    <div class=msec style="margin-top:14px"><span class=mn>3</span>분류함<span class=mh>여기 담긴 사진만 글에 들어가요 · 칸 클릭 또는 끌어놓기로 담기</span></div>
     <div class=pmeta id=pmeta></div>
   </div>
-  <div class=modalft><button class=btn id=phdone style="flex:1">완료</button></div>
+  <div class=modalft><span class=muted id=phstat style="flex:1;align-self:center"></span><button class=btn id=phdone style="flex:0 0 200px">완료</button></div>
 </div></div>
 <div id=catmodal class=modal style="display:none"><div class=modalbox style="width:min(420px,92vw)">
   <div class=modalhd><span id=cattitle>새 분류 추가</span><button class=mx id=catx>✕</button></div>
@@ -589,7 +607,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 <div id=npmodal class=modal style="display:none"><div class=modalbox style="width:min(420px,92vw)">
   <div class=modalhd><span>✏️ 새 글 시작</span><button class=mx id=npx>✕</button></div>
   <div class=muted>지금 작성 중인 메모·사진 선택·분류가 모두 비워집니다. 새 글을 시작할까요?</div>
-  <div class=modalft><button class=btn id=npok style="flex:1">새 글 시작</button><button class="btn ghost" id=npcancel style="flex:0 0 100px">취소</button></div>
+  <div class=modalft><button class="btn danger" id=npok style="flex:1">비우고 새 글 시작</button><button class="btn ghost" id=npcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
 <div id=tgmodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
   <div class=modalhd><span>🎨 AI 썸네일 생성</span><button class=mx id=tgx>✕</button></div>
@@ -602,10 +620,18 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=muted style="margin-top:6px;font-size:11.5px">생성엔 보통 30초~1분 걸려요 · 완성되면 ★ 대표가 새 이미지로 바뀌어요</div>
   <div class=modalft><button class=btn id=tgok style="flex:1">🎨 생성 시작</button><button class="btn ghost" id=tgcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
+<div id=aimodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
+  <div class=modalhd><span>✨ AI 사진 분석</span><button class=mx id=aix>✕</button></div>
+  <div class=muted id=aidesc></div>
+  <div class=muted style="margin-top:12px;font-size:12px"><b>요청사항</b> (선택) — 분류·설명에 반영할 지시를 적어주세요</div>
+  <textarea id=aihint placeholder="예: 음식 사진은 메뉴 이름을 꼭 밝혀줘. 흔들리거나 중복된 사진은 '기타'로 분류해줘." style="min-height:70px;margin-top:5px;font-family:inherit;font-size:14px;line-height:1.5;background:#fff;border:1px solid #cdd3da;border-radius:9px;padding:10px 12px;width:100%;resize:vertical"></textarea>
+  <div class=muted style="margin-top:6px;font-size:11.5px">4장씩 나눠 분석하고 끝난 사진부터 바로 반영돼요 · 진행 중엔 모달을 닫아도 계속돼요</div>
+  <div class=modalft><button class=btn id=aiok style="flex:1">✨ 분석 시작</button><button class="btn ghost" id=aicancel style="flex:0 0 100px">취소</button></div>
+</div></div>
 <div id=cfmodal class=modal style="display:none"><div class=modalbox style="width:min(420px,92vw)">
   <div class=modalhd><span id=cftitle></span><button class=mx id=cfx>✕</button></div>
   <div class=muted id=cfdesc></div>
-  <div class=modalft><button class=btn id=cfok style="flex:1"></button><button class="btn ghost" id=cfcancel style="flex:0 0 100px">취소</button></div>
+  <div class=modalft><button class="btn danger" id=cfok style="flex:1"></button><button class="btn ghost" id=cfcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
 <div id=alerthost></div>
 <aside class=side>
@@ -1063,6 +1089,8 @@ function gridCell(path){
 function renderGrid(){
   const g=$('#pgrid'); if(!g)return; g.innerHTML='';
   const inbox=inboxPhotos();
+  const cnt=$('#pinboxn'); if(cnt)cnt.textContent=inbox.length;
+  const dz=$('#dropzone'); if(dz)dz.classList.toggle('compact',PHOTOS.length>0);
   if(!inbox.length) g.innerHTML='<div class=muted style="grid-column:1/-1;padding:6px 2px">분류할 사진이 없어요. 위에서 추가하거나 아래 분류함에서 ×로 다시 꺼낼 수 있어요.</div>';
   else inbox.forEach(p=>g.appendChild(gridCell(p)));
   updatePhotoSummary();
@@ -1289,6 +1317,7 @@ async function batchImport(){
 
 // 사진 분류·캡션 (수동 + ✨ AI 자동 추천). 결과는 PHOTOMETA(경로→{label,caption})에 저장.
 let PHOTOMETA={}, PHOTO_CATS={}, THUMB=null;  // THUMB=대표 썸네일 경로(글 맨 위 첫 사진, 최대 1장)
+let AIPROG=null;  // ✨ AI 분석 진행 상태 {wsid,done,total} — 전역이라 모달을 닫았다 열어도, 탭을 바꿔도 표시가 이어진다
 async function loadPhotoCats(){ try{PHOTO_CATS=await (await fetch('/api/photo_categories')).json();}catch(e){} }
 function curCats(){ return PHOTO_CATS[SRCKIND]||PHOTO_CATS.place||['외관','내부','메뉴판','음식','영수증','기타']; }
 function photoMetaForSel(){ const o={}; SELP.forEach(p=>{const m=PHOTOMETA[p]||{}; const e={};
@@ -1296,9 +1325,11 @@ function photoMetaForSel(){ const o={}; SELP.forEach(p=>{const m=PHOTOMETA[p]||{
   if(e.label||e.caption||e.thumbnail)o[p]=e; }); return o; }
 function setThumb(path){ THUMB=(THUMB===path?null:path); renderGrid(); renderPmeta(); updatePhotoSummary(); }
 function updatePhotoSummary(){
-  const n=SELP.length;
+  const n=SELP.length, inbox=inboxPhotos().length;
+  const ai=AIPROG&&AIPROG.wsid===CURWS;  // 모달 밖(사진 버튼 옆)에서도 분석 진행이 보이게
   const ps=$('#psel'); if(ps) ps.textContent = n? `${n}장` : '';
-  const su=$('#photosum'); if(su) su.textContent = n? `${n}장 선택됨` : '사진 없음';
+  const su=$('#photosum'); if(su) su.textContent = ai? `✨ AI 분석 중 ${AIPROG.done}/${AIPROG.total}장…` : (n? `${n}장 선택됨` : '사진 없음');
+  const stt=$('#phstat'); if(stt) stt.textContent = (n||inbox)? `글에 담김 ${n}장 · 분류 전 ${inbox}장` : '';
 }
 function openPhotoModal(){
   const m=$('#phmodal'); if(!m)return;
@@ -1407,14 +1438,19 @@ function renderPmeta(){
   const tbody = (THUMB)
     ? `<img src="/photo?path=${encodeURIComponent(THUMB)}"><span>이 사진이 글 맨 위 <b>첫 사진</b>으로 들어가요</span><button type=button class=minibtn id=thumbgen title="대표사진을 손그림 감성 썸네일로 (Qwen-Image-Edit)">🎨 AI 썸네일</button><button type=button class=minibtn id=thumbclr>해제</button>`
     : `<span class=pmempty>사진의 <b>★</b>를 눌러 <b>대표 썸네일</b>을 정하세요 — 글 맨 위 첫 사진이 됩니다</span>`;
-  let h=`<div class=pmthumbbar><span class=pmthumblbl>⭐ 대표 썸네일</span>${tbody}</div>`
-    +'<div class=pmhead><span>'
+  let h=`<div class=pmthumbbar><span class=pmthumblbl>⭐ 대표 썸네일</span>${tbody}</div>`;
+  if(AIPROG&&AIPROG.wsid===CURWS){  // 분석 중엔 상태줄이 진행바로 바뀜 — 모달을 닫았다 열어도 그대로
+    const pct=AIPROG.total?Math.round(AIPROG.done/AIPROG.total*100):0;
+    h+=`<div class=pmhead><span class="pmstate on">✨ AI 분석 중 · <b>${AIPROG.done}/${AIPROG.total}장</b> <span id=aisec></span></span><span class=aibar><span class=aifill style="width:${pct}%"></span></span></div>`;
+  }else{
+    h+='<div class=pmhead><span class="pmstate'+(PMSEL.size?' on':'')+'">'
     + (PMSEL.size
         ? `<b>${PMSEL.size}장</b> 선택됨 — 담을 칸을 클릭(또는 드래그)`
         : (PMACTIVE!=null
             ? `<b>${esc(PMACTIVE)}</b> 칸 활성 — 사진 클릭하면 담겨요 · Shift로 여러 장 선택 후 칸 클릭`
             : '사진 클릭/Shift로 선택 → 담을 칸 클릭. (칸을 클릭하면 활성=클릭으로 담기)'))
-    + '</span><button type=button class=minibtn id=aibtn>✨ AI 자동 추천</button></div>';
+    + `</span><button type=button class=minibtn id=aibtn title="분류함에 담긴 사진을 AI가 알맞은 칸으로 분류하고 세부 설명을 달아줘요">✨ AI 자동 분류·설명${SELP.length?` (${SELP.length}장)`:''}</button></div>`;
+  }
   h+='<div class=pmboard>'+pmBuckets().map(b=>{
     const items=SELP.filter(p=>pmBucketOf(p)===b.key);
     const inner=items.length?items.map(pmTile).join(''):'<span class=pmempty>여기로 끌어다 놓기</span>';
@@ -1428,7 +1464,7 @@ function renderPmeta(){
    + '<button type=button class=pmadd id=pmadd>+ 새 분류 추가</button>'
    + '</div>';
   const box=$('#pmeta'); box.innerHTML=h;
-  $('#aibtn').onclick=runAiCaption;
+  const ab=$('#aibtn'); if(ab)ab.onclick=openAiModal;  // 분석 중엔 버튼 대신 진행바라 없을 수 있음
   $('#pmadd').onclick=addCategory;
   $$('#pmeta .pmsubbtn').forEach(btn=>{ btn.onclick=e=>{ e.stopPropagation(); addSub(btn.dataset.cat); }; });
   $$('#pmeta .pmsubdel').forEach(btn=>{ btn.onclick=e=>{ e.stopPropagation(); removeSub(btn.dataset.parent,btn.dataset.sub); }; });
@@ -1605,19 +1641,64 @@ async function runThumbGen(title,extra){
     toast(`AI 썸네일 완성! (${sec}초) 새 이미지를 ★ 대표로 지정했어요.`,'ok');
   }catch(e){el.stop(); renderPmeta(); errNotice('썸네일 생성 실패', e.message);}
 }
-async function runAiCaption(){
-  const btn=$('#aibtn'); if(!btn)return; btn.disabled=true; const old=btn.textContent;
-  const el=elapsed(`사진 ${SELP.length}장 분석 중…`, (label,counter)=>btn.textContent=label+(counter?' '+counter:''));
+// ✨ AI 분석 시작 전 모달 — 대상(분류함에 담긴 사진)을 명시하고, 선택 요청사항(hint)을 받는다.
+function aiTargets(){ return SELP.filter(p=>!isVid(p)); }  // 영상은 비전 모델이 못 읽으니 제외
+function openAiModal(){
+  const n=aiTargets().length, inbox=inboxPhotos().filter(p=>!isVid(p)).length;
+  if(!n){toast('분류함에 담긴 사진이 없어요 — 먼저 글에 쓸 사진을 칸에 담아주세요.','info');return;}
+  if(AIPROG){toast('이미 AI 분석이 진행 중이에요.','info');return;}
+  $('#aidesc').innerHTML=`분류함에 담긴 <b>${n}장</b>을 분석해 알맞은 칸으로 분류하고, 글에 녹일 세부 설명을 달아줘요.`
+    +(inbox?`<br><span style="font-size:12px">분류 전 사진 ${inbox}장은 대상이 아니에요 — 글에 쓸 사진만 먼저 담아주세요.</span>`:'');
+  $('#aimodal').style.display='flex'; setTimeout(()=>$('#aihint').focus(),30);
+}
+function closeAI(){ $('#aimodal').style.display='none'; }
+// 분석 결과 반영 — 시작한 탭(wsid)의 상태에 쓴다. 탭을 바꿨으면 그 탭의 스냅샷에 기록.
+function aiApply(wsid, items){
+  const st = wsid===CURWS ? null : (findWS(wsid)||{}).state;
+  const meta = st? st.PHOTOMETA : PHOTOMETA;
+  if(!meta) return;
+  (items||[]).forEach(p=>{meta[p.path]={label:p.label||'',caption:p.caption||''};});
+}
+const AIBATCH=4;  // ponytail: 4장씩 순차 배치 — 실제 진행도 표시 + 실패 시 끝난 배치까지 반영
+async function runAiCaption(paths, hint, ctx){
+  if(AIPROG)return;
+  const targets=(paths||[]).filter(p=>!isVid(p));
+  if(!targets.length){toast('분석할 사진이 없어요.','info');return;}
+  const wsid=CURWS;  // 탭을 바꾸거나 모달을 닫아도 이어지도록 시작 시점의 탭·입력을 붙잡아 둔다
+  ctx=ctx||{memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND};
+  AIPROG={wsid,done:0,total:targets.length};
+  renderPmeta(); updatePhotoSummary();
+  const t0=Date.now();
+  const tick=setInterval(()=>{const s=$('#aisec'); if(s)s.textContent=Math.round((Date.now()-t0)/1000)+'초';},1000);
+  let done=0, fail=null;
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,reviewType:SRCKIND};
-    const r=await fetch('/api/photos/caption',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    const d=await r.json();
-    if(!r.ok){throw new Error(d.error||'알 수 없는 오류');}
-    const sec=el.stop();
-    (d.photos||[]).forEach(p=>{PHOTOMETA[p.path]={label:p.label||'',caption:p.caption||''};});
-    renderPmeta(); toast(`사진 자동 분석 완료! (${sec}초) 검토·수정 후 생성하세요.`,'ok');
-  }catch(e){el.stop(); errNotice('사진 자동 분석 실패', e.message);}
-  finally{btn.disabled=false; btn.textContent=old;}
+    for(let i=0;i<targets.length;i+=AIBATCH){
+      if(wsid!==CURWS && !findWS(wsid)) break;  // 시작한 탭이 닫혔으면 중단
+      const chunk=targets.slice(i,i+AIBATCH);
+      const r=await fetch('/api/photos/caption',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({memo:ctx.memo,srcval:ctx.srcval,kind:ctx.kind,reviewType:ctx.kind,photos:chunk,hint:hint||''})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(d.error||'알 수 없는 오류');
+      aiApply(wsid,d.photos);
+      done+=chunk.length; AIPROG.done=done;
+      if(wsid===CURWS){renderPmeta(); updatePhotoSummary();}
+    }
+  }catch(e){fail=e;}
+  clearInterval(tick); AIPROG=null;
+  if(wsid===CURWS){renderPmeta(); updatePhotoSummary();}
+  const sec=((Date.now()-t0)/1000).toFixed(1);
+  if(!fail){ if(done)toast(`사진 ${done}장 자동 분석 완료! (${sec}초) 검토·수정 후 생성하세요.`,'ok'); return; }
+  // 실패해도 끝난 배치까지는 이미 반영됨 — 몇 장까지 됐는지 알리고 '이어서 분석'을 제안
+  const remaining=targets.slice(done);
+  if(String(fail.message).includes('한도 도달')){
+    errNotice('사진 자동 분석', fail.message);
+    if(done)toast(`${done}/${targets.length}장까지는 분류·설명이 반영됐어요.`,'info');
+  }else{
+    confirmModal('사진 분석이 중간에 멈췄어요',
+      (done?`<b>${done}/${targets.length}장</b>까지는 분류·설명이 반영됐어요.<br>`:'')
+      +`남은 <b>${remaining.length}장</b>을 이어서 분석할까요?<br><br><span style="font-size:12px;color:#8b95a1">${String(fail.message).replace(/</g,'&lt;')}</span>`,
+      '이어서 분석','나중에',()=>runAiCaption(remaining,hint,ctx),null,'🤖');
+  }
 }
 
 let GENTIMER=null, GENT0=0;
@@ -1643,12 +1724,13 @@ const NYAN=`<div class=nyanwrap>
 $('#pchar').innerHTML=NYAN;
 const GENMSGS=[[0,'메모를 읽는 중…'],[18,'글을 쓰는 중…'],[50,'문장을 다듬는 중…'],[78,'강조·서식 입히는 중…'],[92,'거의 다 됐어요!']];
 function genLoading(){
+  const who=TEXT_MODEL?`${nicer(TEXT_MODEL)} 모델이 글을 써요`:'AI가 글을 써요';  // 적용 중인 텍스트 모델명 표시
   $('#preview').classList.add('empty');
   $('#preview').innerHTML=`<div class=genload>${NYAN}
     <div class=genmsg id=genmsg></div>
     <div class=genbar><div class=genfill id=genfill></div></div>
     <div class=genpct id=genpct>0%</div>
-    <div class=gensub id=gensub>로컬 AI가 직접 글을 써요 · 보통 30~60초</div></div>`;
+    <div class=gensub id=gensub>${who} · 보통 30~60초</div></div>`;
   typeText($('#genmsg'), '메모를 읽는 중…');  // 첫 문구도 한 글자씩
   let pct=0; GENT0=Date.now();
   GENTIMER=setInterval(()=>{
@@ -1656,7 +1738,7 @@ function genLoading(){
     const fl=$('#genfill'); if(!fl){clearInterval(GENTIMER);return;}
     fl.style.width=pct+'%'; $('#genpct').textContent=Math.floor(pct)+'%';
     const m=GENMSGS.filter(x=>pct>=x[0]).pop(); if(m)typeText($('#genmsg'), m[1]);
-    const sb=$('#gensub'); if(sb)sb.textContent=`로컬 AI가 직접 글을 써요 · ${Math.round((Date.now()-GENT0)/1000)}초 경과`;
+    const sb=$('#gensub'); if(sb)sb.textContent=`${who} · ${Math.round((Date.now()-GENT0)/1000)}초 경과`;
   },700);
 }
 function genDone(ok){ if(GENTIMER)clearInterval(GENTIMER);
@@ -2578,6 +2660,9 @@ $('#npmodal').onclick=e=>{ if(e.target===$('#npmodal'))closeNP(); };
 $('#tgx').onclick=closeTG; $('#tgcancel').onclick=closeTG;
 $('#tgmodal').onclick=e=>{ if(e.target===$('#tgmodal'))closeTG(); };
 $('#tgok').onclick=()=>{ const t=$('#tgtitle').value.trim(), ex=$('#tgextra').value.trim(); closeTG(); runThumbGen(t,ex); };
+$('#aix').onclick=closeAI; $('#aicancel').onclick=closeAI;
+$('#aimodal').onclick=e=>{ if(e.target===$('#aimodal'))closeAI(); };
+$('#aiok').onclick=()=>{ const hint=$('#aihint').value.trim(); closeAI(); runAiCaption(aiTargets(),hint); };  // 요청사항은 지우지 않고 유지 — 이어서/재분석 때 재사용
 // 범용 확인 모달 — 네이티브 confirm() 대신 앱 스타일로
 let CFCB=null;
 function askConfirm(title,desc,okLabel,cb){
@@ -2589,11 +2674,17 @@ $('#cfx').onclick=closeCF; $('#cfcancel').onclick=closeCF;
 $('#cfmodal').onclick=e=>{ if(e.target===$('#cfmodal'))closeCF(); };
 $('#cfok').onclick=()=>{ const cb=CFCB; closeCF(); if(cb)cb(); };
 $('#catok').onclick=catSubmit; $('#catx').onclick=closeCatModal; $('#catcancel').onclick=closeCatModal;
-$('#catinput').onkeydown=e=>{ if(e.key==='Enter')catSubmit(); else if(e.key==='Escape')closeCatModal(); };
+$('#catinput').onkeydown=e=>{ if(e.key==='Enter')catSubmit(); };  // Esc는 아래 공통 핸들러가 처리(이중 닫힘 방지)
 $('#catmodal').onclick=e=>{ if(e.target===$('#catmodal'))closeCatModal(); };
 $('#capok').onclick=capSubmit; $('#capx').onclick=closeCapModal; $('#capcancel').onclick=closeCapModal;
-$('#capinput').onkeydown=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))capSubmit(); else if(e.key==='Escape')closeCapModal(); };
+$('#capinput').onkeydown=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))capSubmit(); };
 $('#capmodal').onclick=e=>{ if(e.target===$('#capmodal'))closeCapModal(); };
+// Esc로 열린 모달 닫기 — 스택 위(사진 모달 위에 뜨는 작은 모달)부터, 배경 클릭과 같은 닫기 함수로
+const MODAL_ESC=[['aimodal',closeAI],['capmodal',closeCapModal],['catmodal',closeCatModal],['cfmodal',closeCF],['tgmodal',closeTG],['npmodal',closeNP],['imodal',closeIM],['pmodal',closePM],['phmodal',closePhotoModal]];
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||document.querySelector('.alertbg,.okbg'))return;  // 알림 카드는 자체 Esc 처리
+  for(const [id,fn] of MODAL_ESC){ const m=document.getElementById(id); if(m&&m.style.display!=='none'){fn();return;} }
+});
 // 메모를 치는 대로 현재 탭 제목이 갱신되게(초안 생성 전에도 어느 탭인지 알아보게).
 { const mo=$('#memo'); if(mo) mo.addEventListener('input', ()=>renderTabs()); }
 initWorkspaces();  // 초기 탭 1개 생성(맨 마지막: 위 초기화가 끝난 화면 상태를 캡처)
@@ -3009,6 +3100,7 @@ def _make_handler(state: dict):
                     product=srcval if src == "product" else None,
                     photos=photos,
                     review_type=(body.get("reviewType") or src or None),
+                    hint=str(body.get("hint") or ""),
                 )
             except Exception as exc:  # noqa: BLE001 — 키 미설정/패키지 미설치/API 오류 그대로 안내
                 self._send(400, json.dumps({"error": str(exc)}).encode())

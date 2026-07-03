@@ -213,15 +213,17 @@ def caption_available() -> bool:
     return bool(default_caption_model())
 
 
-def _caption_prompt(n: int, cats: list[str], context: str) -> str:
+def _caption_prompt(n: int, cats: list[str], context: str, hint: str = "") -> str:
     ctx = (context or "").strip()
     ctx_block = (
         "\n[참고 맥락 — 이 가게/상품의 메모·메뉴·설명. 사진이 구체적으로 무엇인지 "
         f"유추하는 데 활용하세요]\n{ctx}\n" if ctx else ""
     )
+    hint = (hint or "").strip()
+    hint_block = f"\n[사용자 요청사항 — 분류·설명에 반드시 반영하세요]\n{hint}\n" if hint else ""
     return (
         f"사진 {n}장을 순서대로 줄게요. 각 사진이 무엇인지 사람처럼 파악하세요."
-        f"{ctx_block}\n"
+        f"{ctx_block}{hint_block}\n"
         "각 사진마다 두 가지를 정하세요:\n"
         f"1) label: 다음 중 하나로만 분류 — {', '.join(cats)}\n"
         "2) caption: 그 사진이 구체적으로 무엇인지 한국어로 짧게. 위 맥락의 메뉴·설명과 "
@@ -268,6 +270,7 @@ def smart_caption_photos(
     context: str = "",
     categories: list[str] | None = None,
     model: str | None = None,
+    hint: str = "",
 ) -> dict[str, dict[str, str]]:
     """사진들을 '한 번의 호출'로 맥락 기반 분류+캡션 → {path: {"label","caption"}}.
 
@@ -290,5 +293,5 @@ def smart_caption_photos(
     if "기타" not in cats:
         cats = [*cats, "기타"]
     images = [_downscale_image(p) for p in image_paths]
-    content = vision_chat(_caption_prompt(len(image_paths), cats, context), images, model, fmt="json")
+    content = vision_chat(_caption_prompt(len(image_paths), cats, context, hint), images, model, fmt="json")
     return _parse_captions(content, image_paths, cats)

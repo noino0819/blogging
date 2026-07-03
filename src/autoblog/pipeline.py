@@ -174,6 +174,7 @@ def caption_photos(
     product: str | None = None,
     photos: list[str] | None = None,
     review_type: str | None = None,
+    hint: str = "",
 ) -> list[dict]:
     """온디맨드 '✨ AI 자동 추천': (가능하면)수집 → 맥락 조립 → 멀티모달 배치 캡션.
 
@@ -191,7 +192,7 @@ def caption_photos(
     from autoblog.vision import smart_caption_photos
 
     meta = smart_caption_photos(
-        paths, build_photo_context(card, memo), categories=_categories_for(card, review_type)
+        paths, build_photo_context(card, memo), categories=_categories_for(card, review_type), hint=hint
     )
     return [{"path": p, **meta.get(p, {"label": "기타", "caption": ""})} for p in paths]
 
