@@ -28,6 +28,8 @@ def test_models_config_loads_presets():
     preset = cfg.get()  # default
     assert preset.vision
     assert preset.text
-    # API 전용 — 모든 프리셋은 클라우드 제공자(claude/openai/gemini)여야 한다.
+    # API 전용 — 모든 프리셋은 클라우드 제공자(claude/openai/gemini/nvidia)여야 한다.
     assert cfg.presets
-    assert all(p.provider in ("anthropic", "openai", "gemini") for p in cfg.presets.values())
+    assert all(
+        p.provider in ("anthropic", "openai", "gemini", "nvidia") for p in cfg.presets.values()
+    )

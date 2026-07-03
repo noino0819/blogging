@@ -1953,9 +1953,11 @@ const PROV={
   anthropic:{name:'Claude API',short:'Claude',color:'#7b61ff',ph:'sk-ant-...',issuer:'console.anthropic.com › API Keys'},
   openai:{name:'OpenAI API',short:'OpenAI',color:'#10a37f',ph:'sk-...',issuer:'platform.openai.com › API keys'},
   gemini:{name:'Gemini API',short:'Gemini',color:'#1a73e8',ph:'AIza...',issuer:'aistudio.google.com › API keys'},
+  nvidia:{name:'NVIDIA API',short:'NVIDIA',color:'#76b900',ph:'nvapi-...',issuer:'build.nvidia.com › API Keys'},
 };
 // 모델 표시명 — 코드명 대신 사람이 읽기 좋게(없으면 원본)
-const MODELNAME={'claude-opus-4-8':'Opus 4.8','claude-sonnet-4-6':'Sonnet 4.6','gpt-4o':'GPT-4o','gemini-2.5-pro':'2.5 Pro'};
+const MODELNAME={'claude-opus-4-8':'Opus 4.8','claude-sonnet-4-6':'Sonnet 4.6','gpt-4o':'GPT-4o','gemini-2.5-pro':'2.5 Pro',
+  'nvidia/nemotron-3-super-120b-a12b':'Nemotron 3 Super','openai/gpt-oss-120b':'GPT-OSS 120B','meta/llama-3.3-70b-instruct':'Llama 3.3 70B'};
 const nicer=v=>MODELNAME[v]||v;
 // 선택 카드 한 장
 function mcard(val,title,sub,active,miss){

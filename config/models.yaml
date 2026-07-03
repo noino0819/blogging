@@ -27,6 +27,27 @@ presets:
     vision: gemini-2.5-flash
     note: 지시 정확. OPENAI_API_KEY 필요. 비전은 Gemini.
     concurrent_load: true
+  nvidia_nemotron:
+    label: NVIDIA API — Nemotron 3 Super (무료 크레딧)
+    provider: nvidia
+    text: nvidia/nemotron-3-super-120b-a12b
+    vision: gemini-2.5-flash
+    note: build.nvidia.com 호스티드. NVIDIA_API_KEY 필요. 비전은 Gemini.
+    concurrent_load: true
+  nvidia_gpt_oss:
+    label: NVIDIA API — GPT-OSS 120B (무료 크레딧)
+    provider: nvidia
+    text: openai/gpt-oss-120b
+    vision: gemini-2.5-flash
+    note: build.nvidia.com 호스티드. NVIDIA_API_KEY 필요. 비전은 Gemini.
+    concurrent_load: true
+  nvidia_llama:
+    label: NVIDIA API — Llama 3.3 70B (무료 크레딧)
+    provider: nvidia
+    text: meta/llama-3.3-70b-instruct
+    vision: gemini-2.5-flash
+    note: build.nvidia.com 호스티드. NVIDIA_API_KEY 필요. 비전은 Gemini.
+    concurrent_load: true
 default: gemini
 selection:
   text: gemini-2.5-pro

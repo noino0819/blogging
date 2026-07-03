@@ -49,29 +49,50 @@ def _chat_anthropic(messages: list[dict], model: str, fmt: str | None = None) ->
     return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
 
 
-def _chat_openai(messages: list[dict], model: str, fmt: str | None = None) -> str:
-    """OpenAI(GPT) API로 텍스트 생성. OPENAI_API_KEY 필요."""
+def _chat_openai(
+    messages: list[dict],
+    model: str,
+    fmt: str | None = None,
+    *,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    key_name: str = "OPENAI_API_KEY",
+) -> str:
+    """OpenAI 호환 API로 텍스트 생성 — 기본은 OpenAI(GPT), base_url을 주면 호환 서비스(NVIDIA 등)."""
     try:
         from openai import APIError, AuthenticationError, OpenAI
     except ImportError as exc:
         raise LLMUnavailable("openai 패키지 미설치 — pip install openai") from exc
 
     env = load_env()
-    if not env.openai_api_key:
-        raise LLMUnavailable("OPENAI_API_KEY 미설정 — 설정 탭에서 API 키를 입력하세요")
+    key = api_key if base_url else env.openai_api_key
+    if not key:
+        raise LLMUnavailable(f"{key_name} 미설정 — 설정 탭에서 API 키를 입력하세요")
     msgs = list(messages)
     kwargs: dict = {}
     if fmt == "json":
         kwargs["response_format"] = {"type": "json_object"}
         msgs = msgs + [{"role": "system", "content": "JSON으로만 답하세요."}]
-    client = OpenAI(api_key=env.openai_api_key)
+    client = OpenAI(api_key=key, base_url=base_url)
     try:
         resp = client.chat.completions.create(model=model, messages=msgs, **kwargs)
     except AuthenticationError as exc:
-        raise LLMUnavailable("OPENAI_API_KEY가 유효하지 않습니다") from exc
+        raise LLMUnavailable(f"{key_name}가 유효하지 않습니다") from exc
     except APIError as exc:
-        raise LLMUnavailable(f"OpenAI API 오류: {exc}") from exc
+        raise LLMUnavailable(f"{'NVIDIA' if base_url else 'OpenAI'} API 오류: {exc}") from exc
     return resp.choices[0].message.content or ""
+
+
+def _chat_nvidia(messages: list[dict], model: str, fmt: str | None = None) -> str:
+    """NVIDIA 호스티드 모델(build.nvidia.com, OpenAI 호환 API). NVIDIA_API_KEY 필요."""
+    return _chat_openai(
+        messages,
+        model,
+        fmt,
+        api_key=load_env().nvidia_api_key,
+        base_url="https://integrate.api.nvidia.com/v1",
+        key_name="NVIDIA_API_KEY",
+    )
 
 
 def _chat_gemini(messages: list[dict], model: str, fmt: str | None = None) -> str:
@@ -156,7 +177,7 @@ def chat(
     """텍스트 LLM 호출 → 응답 텍스트.
 
     messages: [{"role": "system"|"user"|"assistant", "content": "..."}].
-    모델명 접두사로 라우팅(claude→Claude, gpt/o*→GPT, gemini→Gemini).
+    모델명 접두사로 라우팅(claude→Claude, gpt/o*→GPT, gemini→Gemini, org/model→NVIDIA).
     API 전용 — 그 외 모델명은 미지원. fmt="json"이면 JSON 응답 강제.
     temperature/timeout은 호환을 위해 받지만 API 경로에서는 사용하지 않는다.
     """
@@ -168,7 +189,9 @@ def chat(
         return _chat_openai(messages, model, fmt=fmt)
     if provider == "gemini":
         return _chat_gemini(messages, model, fmt=fmt)
+    if provider == "nvidia":
+        return _chat_nvidia(messages, model, fmt=fmt)
     raise LLMUnavailable(
         f"텍스트 생성은 API 모델만 지원합니다(현재 model: {model!r}). "
-        "config/models.yaml 의 selection.text 를 claude-*/gpt-*/gemini-* 로 설정하세요."
+        "config/models.yaml 의 selection.text 를 claude-*/gpt-*/gemini-*/org/model(NVIDIA) 로 설정하세요."
     )

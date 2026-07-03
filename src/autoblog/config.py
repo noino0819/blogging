@@ -59,6 +59,8 @@ def provider_for_model(model: str) -> str:
     라우팅의 단일 출처 — llm.provider_for도 이걸 쓴다.
     """
     m = (model or "").lower()
+    if "/" in m:  # build.nvidia.com 카탈로그 ID(org/model 형식) — 예: openai/gpt-oss-120b
+        return "nvidia"
     if m.startswith("claude"):
         return "anthropic"
     if m.startswith("gemini"):
@@ -75,6 +77,7 @@ class ModelPreset(BaseModel):
     note: str = ""
     concurrent_load: bool = False
     # 텍스트 생성 라우팅(API 전용): "anthropic"(Claude) | "openai"(GPT) | "gemini"(Gemini)
+    #                              | "nvidia"(build.nvidia.com 호스티드 — Nemotron/GPT-OSS/Llama)
     provider: str = "gemini"
 
 
