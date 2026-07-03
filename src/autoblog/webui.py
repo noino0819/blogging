@@ -2022,10 +2022,10 @@ async function loadModels(){try{const m=await (await fetch('/api/models')).json(
     <div id=apikeybox></div>
 
     <h3 style="margin-top:26px">비전 모델 <span class=muted style="font-weight:400">— 사진·상품 이미지 분석</span></h3>
-    <div class=muted>이미지 분석은 Gemini API로 처리돼요. 적용 중: <b>${m.vision||'-'}</b> · <b>GEMINI_API_KEY</b>가 필요해요.</div>
+    <div class=muted>적용 중: <b>${m.vision||'-'}</b> — qwen3.5(NVIDIA)는 <b>NVIDIA_API_KEY</b>, gemini-*는 <b>GEMINI_API_KEY</b>가 필요해요.</div>
 
     <h3 style="margin-top:26px">썸네일 모델 <span class=muted style="font-weight:400">— 🎨 AI 썸네일 (대표사진 → 손그림 감성)</span></h3>
-    <div class=muted>Qwen-Image-Edit(NVIDIA API)로 생성해요. <b>build.nvidia.com</b>에서 키 발급 → 아래 저장. ${MODEL_KEYS.nvidia?'<b style="color:var(--green)">키 등록됨 ✓</b>':'<b>NVIDIA_API_KEY</b>가 필요해요.'}</div>
+    <div class=muted>비전 모델이 사진을 읽고 FLUX.1-dev(NVIDIA API)가 그려요. <b>build.nvidia.com</b>에서 키 발급 → 아래 저장. ${MODEL_KEYS.nvidia?'<b style="color:var(--green)">키 등록됨 ✓</b>':'<b>NVIDIA_API_KEY</b>가 필요해요.'}</div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <input type=password id=nvkey placeholder="${MODEL_KEYS.nvidia?'키 등록됨 ✓ (교체하려면 입력)':'nvapi-...'}" style="flex:1;border:1px solid #d6dade;border-radius:8px;padding:9px;font-size:13px">
       <button class=btn id=nvkeysave style="width:auto;padding:9px 16px">저장</button>
@@ -2309,11 +2309,18 @@ function renderPersonaSelect(){const sel=$('#persona'); if(!sel)return;
   sel.value=valid.has(PERSONA_ID)?PERSONA_ID:''; if(sel.value!==PERSONA_ID)PERSONA_ID=sel.value;}
 function renderPersonaList(){const c=$('#personalist'); if(!c)return;
   if(!PERSONAS.length){c.innerHTML='<div class=muted>아직 저장된 문체가 없어요. 위에서 블로그 주소로 만들어 보세요.</div>';return;}
+  // 행을 details로: 펼치면 문체 특징을 확인·수정할 수 있다(save는 같은 id면 갱신).
   c.innerHTML=PERSONAS.map(p=>{const n=(p.sources||[]).length;
-    return `<div class=setrow><div style="min-width:0">
-      <div class=t>${esc(p.name)}</div>
-      <div class=d>${esc(p.blog||'')}${n?(' · 인기글 '+n+'개로 학습'):''}</div></div>
-      <button class="btn ghost pdel" data-id="${p.id}" style="width:auto;padding:7px 13px;flex:0 0 auto">삭제</button></div>`;}).join('');}
+    return `<details data-id="${p.id}" style="border-bottom:1px solid var(--line)">
+      <summary style="list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 4px">
+        <div style="min-width:0"><div class=t>${esc(p.name)}</div>
+        <div class=d>${esc(p.blog||'')}${n?(' · 인기글 '+n+'개로 학습'):''} · 눌러서 내용 보기</div></div>
+        <button class="btn ghost pdel" data-id="${p.id}" style="width:auto;padding:7px 13px;flex:0 0 auto">삭제</button></summary>
+      <textarea class="promptarea pprof" style="min-height:150px">${esc(p.profile||'')}</textarea>
+      <div style="display:flex;align-items:center;gap:10px;margin:8px 0 14px">
+        <button class="btn psave" data-id="${p.id}" style="width:auto;padding:7px 14px">수정 저장</button>
+      </div>
+    </details>`;}).join('');}
 $('#persona').onchange=()=>{PERSONA_ID=$('#persona').value; savePrefs();};
 $('#pf_fetch').onclick=async()=>{
   const blog=$('#pf_blog').value.trim(); if(!blog){toast('블로그 주소를 입력하세요','err');return;}
@@ -2368,13 +2375,25 @@ $('#pf_save').onclick=async()=>{
     $('#pf_blog').value=''; $('#pf_name').value=''; $('#pf_profile').value=''; $('#pf_stat').textContent='';
     toast('문체가 저장됐어요. 글쓰기에서 골라 쓰세요.','ok');
   }catch(e){$('#pf_savestat').textContent='';}finally{btn.disabled=false;}};
-$('#personalist').onclick=e=>{const b=e.target.closest('.pdel'); if(!b)return;
-  askConfirm('🗑 문체 삭제','이 문체를 삭제할까요? 되돌릴 수 없어요.','삭제',async()=>{
-    try{await fetch('/api/personas/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
-      if(PERSONA_ID===b.dataset.id){PERSONA_ID=''; savePrefs();}
-      await loadPersonas();
-    }catch(e){}
-  });};
+$('#personalist').onclick=async e=>{
+  const b=e.target.closest('.pdel');
+  if(b){e.preventDefault();  // summary 안의 버튼 — 펼침 토글 방지
+    askConfirm('🗑 문체 삭제','이 문체를 삭제할까요? 되돌릴 수 없어요.','삭제',async()=>{
+      try{await fetch('/api/personas/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id:b.dataset.id})});
+        if(PERSONA_ID===b.dataset.id){PERSONA_ID=''; savePrefs();}
+        await loadPersonas();
+      }catch(e){}
+    });return;}
+  const sv=e.target.closest('.psave'); if(!sv)return;
+  const p=PERSONAS.find(x=>x.id===sv.dataset.id); if(!p)return;
+  const profile=sv.closest('details').querySelector('.pprof').value.trim();
+  if(!profile){toast('문체 내용이 비어 있어요','err');return;}
+  sv.disabled=true;
+  try{const r=await fetch('/api/personas/save',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({id:p.id,name:p.name,blog:p.blog||'',profile,sources:p.sources||[]})});
+    if(!r.ok){toast('저장 실패','err');return;}
+    toast('수정이 저장됐어요','ok'); await loadPersonas();
+  }catch(e){}finally{sv.disabled=false;}};
 
 $('#addprodlink').onclick=()=>addProdLink(''); resetProdLinks();
 setKind('place',false); loadPhotos(); setupUpload(); setupDraftImport(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadPool(); loadVariants(); loadCategories(); loadPhotoCats(); loadPersonas();
@@ -2824,7 +2843,7 @@ def _make_handler(state: dict):
             self._send(200, json.dumps({"photos": items}).encode())
 
         def _gen_thumbnail(self, body):
-            """★ 대표사진 → Qwen-Image-Edit(NVIDIA)로 손그림 썸네일 → uploads 저장 → {path}."""
+            """★ 대표사진 → VLM 묘사+FLUX.1-dev(NVIDIA)로 손그림 썸네일 → uploads 저장 → {path}."""
             import uuid
 
             from autoblog.thumbnail import generate_thumbnail
@@ -2916,11 +2935,15 @@ def _make_handler(state: dict):
             self._send(200, json.dumps({"prompt": prompt}, ensure_ascii=False).encode())
 
         def _persona_save(self, body):
-            """추출·편집한 문체를 이름표와 함께 저장(같은 id면 갱신)."""
+            """추출·편집한 문체를 이름표와 함께 저장(같은 id면 갱신).
+
+            ChatGPT 등에서 붙여넣은 분석 결과도 기본 페르소나와 같은 형식으로 정돈해 저장.
+            """
             from autoblog.draft.persona import Persona, PersonaSource, save_persona
+            from autoblog.draft.style import normalize_profile
 
             name = (body.get("name") or "").strip()
-            profile = (body.get("profile") or "").strip()
+            profile = normalize_profile((body.get("profile") or "").strip())
             if not name or not profile:
                 self._send(400, json.dumps({"error": "이름과 문체 내용을 모두 채워주세요"}).encode())
                 return
@@ -3800,7 +3823,7 @@ _LLM_KEY_ENV = {
     "anthropic": "ANTHROPIC_API_KEY",
     "openai": "OPENAI_API_KEY",
     "gemini": "GEMINI_API_KEY",
-    "nvidia": "NVIDIA_API_KEY",  # AI 썸네일(Qwen-Image-Edit)
+    "nvidia": "NVIDIA_API_KEY",  # 텍스트·비전(qwen3.5)·AI 썸네일(FLUX.1-dev)
 }
 
 

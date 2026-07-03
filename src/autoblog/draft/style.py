@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel
 
 from autoblog.llm import chat
@@ -51,6 +53,39 @@ _EXTRACT_TEMPLATE = (
 )
 
 
+# 정규화용 라벨 목록 — 템플릿에서 그대로 뽑아 형식의 단일 출처를 유지한다.
+_LABELS = [ln.strip("- :").strip() for ln in _EXTRACT_TEMPLATE.splitlines()]
+_LABEL_RE = re.compile(
+    r"^[\s>*#\-·•\d.]*(?:\*\*)?\s*("
+    + "|".join(map(re.escape, _LABELS))
+    + r")\s*(?:\*\*)?\s*[:：]\s*(?:\*\*)?\s*(.*)$"
+)
+
+
+def normalize_profile(text: str) -> str:
+    """LLM 출력의 서식 변주(머리말·볼드·번호·코드펜스)를 '- 라벨: 내용' 형식으로 정돈.
+
+    기본 페르소나(personas.json)와 같은 모양이 되도록, 템플릿 라벨 순서대로 재조립한다.
+    라벨이 3개 미만이면 손으로 쓴 자유형 프로파일로 보고 원문을 그대로 돌려준다.
+    """
+    found: dict[str, list[str]] = {}
+    current: str | None = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("```"):
+            current = None  # 빈 줄·펜스에서 섹션 종료 — 맺음말이 마지막 항목에 붙는 것 방지
+            continue
+        m = _LABEL_RE.match(raw)
+        if m:
+            current = m.group(1)
+            found[current] = [m.group(2).strip()]
+        elif current and line:
+            found[current].append(line)  # 라벨 답이 여러 줄로 이어진 경우
+    if len(found) < 3:
+        return text.strip()
+    return "\n".join(f"- {lb}: {' '.join(found[lb]).strip()}" for lb in _LABELS if lb in found)
+
+
 def _extract_user_message(past_posts: list[str]) -> str:
     """글모음을 끼워 넣은 사용자 메시지(분석 지시 + 글 본문)."""
     joined = "\n\n=====(다음 글)=====\n\n".join(p.strip() for p in past_posts if p.strip())
@@ -68,7 +103,7 @@ def extract_style_profile(past_posts: list[str], model: str | None = None) -> st
         {"role": "system", "content": _EXTRACT_SYSTEM},
         {"role": "user", "content": _extract_user_message(past_posts)},
     ]
-    return chat(messages, model=model, temperature=0.2).strip()
+    return normalize_profile(chat(messages, model=model, temperature=0.2).strip())
 
 
 def build_style_prompt(past_posts: list[str]) -> str:
