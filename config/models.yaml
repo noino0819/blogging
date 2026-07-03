@@ -1,10 +1,10 @@
 presets:
   gemini:
-    label: Gemini API (정확·유료)
+    label: Gemini API — 3.5 Flash (무료 티어 OK)
     provider: gemini
-    text: gemini-2.5-pro
+    text: gemini-3.5-flash
     vision: gemini-2.5-flash
-    note: 지시 정확. GEMINI_API_KEY 필요. 토큰당 과금.
+    note: 지시 정확. GEMINI_API_KEY 필요. 무료 티어 키 사용 가능(Pro 계열은 쿼터 0 — 결제 필요).
     concurrent_load: true
   claude:
     label: Claude API (정확·유료)
@@ -48,12 +48,9 @@ presets:
     vision: qwen/qwen3.5-122b-a10b
     note: build.nvidia.com 호스티드. 텍스트·비전 모두 NVIDIA_API_KEY 하나로.
     concurrent_load: true
-default: nvidia_nemotron
+default: gemini
 selection:
-  text: nvidia/nemotron-3-super-120b-a12b
+  text: gemini-3.5-flash
   vision: qwen/qwen3.5-122b-a10b
-# 사진 '✨ AI 자동 추천'(온디맨드)에 쓰는 멀티모달 모델.
-# NVIDIA 호스티드 qwen3.5 VLM 또는 Gemini Flash — 글 1개당 호출 1번(사진 전부 한 번에).
-# 메모·메뉴·가게설명을 함께 넣어 '데미소스 돈까스'처럼 맥락으로 유추합니다.
 caption:
   model: qwen/qwen3.5-122b-a10b
