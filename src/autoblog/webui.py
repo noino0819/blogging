@@ -23,6 +23,7 @@ from autoblog.collect.photos import is_video  # noqa: E402
 _MEDIA_EXT = _IMG_EXT | _VID_EXT
 UPLOAD_DIR = DATA_DIR / "uploads"  # 유저가 올린 사진/영상
 FONTS_DIR = CONFIG_DIR / "fonts"  # 에디터 웹폰트(번들 자산, 로컬 서빙)
+ASSETS_DIR = CONFIG_DIR / "assets"  # 로딩 애니메이션 등 정적 자산(로컬 서빙)
 # 미리보기에서 실제 글씨체로 보이게 — 에디터와 같은 se-* 패밀리명 사용
 _FONT_FAMILIES = [
     "nanumgothic", "nanummyeongjo", "nanumbarungothic", "nanumsquare",
@@ -295,13 +296,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .nyanwrap{position:relative;width:320px;height:100px;margin:0 auto;background:linear-gradient(#0f2350,#1c3d7e);border-radius:16px;overflow:hidden}
  .nstar{position:absolute;left:0;width:3px;height:3px;border-radius:50%;background:#fff;opacity:.85;animation:nfly linear infinite}
  @keyframes nfly{from{transform:translateX(330px)}to{transform:translateX(-10px)}}
- .nyan{position:absolute;left:54%;top:50%;animation:nbob .5s steps(2,jump-none) infinite alternate}
- .nyan svg{display:block}
- @keyframes nbob{from{transform:translateY(-58%)}to{transform:translateY(-44%)}}
- .ntrail{position:absolute;top:9px;right:calc(100% - 8px);width:170px;height:24px;border-radius:4px 0 0 4px;background:linear-gradient(#ff2b4a 0 16.7%,#ff9d33 0 33.3%,#ffe93d 0 50%,#4ce840 0 66.7%,#3aa6ff 0 83.3%,#8d5cff 0);animation:ntw .5s steps(2,jump-none) infinite alternate}
- @keyframes ntw{from{transform:translateY(2px)}to{transform:translateY(-2px)}}
- .ntl{transform-box:fill-box;transform-origin:100% 50%;animation:nwag .35s steps(2,jump-none) infinite alternate}
- @keyframes nwag{from{transform:rotate(16deg)}to{transform:rotate(-12deg)}}
+ .nlot{position:absolute;inset:0}
  .genmsg{font-size:16px;color:#374151;margin-top:14px;font-weight:700}
  .genbar{height:14px;background:#eef1f4;border-radius:99px;overflow:hidden;max-width:340px;margin:20px auto 10px}
  .genfill{height:100%;width:0;background:linear-gradient(90deg,#03c75a,#5fe0a0);border-radius:99px;transition:width .5s ease}
@@ -701,7 +696,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <div class=sw id=sponsw></div>
           </div>
           <div class=sponbox id=sponbox style="display:none">
-            <div class=muted>본문 맨 위에 넣을 <b>협찬 고지 스티커</b>를 즐겨찾기에서 고르세요. (선택 안 해도 됨)</div>
+            <div class=muted>본문 맨 위에 넣을 <b>협찬 고지 스티커</b>를 고르세요 — 즐겨찾기 중 '협찬' 태그가 달린 것만 보입니다. (선택 안 해도 됨)</div>
             <div class=sponpick id=sponpick></div>
             <label class=f>쿠팡파트너스 링크 <span class=hint data-tip="한 줄에 하나씩. 본문 끝에 몰지 않고 중간중간 카드로 분산 삽입돼요. 보통 3개.">i</span></label>
             <textarea id=links placeholder="쿠팡파트너스 링크를 한 줄에 하나씩 붙여넣기 (보통 3개)" style="min-height:80px"></textarea>
@@ -866,6 +861,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <div class=card style="margin-top:16px"><h3>임시저장</h3><div id=draftset></div><div id=cleanimp></div><div id=savedebug></div></div>
   </section>
 </main>
+<script src="/asset?name=lottie.min.js"></script>
 <script>
 // fetch 래퍼: 네트워크 단절(서버 꺼짐/재시작)을 'TypeError: Failed to fetch' 대신 친절한 메시지로
 const _fetch=window.fetch.bind(window);
@@ -1067,8 +1063,8 @@ async function loadSponPicker(){
   const box=$('#sponpick');
   try{const c=await (await fetch('/api/catalog')).json();
     const favset=new Set(c.favorites);
-    const favs=c.stickers.filter(s=>favset.has(s.ref));
-    if(!favs.length){box.innerHTML='<div class=muted>즐겨찾기한 스티커가 없어요. [스티커] 탭에서 ★로 추가하세요.</div>';return;}
+    const favs=c.stickers.filter(s=>favset.has(s.ref)&&(s.tags||[]).some(t=>String(t).includes('협찬')));
+    if(!favs.length){box.innerHTML='<div class=muted>\'협찬\' 태그가 달린 즐겨찾기 스티커가 없어요. [스티커] 탭에서 ★ 추가 후 태그에 \'협찬\'을 넣으세요.</div>';return;}
     box.innerHTML=favs.map(s=>`<div class="spc${s.ref===FMT.sponsorSticker?' sel':''}" data-ref="${s.ref}"><img loading=lazy src="/img?ref=${encodeURIComponent(s.ref)}"></div>`).join('');
   }catch(e){box.innerHTML='<div class=muted>스티커 로드 실패</div>';}
 }
@@ -1719,26 +1715,23 @@ async function runAiCaption(paths, hint, ctx){
 }
 
 let GENTIMER=null, GENT0=0;
-// 냥캣 로딩 씬: 별 5개 + 무지개 꼬리 + 픽셀 고양이(인라인 SVG)
+// 냥캣 로딩 씬: 밤하늘 별 + 냥캣 Lottie(LottieFiles 무료 애니메이션, /asset으로 로컬 서빙)
 const NYAN=`<div class=nyanwrap>
   <i class=nstar style="top:14%;animation-duration:1.1s"></i>
   <i class=nstar style="top:32%;animation-duration:1.8s;animation-delay:.5s"></i>
   <i class=nstar style="top:52%;animation-duration:1.3s;animation-delay:.9s"></i>
   <i class=nstar style="top:70%;animation-duration:2.1s;animation-delay:.2s"></i>
   <i class=nstar style="top:85%;animation-duration:1.5s;animation-delay:1.2s"></i>
-  <div class=nyan><div class=ntrail></div>
-  <svg viewBox="0 0 15.5 11" width=62 height=44 shape-rendering=crispEdges>
-    <rect class=ntl x=0 y=4.6 width=2.4 height=1.1 rx=.4 fill=#8b8b8b />
-    <rect x=2 y=2 width=9.5 height=7 rx=1.2 fill=#fcd9a8 />
-    <rect x=3 y=3 width=7.5 height=5 rx=1 fill=#f79fd3 />
-    <g fill=#e05fb4><rect x=4 y=4 width=.8 height=.8 /><rect x=6.2 y=5.4 width=.8 height=.8 /><rect x=8 y=3.8 width=.8 height=.8 /><rect x=5 y=6.2 width=.8 height=.8 /><rect x=8.6 y=5.6 width=.8 height=.8 /></g>
-    <g fill=#8b8b8b><rect x=10.2 y=2.6 width=1.1 height=1.4 /><rect x=13.7 y=2.6 width=1.1 height=1.4 />
-      <rect x=9.8 y=3.6 width=5.2 height=4.6 rx=1.4 />
-      <rect x=3 y=8.8 width=1.1 height=1.6 rx=.3 /><rect x=5.2 y=8.8 width=1.1 height=1.6 rx=.3 /><rect x=7.4 y=8.8 width=1.1 height=1.6 rx=.3 /><rect x=11.6 y=8.2 width=1.1 height=2.2 rx=.3 /></g>
-    <g fill=#1e1e1e><rect x=11 y=5 width=.75 height=.75 rx=.2 /><rect x=13.2 y=5 width=.75 height=.75 rx=.2 /><rect x=11.7 y=6.7 width=1.6 height=.45 rx=.2 /></g>
-    <rect x=10.1 y=6 width=.9 height=.7 rx=.2 fill=#f2a0c0 /><rect x=13.9 y=6 width=.9 height=.7 rx=.2 fill=#f2a0c0 />
-  </svg></div></div>`;
+  <div class=nlot></div></div>`;
 $('#pchar').innerHTML=NYAN;
+function nyanMount(rootSel){ // 씬 주입 후 호출 — lottie가 없으면 밤하늘+별만 남음
+  if(!window.lottie)return null;
+  const el=document.querySelector(rootSel+' .nlot'); if(!el)return null;
+  return lottie.loadAnimation({container:el,renderer:'svg',loop:true,autoplay:true,
+    rendererSettings:{preserveAspectRatio:'xMidYMid slice'},path:'/asset?name=nyan_cat.json'});
+}
+function nyanKill(a){try{a&&a.destroy()}catch(e){}}
+let GENANIM=null, EXPANIM=null;
 const GENMSGS=[[0,'메모를 읽는 중…'],[18,'글을 쓰는 중…'],[50,'문장을 다듬는 중…'],[78,'강조·서식 입히는 중…'],[92,'거의 다 됐어요!']];
 function genLoading(){
   const who=TEXT_MODEL?`${nicer(TEXT_MODEL)} 모델이 글을 써요`:'AI가 글을 써요';  // 적용 중인 텍스트 모델명 표시
@@ -1748,6 +1741,7 @@ function genLoading(){
     <div class=genbar><div class=genfill id=genfill></div></div>
     <div class=genpct id=genpct>0%</div>
     <div class=gensub id=gensub>${who} · 보통 30~60초</div></div>`;
+  nyanKill(GENANIM); GENANIM=nyanMount('#preview');
   typeText($('#genmsg'), '메모를 읽는 중…');  // 첫 문구도 한 글자씩
   let pct=0; GENT0=Date.now();
   GENTIMER=setInterval(()=>{
@@ -1759,6 +1753,7 @@ function genLoading(){
   },700);
 }
 function genDone(ok){ if(GENTIMER)clearInterval(GENTIMER);
+  setTimeout(()=>{nyanKill(GENANIM); GENANIM=null;},400);  // renderPreview(350ms)로 교체된 뒤 정리
   const sec=GENT0?((Date.now()-GENT0)/1000).toFixed(1):null;
   if(ok){const fl=$('#genfill'); if(fl){fl.style.width='100%'; $('#genpct').textContent='100%';}
     const sb=$('#gensub'); if(sb&&sec)sb.textContent=`완성! ${sec}초 걸렸어요`;} }
@@ -1783,12 +1778,14 @@ function expLoading(on){
   $('#ploading').style.display=on?'block':'none'; $('#pcontent').style.display=on?'none':'block';
   if(EXPTIMER){clearInterval(EXPTIMER);EXPTIMER=null;}
   if(on){$('#pmodal').style.display='flex'; let pct=0;
+    nyanKill(EXPANIM); EXPANIM=nyanMount('#ploading');
     $('#pfill').style.width='0%'; $('#ppct').textContent='0%'; typeText($('#pmsg'),'자료를 준비하는 중…');
     // 진행바·스피너만 부드럽게 굴리고, 문구는 서버가 보내는 실제 단계로 갱신(expStage)
     EXPTIMER=setInterval(()=>{pct+=Math.max(1,(96-pct)*0.08); if(pct>96)pct=96;
       const fl=$('#pfill'); if(!fl){clearInterval(EXPTIMER);return;}
       fl.style.width=pct+'%'; $('#ppct').textContent=Math.floor(pct)+'%';},650);
-  }else{const fl=$('#pfill'); if(fl)fl.style.width='100%'; $('#ppct').textContent='100%';}
+  }else{const fl=$('#pfill'); if(fl)fl.style.width='100%'; $('#ppct').textContent='100%';
+    nyanKill(EXPANIM); EXPANIM=null;}
 }
 function expStage(msg){if(msg)typeText($('#pmsg'), msg);}
 $('#export').onclick=async()=>{
@@ -2861,6 +2858,14 @@ def _make_handler(state: dict):
                 fp = FONTS_DIR / f"{name}.woff2"
                 if fp.exists() and fp.parent == FONTS_DIR:
                     self._send(200, fp.read_bytes(), "font/woff2")
+                else:
+                    self._send(404, b"x", "text/plain")
+            elif u.path == "/asset":
+                name = Path(q.get("name", [""])[0]).name  # 경로 차단
+                fp = ASSETS_DIR / name
+                mime = {"js": "text/javascript", "json": "application/json"}.get(fp.suffix.lstrip("."))
+                if mime and fp.exists() and fp.parent == ASSETS_DIR:
+                    self._send(200, fp.read_bytes(), f"{mime}; charset=utf-8")
                 else:
                     self._send(404, b"x", "text/plain")
             elif u.path == "/api/photos":
