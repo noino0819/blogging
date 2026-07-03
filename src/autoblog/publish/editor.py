@@ -1720,6 +1720,40 @@ class BlogPublisher:
         self._page.wait_for_timeout(700)
         return ok
 
+    def _align_stickers_center(self):
+        """본문의 스티커 컴포넌트 중 가운데 정렬이 아닌 것을 전부 가운데로 맞춘다(멱등).
+
+        스티커는 구분선처럼 텍스트 '문단'이 아닌 컴포넌트라 커서 정렬(_apply_align)도
+        문단 힐링(_heal_alignment)도 안 닿아, 삽입 기본값(왼쪽)이 그대로 남았다.
+        '방금 넣은 것'(comps[-1])만 고치면 in-place 역순 삽입에서 이미 넣은 아래쪽
+        스티커를 잡는 오지정이 나서, '안 맞은 것 전부'를 고치는 패스로 돈다 — 덕분에
+        이전 실행이 남긴 왼쪽 정렬 스티커도 다음 발행 때 같이 복구된다."""
+        page = self._page
+        for _ in range(6):  # 스티커 수+재시도 상한 — 정렬 클래스가 안 붙는 이례 케이스에 무한루프 방지
+            todo = None
+            for c in page.query_selector_all(".se-component.se-sticker"):
+                sec = c.query_selector("[class*='se-section-']")
+                if sec and "se-section-align-center" not in (sec.get_attribute("class") or ""):
+                    todo = c
+                    break
+            if todo is None:
+                return
+            try:
+                todo.scroll_into_view_if_needed()
+                todo.click()  # 컴포넌트 선택(객체 선택) — 구분선 정렬과 동일 메커니즘
+            except Exception:  # noqa: BLE001
+                page.keyboard.press("Escape")
+            page.wait_for_timeout(200)
+            page.evaluate(
+                "()=>{const b=document.querySelector('li.se-toolbar-item-align button');if(b)b.click();}"
+            )
+            page.wait_for_timeout(300)
+            page.evaluate(
+                "()=>{const o=document.querySelector("
+                "'button[data-name=\"align\"][data-value=\"center\"]');if(o)o.click();}"
+            )
+            page.wait_for_timeout(250)
+
     def _insert_sticker(self, pack: str, index: int, at_end: bool = True):
         """(팩, 인덱스) 스티커를 본문 커서 위치에 삽입(검증된 메커니즘).
 
@@ -1735,6 +1769,7 @@ class BlogPublisher:
         except Exception:
             return  # 해당 스티커가 없으면(팩 변경 등) 조용히 건너뜀
         self._page.wait_for_timeout(700)
+        self._align_stickers_center()
         if not at_end:
             return
         # 다음 본문 입력을 위해 본문 끝으로 포커스 복귀
