@@ -358,6 +358,8 @@ def build_sticker_instruction(labels: list[str]) -> str | None:
         mex = mood_labels[0]
         parts.append(
             "1) 감정 스티커 — 감정·반응이 드러나는 문단 끝 줄에 단독으로, 글 전체 1~3번.\n"
+            "   사진 없이 글만 3문단 넘게 이어지는 구간(마무리 총평이 대표적)이 1순위 자리 —\n"
+            "   그 구간 중간에 하나 넣어 글자만 빽빽한 화면을 깨 주세요. 글 맨 끝에만 몰지 말고.\n"
             f"   쓸 수 있는 상황(이 중에서만, 글자 그대로): {', '.join(mood_labels[:40])}\n"
             f"   예) 정말 맛있었어요.\n   [스티커:{mex}]"
         )
