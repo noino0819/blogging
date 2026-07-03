@@ -58,8 +58,8 @@ def _decode_image(data: dict) -> bytes:
     raise ThumbnailUnavailable("응답에 이미지가 없어요: " + json.dumps(data)[:200])
 
 
-def generate_thumbnail(photo_path: str, title: str = "") -> bytes:
-    """대표사진 1장 + 타이틀 → 손그림 감성 썸네일 PNG bytes."""
+def generate_thumbnail(photo_path: str, title: str = "", extra: str = "") -> bytes:
+    """대표사진 1장 + 타이틀 + 방향 요청(extra) → 손그림 감성 썸네일 PNG bytes."""
     import requests
 
     env = load_env()
@@ -70,6 +70,8 @@ def generate_thumbnail(photo_path: str, title: str = "") -> bytes:
     prompt = load_thumbnail_prompt()
     if title:
         prompt = f"타이틀(제품이름): {title}\n\n{prompt}"
+    if extra:  # 유저가 적은 방향(분위기·포인트 색·문구)은 기본 규칙보다 우선
+        prompt = f"{prompt}\n\n[추가 요청 — 아래 내용을 우선 반영]\n{extra}"
     data_url = "data:image/png;base64," + base64.b64encode(_square_png(photo_path)).decode()
     headers = {"Authorization": f"Bearer {env.nvidia_api_key}", "Accept": "application/json"}
     for url, kind in _ENDPOINTS:
