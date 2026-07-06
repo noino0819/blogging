@@ -1256,6 +1256,8 @@ function kwSet(str){
 (()=>{ const inp=$('#keywords'), box=$('#kwbox'); if(!inp||!box) return;
   box.onclick=e=>{ if(e.target===box) inp.focus(); };
   inp.onkeydown=e=>{
+    // 한글 IME 조합 중 keydown(keyCode 229)은 무시 — 조합 확정 Enter를 커밋으로 오인해 마지막 글자가 칩으로 따로 들어가던 버그
+    if(e.isComposing||e.keyCode===229) return;
     if(e.key==='Enter'||e.key===','){ e.preventDefault(); kwCommit(); }
     else if(e.key==='Backspace'&&!inp.value){ if(KW.length){ KW.pop(); kwRender(); } }
   };
@@ -1531,7 +1533,7 @@ function captureWS(){
     PHOTOMETA:JSON.parse(JSON.stringify(PHOTOMETA||{})), THUMB,
     PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})),
     SRCKIND, KINDMANUAL, IMPORTED_DRAFT,
-    memo:$('#memo').value, srcval:$('#srcval').value, keywords:kwGet(),
+    memo:$('#memo').value, srcval:$('#srcval').value, keywords:kwGet(), itext:$('#itext').value,
     kwnote:$('#kwnote')?$('#kwnote').textContent:'', kwnoteShow:$('#kwnote')?$('#kwnote').style.display:'none',
     links:$('#links')?$('#links').value:'', prod:$$('#prodlinks .plink').map(i=>i.value),
     previewHTML:$('#preview').innerHTML, previewClass:$('#preview').className,
@@ -1542,7 +1544,7 @@ function captureWS(){
 function blankWS(){
   return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},
     SRCKIND:'place',KINDMANUAL:false,IMPORTED_DRAFT:null,
-    memo:'',srcval:'',keywords:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
+    memo:'',srcval:'',keywords:'',itext:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
     previewHTML:EMPTY_DOC,previewClass:'doc empty',saveDisabled:true};
 }
 // 캡처된 상태를 화면·전역으로 되돌린다(+재렌더).
@@ -1551,7 +1553,7 @@ function applyWS(s){
   PHOTOMETA=JSON.parse(JSON.stringify(s.PHOTOMETA||{})); THUMB=s.THUMB||null;
   PMACTIVE=s.PMACTIVE; PMSEL=new Set(s.PMSEL||[]); PMANCHOR=s.PMANCHOR||null; SUBCATS=JSON.parse(JSON.stringify(s.SUBCATS||{})); PMDRAG=null;
   IMPORTED_DRAFT=s.IMPORTED_DRAFT||null;
-  $('#memo').value=s.memo||''; $('#srcval').value=s.srcval||''; kwSet(s.keywords||'');
+  $('#memo').value=s.memo||''; $('#srcval').value=s.srcval||''; kwSet(s.keywords||''); $('#itext').value=s.itext||'';
   if($('#kwnote')){ $('#kwnote').textContent=s.kwnote||''; $('#kwnote').style.display=s.kwnoteShow||'none'; }
   if($('#links')) $('#links').value=s.links||'';
   $('#prodlinks').innerHTML=''; ((s.prod&&s.prod.length)?s.prod:['']).forEach(v=>addProdLink(v));
