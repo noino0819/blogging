@@ -2096,7 +2096,7 @@ $('#stbody').addEventListener('click', async e=>{
 });
 // 태그 추가(엔터)
 $('#stbody').addEventListener('keydown', e=>{
-  if(!e.target.classList.contains('taginput')||e.key!=='Enter')return;
+  if(!e.target.classList.contains('taginput')||e.key!=='Enter'||e.isComposing||e.keyCode===229)return;
   e.preventDefault(); const wrap=e.target.closest('.tags2'); const s=stickerOf(wrap.dataset.ref);
   const v=e.target.value.trim(); if(!s||!v)return;
   if(!(s.tags||[]).includes(v)){s.tags=(s.tags||[]).concat(v);} redrawTags(wrap);
@@ -2488,7 +2488,7 @@ function renderPool(){
     const doAdd=()=>{const v=inp.value.trim(); if(!v)return;
       if(v.includes('!')||(v.includes('~')&&v!=='(๑´~ˋ๑)')){toast('!·~가 든 카오모지는 자동 치환에 깨져서 넣을 수 없어요','err');return;}
       if(!items.includes(v))items.push(v); inp.value=''; draw();};
-    add.onclick=doAdd; inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();doAdd();}};
+    add.onclick=doAdd; inp.onkeydown=e=>{if(e.key==='Enter'&&!e.isComposing&&e.keyCode!==229){e.preventDefault();doAdd();}};
     row.append(inp,add); b.appendChild(row);
   });
   const slang=Array.isArray(POOL.slang)?POOL.slang:(POOL.slang=[]);
@@ -2702,10 +2702,10 @@ $('#cfx').onclick=closeCF; $('#cfcancel').onclick=closeCF;
 $('#cfmodal').onclick=e=>{ if(e.target===$('#cfmodal'))closeCF(); };
 $('#cfok').onclick=()=>{ const cb=CFCB; closeCF(); if(cb)cb(); };
 $('#catok').onclick=catSubmit; $('#catx').onclick=closeCatModal; $('#catcancel').onclick=closeCatModal;
-$('#catinput').onkeydown=e=>{ if(e.key==='Enter')catSubmit(); };  // Esc는 아래 공통 핸들러가 처리(이중 닫힘 방지)
+$('#catinput').onkeydown=e=>{ if(e.key==='Enter'&&!e.isComposing&&e.keyCode!==229)catSubmit(); };  // Esc는 아래 공통 핸들러가 처리(이중 닫힘 방지)
 $('#catmodal').onclick=e=>{ if(e.target===$('#catmodal'))closeCatModal(); };
 $('#capok').onclick=capSubmit; $('#capx').onclick=closeCapModal; $('#capcancel').onclick=closeCapModal;
-$('#capinput').onkeydown=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))capSubmit(); };
+$('#capinput').onkeydown=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)&&!e.isComposing&&e.keyCode!==229)capSubmit(); };
 $('#capmodal').onclick=e=>{ if(e.target===$('#capmodal'))closeCapModal(); };
 // Esc로 열린 모달 닫기 — 스택 위(사진 모달 위에 뜨는 작은 모달)부터, 배경 클릭과 같은 닫기 함수로
 const MODAL_ESC=[['aimodal',closeAI],['capmodal',closeCapModal],['catmodal',closeCatModal],['cfmodal',closeCF],['tgmodal',closeTG],['npmodal',closeNP],['imodal',closeIM],['pmodal',closePM],['phmodal',closePhotoModal]];
