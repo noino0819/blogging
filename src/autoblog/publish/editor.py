@@ -888,11 +888,7 @@ class BlogPublisher:
               return {n, lead: lead === true};
             }"""
         )
-        if ext["n"]:
-            infos.append(
-                f"외부 이미지(협찬 배너 등) {ext['n']}개는 인식용 원본 URL을 지키기 위해 "
-                "그대로 뒀어요 — 위치만 확인해 주세요."
-            )
+        # 외부 이미지 보존은 정상 동작이라 따로 알리지 않는다(알림이 실패처럼 읽힘).
 
         # 플랜을 [영상] 블록 기준으로 구간 분할. segment 0 = 첫 영상 앞, segment K = (K-1)번 영상 뒤.
         segments: list[list] = [[]]
