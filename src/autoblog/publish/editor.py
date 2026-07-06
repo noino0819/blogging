@@ -143,11 +143,19 @@ class BlogPublisher:
         return any(c["name"] == "NID_AUT" for c in self._ctx.cookies())
 
     def wait_for_login(self, timeout_sec: int = 360) -> bool:
-        """로그인 페이지를 띄우고 사용자가 직접 로그인할 때까지 대기(세션 없을 때)."""
+        """로그인 페이지를 띄우고 사용자가 직접 로그인할 때까지 대기(세션 없을 때).
+
+        headless로 떠 있으면 창이 안 보여 로그인이 불가능하다(최초 실행·세션 만료).
+        그 경우 화면 있는 창으로 재기동한 뒤 로그인 페이지를 띄운다.
+        """
         import time
 
         if self.is_logged_in():
             return True
+        if self.headless:
+            self.close()
+            self.headless = False
+            self.start()
         self._page.goto(NAVER_LOGIN["url"], wait_until="domcontentloaded")
         for _ in range(timeout_sec // 4):
             if self.is_logged_in():

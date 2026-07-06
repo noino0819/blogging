@@ -3484,16 +3484,12 @@ def _make_handler(state: dict):
                 # 앞 건이 끝날 때까지 이 스레드가 대기 → 브라우저가 하나만 뜬다.
                 with state["publish_lock"]:
                     # 임시저장(submit=False)은 사람 확인이 필요 없으니 평소엔 백그라운드(headless).
-                    # 단, 저장된 세션이 만료돼 로그인이 필요하면 화면에 창을 띄워(headful) 직접 로그인하게 한다.
+                    # 세션이 없으면 wait_for_login이 headful로 재기동해 직접 로그인하게 한다.
                     pub = BlogPublisher(headless=headless)
                     pub.start()
                     try:
-                        if not pub.is_logged_in():
-                            pub.close()
-                            pub = BlogPublisher(headless=False)
-                            pub.start()
-                            if not pub.wait_for_login():
-                                raise RuntimeError("네이버 로그인이 필요합니다")
+                        if not pub.wait_for_login():
+                            raise RuntimeError("네이버 로그인이 필요합니다")
                         if inplace_draft:
                             photo_paths = [
                                 ph.path for ph in result.card.photos
