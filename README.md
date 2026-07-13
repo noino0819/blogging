@@ -26,6 +26,15 @@
 
 글쓰기·수집·초안 생성은 **클라우드 LLM API**(Claude / GPT / Gemini / NVIDIA)로 처리하고, 네이버 게시는 **내 PC의 실제 브라우저**로 수행합니다.
 
+## ⚡ 켜는 법
+
+```bash
+uv sync && uv run playwright install && cp .env.example .env   # 최초 1회 (.env 키 채우기)
+uv run autoblog ui                                             # 👈 이걸로 켭니다 — 로컬 웹 UI
+```
+
+자세한 설치·API 키 안내는 [시작하기](#시작하기)를 보세요.
+
 <br>
 
 ## 전체 흐름
