@@ -1510,7 +1510,7 @@ function renderPmeta(){
   [...PMSEL].forEach(p=>{ if(!PHOTOS.includes(p))PMSEL.delete(p); });
   if(THUMB && !SELP.includes(THUMB)) THUMB=null;  // 분류함에서 빠진 사진은 썸네일 해제
   const tbody = (THUMB)
-    ? `<img src="/photo?path=${encodeURIComponent(THUMB)}"><span>이 사진이 글 맨 위 <b>첫 사진</b>으로 들어가요</span><button type=button class=minibtn id=thumbgen title="대표사진을 손그림 감성 썸네일로 (Qwen-Image-Edit)">🎨 AI 썸네일</button><button type=button class=minibtn id=thumbclr>해제</button>`
+    ? `<img src="/photo?path=${encodeURIComponent(THUMB)}"><span>이 사진이 글 맨 위 <b>첫 사진</b>으로 들어가요</span><button type=button class=minibtn id=thumbgen title="대표사진을 손그림 감성 썸네일로 (Qwen-Image-Edit)">🎨 AI 썸네일</button><button type=button class=minibtn id=thumbswap title="내가 만든 이미지 파일로 대표를 교체 — 외부 AI로 만든 썸네일 등">🔁 사진 대체</button><button type=button class=minibtn id=thumbclr>해제</button>`
     : `<span class=pmempty>사진의 <b>★</b>를 눌러 <b>대표 썸네일</b>을 정하세요 — 글 맨 위 첫 사진이 됩니다</span>`;
   let h=`<div class=pmthumbbar><span class=pmthumblbl>⭐ 대표 썸네일</span>${tbody}</div>`;
   if(AIPROG&&AIPROG.wsid===CURWS){  // 분석 중엔 상태줄이 진행바로 바뀜 — 모달을 닫았다 열어도 그대로
@@ -1582,6 +1582,7 @@ function renderPmeta(){
   });
   const tc=$('#thumbclr'); if(tc) tc.onclick=()=>{ THUMB=null; renderGrid(); renderPmeta(); };
   const tg=$('#thumbgen'); if(tg) tg.onclick=openThumbModal;
+  const ts=$('#thumbswap'); if(ts) ts.onclick=swapThumbFile;
 }
 // ===== 멀티 탭(워크스페이스) =====
 // 글마다 독립 탭. 흩어진 전역·입력값을 '한 글치 상태 객체'로 캡처/복원해, 탭을 바꿔도
@@ -1721,12 +1722,34 @@ async function runThumbGen(title,extra){
 function closeTP(){ $('#tpmodal').style.display='none'; PENDTHUMB=null; }
 function applyPendThumb(){
   const t=PENDTHUMB; closeTP(); if(!t)return;
-  if(!PHOTOS.includes(t.path))PHOTOS.push(t.path);
-  if(!SELP.includes(t.path))SELP.push(t.path);
-  pmAssign(t.path, pmBucketOf(t.src));  // 원본과 같은 칸에 담고 대표를 새 이미지로 교체
-  THUMB=t.path;
+  adoptThumb(t.path, t.src);
+}
+// 새 이미지를 원본과 같은 칸에 담고 ★ 대표로 교체 — AI 썸네일 적용·사진 대체 공용
+function adoptThumb(path, src){
+  if(!PHOTOS.includes(path))PHOTOS.push(path);
+  if(!SELP.includes(path))SELP.push(path);
+  pmAssign(path, pmBucketOf(src));
+  THUMB=path;
   renderGrid(); renderPmeta();
   toast('새 이미지를 ★ 대표로 지정했어요.','ok');
+}
+// 🔁 사진 대체 — 외부에서 만든 이미지 파일을 업로드해 ★ 대표를 바로 교체
+function swapThumbFile(){
+  const src=THUMB; if(!src)return;
+  const fi=document.createElement('input'); fi.type='file'; fi.accept='image/*';
+  fi.onchange=async()=>{
+    const f=fi.files[0]; if(!f)return;
+    if(!f.type.startsWith('image/')){toast('이미지 파일만 대표로 쓸 수 있어요.','info');return;}
+    try{
+      const dataurl=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(f);});
+      const res=await fetch('/api/upload',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({filename:f.name,data:dataurl.split(',')[1]})});
+      const d=await res.json();
+      if(!res.ok||!d.path)throw new Error(d.error||'업로드 실패');
+      adoptThumb(d.path, src);
+    }catch(e){errNotice('사진 대체 실패', e.message);}
+  };
+  fi.click();
 }
 // ✨ AI 분석 시작 전 모달 — 대상(분류함에 담긴 사진)을 명시하고, 선택 요청사항(hint)을 받는다.
 function aiTargets(){ return SELP.filter(p=>!isVid(p)); }  // 영상은 비전 모델이 못 읽으니 제외
