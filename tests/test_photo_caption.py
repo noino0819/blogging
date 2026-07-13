@@ -97,7 +97,7 @@ def test_caption_photos_orchestrator_no_collection(monkeypatch):
     # srcval 없으면 수집 생략, 메모 맥락만으로 진행
     monkeypatch.setattr(
         "autoblog.vision.smart_caption_photos",
-        lambda paths, context, categories=None, model=None: {
+        lambda paths, context, categories=None, model=None, hint=None: {
             p: {"label": "음식", "caption": f"cap-{i}"} for i, p in enumerate(paths)
         },
     )
