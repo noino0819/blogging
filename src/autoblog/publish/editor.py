@@ -294,6 +294,8 @@ class BlogPublisher:
                 _ = exc
         # 저장 직전: 문단 정렬을 플랜과 대조해 자동복구(사진 정렬 상속/무음 실패 대비).
         self._heal_alignment(plan, warnings)
+        # 대표사진 지정은 반드시 '맨 마지막' — 사진 조작이 더 남아 있으면 플래그가 또 옮겨간다.
+        self._set_rep_photo(plan, warnings)
         if save:
             # 임시저장에도 카테고리가 반영되도록, 발행 레이어에서 카테고리만 고르고 레이어를 닫는다.
             # (submit이면 아래 발행 분기에서 카테고리를 고르므로 중복 적용하지 않는다.)
@@ -637,6 +639,54 @@ class BlogPublisher:
             removed += 1
         return removed
 
+    def _set_rep_photo(self, plan, warnings: list[str]) -> None:
+        """저장 직전 마지막 스텝: 플랜의 대표 사진에 '대표' 배지를 클릭해 명시 지정한다.
+
+        네이버의 대표 플래그는 문서에 붙어 있어, in-place의 사진 삭제·재삽입 중 남은 아무
+        사진으로 넘어가 버린다(첫 이미지=대표라는 암묵 규칙이 깨짐). 그래서 모든 사진 조작이
+        끝난 뒤 항상 마지막에 재지정한다. 매핑: 플랜의 k번째 이미지 블록 = 본문의 k번째
+        '단일 네이버 업로드' 사진(문서 순) — 콜라주·외부 핫링크 이미지는 플랜 블록이
+        아니므로 제외(_delete_movable_photos와 동일 기준). 실패는 warnings로 안내만 한다.
+        (mechanic 검증: scripts/probe_rep_photo.py — hover 후 배지 클릭으로 플래그 이동)"""
+        rep = getattr(plan, "rep_image_path", None)
+        if not rep:
+            return
+        page = self._page
+        plan_imgs = [b.image_path for b in plan.blocks if b.kind == "image" and b.image_path]
+        try:
+            k = plan_imgs.index(rep)
+            page.evaluate(self._FORCE_LOAD_IMGS_JS)  # 외부/네이버 판별은 src 로드 후에만 가능
+            handle = page.evaluate_handle(
+                r"""(k) => {
+                  const singles = [...document.querySelectorAll('.se-component')].filter(c => {
+                    const imgs = c.querySelectorAll('img.se-image-resource');
+                    if (imgs.length !== 1) return false;
+                    const s = imgs[0].src || '';
+                    return !(/^https?:/.test(s) && !/pstatic\.net/.test(s));
+                  });
+                  return singles[k] || null;
+                }""",
+                k,
+            )
+            comp = handle.as_element()
+            if comp is None:
+                raise RuntimeError("대상 사진 컴포넌트를 찾지 못함")
+            comp.scroll_into_view_if_needed()
+            comp.hover()  # 배지는 hover 시에만 렌더된다
+            page.wait_for_timeout(300)
+            btn = comp.query_selector(".se-set-rep-image-button")
+            if btn is None:
+                raise RuntimeError("대표 배지 없음")
+            btn.click()
+            page.wait_for_timeout(300)
+            if "se-is-selected" not in (btn.get_attribute("class") or ""):
+                raise RuntimeError("클릭 후에도 미선택")
+        except Exception:  # noqa: BLE001 - 대표 지정은 보조, 실패해도 저장 진행
+            page.keyboard.press("Escape")
+            warnings.append(
+                "대표사진 자동 지정에 실패했어요 — 발행 전에 대표사진이 맞는지 확인해 주세요."
+            )
+
     def _anchor_before_first_media(self) -> bool:
         """첫 미디어(사진/영상) '위'에 커서를 둔다.
 
@@ -960,6 +1010,9 @@ class BlogPublisher:
                 page.keyboard.press("Escape")
         # 저장 직전: 문단 정렬 검증·자동복구(in-place는 사진 앵커마다 사진 정렬을 상속해 특히 취약).
         self._heal_alignment(plan, warnings)
+        # 대표사진 지정은 반드시 '맨 마지막' — 위의 삭제·재삽입이 네이버 대표 플래그를 남은
+        # 아무 사진으로 옮겨놓기 때문에, 모든 사진 조작이 끝난 여기서 명시적으로 재지정한다.
+        self._set_rep_photo(plan, warnings)
         if save:
             if category:
                 self._apply_category_for_draft(category)

@@ -467,3 +467,35 @@ def test_place_marker_fallback_chain():
     draft_named = DraftResult(text="제목\n\n주차장이 가까워요.\n[지도:바오서울 충무로]\n예약도 돼요.")
     plan3 = build_publish_plan(draft_named)  # 자립 마커 — 캐시·쿼리 불필요
     assert next(b for b in plan3.blocks if b.kind == "place").text == "바오서울 충무로"
+
+
+def test_rep_image_path_thumbnail_wins():
+    # ★ 지정 사진이 대표 — 위치 재배치와 별개로 실행기가 저장 직전 '대표' 배지를 클릭한다
+    draft = DraftResult(text="제목\n\n본문.\n[사진]\n다음.\n[사진]")
+    photos = [PhotoItem(path="a.jpg", label="음식"), PhotoItem(path="b.jpg", label="외관", thumbnail=True)]
+    plan = build_publish_plan(draft, photos)
+    assert plan.rep_image_path == "b.jpg"
+
+
+def test_rep_image_path_inplace_also_set():
+    # inplace는 썸네일 '끌어올림'은 건너뛰지만 대표 지정 경로는 그대로 전달돼야 한다
+    draft = DraftResult(text="제목\n\n본문.\n[사진]\n다음.\n[사진]")
+    photos = [PhotoItem(path="a.jpg", label="음식"), PhotoItem(path="b.jpg", label="외관", thumbnail=True)]
+    plan = build_publish_plan(draft, photos, inplace=True)
+    assert plan.rep_image_path == "b.jpg"
+    # 끌어올림은 없음 — 마커 순서 유지
+    imgs = [b.image_path for b in plan.blocks if b.kind == "image"]
+    assert imgs == ["a.jpg", "b.jpg"]
+
+
+def test_rep_image_path_excludes_sponsor_fallback_first():
+    # ★ 없음 → 협찬 고지 사진은 건너뛰고 첫 일반 사진이 대표
+    draft = DraftResult(text="제목\n\n본문.\n[사진:협찬]\n다음.\n[사진]")
+    photos = [PhotoItem(path="banner.jpg", label="협찬"), PhotoItem(path="a.jpg", label="음식")]
+    plan = build_publish_plan(draft, photos)
+    assert plan.rep_image_path == "a.jpg"
+
+
+def test_rep_image_path_none_without_photos():
+    plan = build_publish_plan(DraftResult(text="제목\n\n본문뿐."), [])
+    assert plan.rep_image_path is None

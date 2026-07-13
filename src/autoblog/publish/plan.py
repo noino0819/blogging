@@ -281,6 +281,9 @@ class PublishBlock(BaseModel):
 class PublishPlan(BaseModel):
     title: str
     blocks: list[PublishBlock] = Field(default_factory=list)
+    # 대표(썸네일)로 지정할 사진 경로 — 실행기가 저장 직전 '대표' 배지를 클릭해 명시 지정한다.
+    # (첫 이미지=대표라는 암묵 규칙은 in-place 삭제·재삽입, 협찬 사진 끌어올림에서 깨진다.)
+    rep_image_path: str | None = None
 
 
 _MEDIA_KINDS = ("image", "video")
@@ -697,4 +700,13 @@ def build_publish_plan(
     # (모든 재배치가 끝난 뒤라야 어느 문단에 사진이 붙는지 정확히 판단한다).
     blocks = fill_imageless_text(blocks, picker, enabled=bare_text_sticker)
 
-    return PublishPlan(title=title, blocks=blocks)
+    # 대표사진 — ★ 지정 사진(협찬 제외), 없으면 첫 비협찬 이미지, 그것도 없으면 첫 이미지.
+    # 실행기가 저장 직전 '대표' 배지를 클릭해 지정한다(위치 재배치와 별개의 명시 지정).
+    img_paths = [b.image_path for b in blocks if b.kind == "image" and b.image_path]
+    rep = (
+        (thumb_path if thumb_path in img_paths else None)
+        or next((p for p in img_paths if p not in spon_paths), None)
+        or (img_paths[0] if img_paths else None)
+    )
+
+    return PublishPlan(title=title, blocks=blocks, rep_image_path=rep)
