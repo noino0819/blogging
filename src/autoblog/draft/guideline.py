@@ -110,3 +110,35 @@ def check_guidelines(
             )
         )
     return results
+
+
+def check_exposure(draft: str) -> list[CheckItem]:
+    """노출 기본기 자동 체크 — 가이드라인 입력과 무관하게 항상 수행.
+
+    기계적으로 검사 가능한 것만: 제목(첫 줄) 길이, 헤더 해시태그 개수.
+    대표 검색 키워드는 LLM이 스스로 고르는 값이라 코드가 알 수 없음 —
+    키워드 앞배치 검사는 자가 점검(selfcheck)과 required_keywords 입력에 맡긴다.
+    """
+    lines = [ln.strip() for ln in draft.strip().splitlines()]
+    title = next((ln for ln in lines if ln), "")
+    n = len(title)
+    results = [
+        CheckItem(
+            item="제목 길이(검색 노출)",
+            ok=15 <= n <= 40,
+            detail=f"현재 {n}자 — 권장 20~30자, 최대 40자",
+        )
+    ]
+    n_tags = 0
+    for ln in lines:
+        toks = ln.split()
+        cnt = sum(1 for t in toks if t.startswith("#"))
+        if cnt >= 2:
+            # 헤더 태그줄 관례: 첫 태그는 # 없이 씀("혜화맛집 #대학로맛집 …")
+            all_tail_tags = all(t.startswith("#") for t in toks[1:])
+            n_tags = len(toks) if (not toks[0].startswith("#") and all_tail_tags) else cnt
+            break
+    results.append(
+        CheckItem(item="해시태그 3~5개", ok=3 <= n_tags <= 5, detail=f"현재 {n_tags}개")
+    )
+    return results

@@ -205,6 +205,26 @@ def test_guidelines_empty_is_ignored():
     assert Guidelines().as_prompt() is None
 
 
+def test_check_exposure():
+    from autoblog.draft.guideline import check_exposure
+
+    good = (
+        "[혜화맛집] 치즈철판카츠 메종아카이 내돈내산 후기\n"
+        "요즘 푹 빠진 카츠 성지\n"
+        "혜화맛집 #대학로맛집 #혜화내돈내산 #메종아카이\n\n본문"
+    )
+    by_item = {c.item: c for c in check_exposure(good)}
+    assert by_item["제목 길이(검색 노출)"].ok is True
+    assert by_item["해시태그 3~5개"].ok is True  # 첫 태그 # 없는 헤더 관례 → 4개
+
+    bad = "제목\n본문뿐 해시태그 없음"
+    assert all(not c.ok for c in check_exposure(bad))
+
+    # 본문 문장 속 해시태그 2개는 헤더 태그줄이 아님 — 그 줄 토큰 전체를 태그로 세지 않는다
+    body_tags = "적당한 길이의 제목이라 통과하는 예시입니다\n오늘 #혜화 갔다가 #맛집 발견"
+    assert {c.item: c for c in check_exposure(body_tags)}["해시태그 3~5개"].ok is False
+
+
 def test_enforce_format():
     from autoblog.draft.postprocess import enforce_format
 

@@ -307,6 +307,7 @@ def plan_from_text(
     sponsor_sticker: str = "",
     photo_meta: dict[str, dict] | None = None,
     inplace: bool = False,
+    guidelines: Guidelines | None = None,
 ) -> PipelineResult:
     """외부 챗봇에서 받아온 초안 텍스트 → 마커 파싱·후처리 → 게시 플랜.
 
@@ -314,6 +315,8 @@ def plan_from_text(
     플랜에 이미지 블록으로 배치된다. place_query를 주면 [지도] 마커를 그 가게명으로
     해석하고, place_address(도로명)를 주면 검색 결과를 그 주소로 매칭한다.
     photo_meta(경로→{label,caption})를 주면 사진을 그 값으로 채운다(Vision 분류 생략).
+    guidelines를 주면 받아온 글도 생성 경로와 동일하게 자동 대조한다(반려 예방) —
+    프롬프트는 가이드라인으로 만들었는데 받아온 글 검증이 빠지면 킬러 기능이 새는 셈.
     """
     catalog = None
     labels: list[str] = []
@@ -345,6 +348,7 @@ def plan_from_text(
         structure=structure,
         sticker_labels=labels,
         inplace=inplace,
+        guidelines=guidelines,
     )
     draft = generate_draft(req, raw_override=text)
     picker = (

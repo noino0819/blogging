@@ -175,7 +175,7 @@ def draft(
             desc = st.text_color or st.background_color or "기본"
             typer.echo(f"[{s.preset_id}] {desc}  «{s.text}»", err=True)
     if result.checklist:
-        typer.echo("\n--- 가이드라인 체크 ---", err=True)
+        typer.echo("\n--- 자동 체크(노출 기본기·가이드라인) ---", err=True)
         for c in result.checklist:
             mark = "O" if c.ok else "X"
             typer.echo(f"[{mark}] {c.item} {c.detail}", err=True)

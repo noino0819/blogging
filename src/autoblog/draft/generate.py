@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from autoblog.collect.fact_card import FactCard
-from autoblog.draft.guideline import CheckItem, Guidelines, check_guidelines
+from autoblog.draft.guideline import CheckItem, Guidelines, check_exposure, check_guidelines
 from autoblog.draft.postprocess import enforce_format
 from autoblog.draft.prompt import build_system_prompt, build_user_prompt
 from autoblog.draft.prompts import build_selfcheck_instruction, load_base_prompt
@@ -189,10 +189,11 @@ def generate_draft(
             if span.text != orig and span.text not in text and orig in text:
                 span.text = orig
 
-    checklist: list[CheckItem] = []
+    # 노출 기본기(제목 길이·해시태그 개수)는 가이드라인 입력과 무관하게 항상 검사한다.
+    checklist: list[CheckItem] = check_exposure(text)
     if req.guidelines and not req.guidelines.is_empty():
         photo_count = req.photo_count
         if photo_count is None and req.fact_card.photos:
             photo_count = len(req.fact_card.photos)
-        checklist = check_guidelines(text, req.guidelines, photo_count)
+        checklist += check_guidelines(text, req.guidelines, photo_count)
     return DraftResult(text=text, checklist=checklist, emphases=emphases, debug=debug)
