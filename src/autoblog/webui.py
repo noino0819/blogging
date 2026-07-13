@@ -290,6 +290,11 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pcell.sel .num{display:flex}
  /* preview */
  .doc{background:#fff;border:1px solid var(--line);border-radius:16px;padding:30px 34px;min-height:300px}
+ /* 자동 체크(노출 기본기·가이드라인 대조) — 미리보기 맨 위 */
+ .ckok{font-size:12px;color:#0a8a4a;background:#eefaf3;border:1px solid #bfe8d2;border-radius:8px;padding:6px 10px;margin-bottom:14px}
+ .ckbad{font-size:12px;color:#8a4a0a;background:#fdf6ec;border:1px solid #f0ddc0;border-radius:8px;padding:8px 10px;margin-bottom:14px}
+ .ckbad .cki{margin-top:4px;color:#a05a1c}
+ .ckbad .cki small{color:#b98a5e}
  .doc.empty{display:flex;align-items:center;justify-content:center;color:#b0b8c1;font-size:14px;min-height:420px}
  .genload{text-align:center;padding:40px 20px}
  /* 냥캣 로딩 씬: 밤하늘 + 별 + 무지개 꼬리 고양이 (외부 라이브러리 없이 인라인 SVG) */
@@ -1261,9 +1266,12 @@ function kwSet(str){
     if(e.key==='Enter'||e.key===','){ e.preventDefault(); kwCommit(); }
     else if(e.key==='Backspace'&&!inp.value){ if(KW.length){ KW.pop(); kwRender(); } }
   };
-  // 붙여넣기는 쉼표뿐 아니라 띄어쓰기·줄바꿈에서도 나눠 여러 칩으로
+  // 붙여넣기: "필수키워드" 같은 라벨 줄/접두어는 걷어내고, 쉼표·줄바꿈이 있으면 그 기준으로만
+  // 나눠 "프랑스 소금"처럼 띄어쓰기 포함 키워드를 통째로 유지. 없으면 기존대로 띄어쓰기로 나눔.
   inp.onpaste=e=>{ const t=(e.clipboardData||window.clipboardData).getData('text'); if(!t)return;
-    e.preventDefault(); kwCommit(); kwAddMany(t.split(/[,\s]+/)); };
+    e.preventDefault(); kwCommit();
+    const body=t.replace(/(^|\n)[ \t]*(필수[ \t]*)?키워드[ \t]*(?:[::][ \t]*|(?=\n)|$)/g,'$1');
+    kwAddMany(body.split(/[,\n]/.test(body)?/[,\n]+/:/\s+/)); };
   inp.onblur=()=>kwCommit();
 })();
 // 불러온 글 제목을 필수 키워드 맨 앞에 넣어줌(중복이면 그대로). 노트로 사용자에게 알려줌.
@@ -1867,8 +1875,15 @@ function renderText(b){let h=esc(b.text);
   (b.emphases||[]).forEach(e=>{
     h=h.replace(esc(e.text),`<em class=hl style="${emStyle(e)}">${esc(e.text)}</em>`);});
   return `<p class=tx style="${alignStyle(b)}">${h}</p>`;}
+function checklistHTML(cl){
+  if(!cl||!cl.length)return '';
+  const bad=cl.filter(c=>!c.ok);
+  if(!bad.length)return `<div class=ckok>✓ 자동 체크 ${cl.length}건 통과</div>`;
+  return `<div class=ckbad><b>자동 체크 미충족 ${bad.length}건</b> — 게시 전 확인하세요`+
+    bad.map(c=>`<div class=cki>✗ ${esc(c.item)}${c.detail?` <small>${esc(c.detail)}</small>`:''}</div>`).join('')+`</div>`;
+}
 function renderPreview(d){
-  let h=`<h1>${esc(d.title)||'(제목 없음)'}</h1>`;
+  let h=checklistHTML(d.checklist)+`<h1>${esc(d.title)||'(제목 없음)'}</h1>`;
   for(const b of d.blocks){
     if(b.kind==='text')h+=renderText(b);
     else if(b.kind==='divider')h+=dividerHTML(b);
@@ -3383,6 +3398,7 @@ def _make_handler(state: dict):
                 sponsor_links=_links(body),
                 product_links=_links(body, "productLinks"),
                 sponsor_sticker=(body.get("sponsorSticker") or "").strip(),
+                guidelines=_build_guidelines(body),  # 받아온 글도 생성과 동일하게 자동 대조
             )
             self._send_plan(result, draft_id=(body.get("draftId") or "").strip() or None)
 
@@ -3420,7 +3436,11 @@ def _make_handler(state: dict):
                     ]
                 blocks.append(blk)
             self._send(200, json.dumps(
-                {"title": result.plan.title, "blocks": blocks, "debug": result.draft.debug}
+                {"title": result.plan.title, "blocks": blocks, "debug": result.draft.debug,
+                 "checklist": [
+                     {"item": c.item, "ok": c.ok, "detail": c.detail}
+                     for c in result.draft.checklist
+                 ]}
             ).encode())
 
         def _publish(self, body):
