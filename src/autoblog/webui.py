@@ -290,6 +290,16 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pcell.sel .num{display:flex}
  /* preview */
  .doc{background:#fff;border:1px solid var(--line);border-radius:16px;padding:30px 34px;min-height:300px}
+ /* 노출 순위 추적(설정 탭) */
+ .rkadd{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+ .rkadd input{flex:1;min-width:150px}
+ .rkrow{display:flex;gap:10px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--line);font-size:13px}
+ .rkrow:last-child{border-bottom:none}
+ .rkrank{min-width:80px;font-weight:700}
+ .rkkw{flex:1;font-weight:600}
+ .rkurl{color:var(--green);text-decoration:none}
+ .rkdel{cursor:pointer;color:#b0b8c1;padding:0 4px}
+ .rkdel:hover{color:#c0392b}
  /* 자동 체크(노출 기본기·가이드라인 대조) — 미리보기 맨 위 */
  .ckok{font-size:12px;color:#0a8a4a;background:#eefaf3;border:1px solid #bfe8d2;border-radius:8px;padding:6px 10px;margin-bottom:14px}
  .ckbad{font-size:12px;color:#8a4a0a;background:#fdf6ec;border:1px solid #f0ddc0;border-radius:8px;padding:8px 10px;margin-bottom:14px}
@@ -869,6 +879,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <p class=desc>글쓰기 규칙과 임시저장 동작을 관리합니다.</p>
     <div class=card><h3>글쓰기 규칙 <span class=muted style="font-weight:400">— 초안 생성 때 켠 것만 반영돼요</span></h3><div id=rules></div></div>
     <div class=card style="margin-top:16px"><h3>임시저장</h3><div id=draftset></div><div id=cleanimp></div><div id=savedebug></div></div>
+    <div class=card style="margin-top:16px"><h3>노출 순위 추적 <span class=muted style="font-weight:400">— 블로그 검색 상위 100위(정확도순 근사) 실측</span></h3><div id=ranktrk><div class=muted>불러오는 중…</div></div></div>
   </section>
 </main>
 <script src="/asset?name=lottie.min.js"></script>
@@ -1058,7 +1069,53 @@ $$('.nav').forEach(n=>n.onclick=()=>{
   $$('.view').forEach(v=>v.classList.remove('on')); $('.view.'+n.dataset.view).classList.add('on');
   if(n.dataset.view==='stickers') loadStickers();
   if(n.dataset.view==='persona') loadPersonas();
+  if(n.dataset.view==='settings') loadRanks();
 });
+// 노출 순위 추적 — 등록한 (키워드, 글)의 블로그 검색 순위를 실측(설정 탭)
+async function loadRanks(){
+  const box=$('#ranktrk'); if(!box)return;
+  try{const d=await (await fetch('/api/ranks')).json(); renderRanks(d.rows||[]);}catch(e){}
+}
+function rankRow(r){
+  const cur=r.rank?`${r.rank}위`:(r.checked?'100위 밖':'미확인');
+  let delta='';
+  if(r.prev&&r.rank){const d=r.prev-r.rank;
+    delta=d?` <b style="color:${d>0?'#0a8a4a':'#c0392b'}">${d>0?'▲':'▼'}${Math.abs(d)}</b>`:' <span class=muted>—</span>';}
+  const when=r.checked?new Date(r.checked).toLocaleDateString():'';
+  return `<div class=rkrow><span class=rkrank>${cur}${delta}</span><span class=rkkw>${esc(r.keyword)}</span>
+    <a class=rkurl href="${esc(r.url)}" target=_blank rel=noopener>글 보기</a><span class=muted>${when}</span>
+    <span class=rkdel data-kw="${esc(r.keyword)}" data-url="${esc(r.url)}" title="추적 삭제">✕</span></div>`;
+}
+function renderRanks(rows){
+  const box=$('#ranktrk');
+  box.innerHTML=`<div class=rkadd><input id=rkkw placeholder="대표 키워드 (예: 성수동 맛집)">
+    <input id=rkurl placeholder="게시 글 URL (blog.naver.com/아이디/글번호)">
+    <button class="btn ghost" id=rkaddbtn>추가</button>
+    <button class=btn id=rkchk ${rows.length?'':'disabled'}>지금 순위 확인</button></div>`
+    +(rows.length?rows.map(rankRow).join('')
+      :'<div class=muted style="margin-top:8px">게시한 글의 대표 키워드와 URL을 등록하면 검색 순위 추이를 기록해요 — 프롬프트 수정 전후 노출을 데이터로 비교할 수 있어요.</div>');
+  $('#rkaddbtn').onclick=async()=>{
+    const kw=$('#rkkw').value.trim(), url=$('#rkurl').value.trim();
+    if(!kw||!url){toast('키워드와 글 URL을 모두 입력하세요','info');return;}
+    const r=await fetch('/api/ranks',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({keyword:kw,url})});
+    if(!r.ok){const d=await r.json().catch(()=>({}));toast('등록 실패 — '+(d.error||'입력을 확인하세요'),'err');return;}
+    toast('등록했어요. [지금 순위 확인]으로 첫 순위를 재보세요.','ok'); loadRanks();
+  };
+  $('#rkchk').onclick=async()=>{
+    $('#rkchk').disabled=true; $('#rkchk').textContent='확인 중…';
+    try{const r=await fetch('/api/ranks/check',{method:'POST'});
+      const d=await r.json(); if(!r.ok)throw new Error(d.error||'서버 오류');
+      const now=new Date().toISOString();
+      renderRanks((d.rows||[]).map(x=>({...x,checked:now})));
+      toast('순위 확인 완료 — 이력에 저장했어요.','ok');
+    }catch(e){toast('순위 확인 실패 — '+e.message,'err'); loadRanks();}
+  };
+  $$('#ranktrk .rkdel').forEach(x=>x.onclick=async()=>{
+    await fetch('/api/ranks',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({delete:true,keyword:x.dataset.kw,url:x.dataset.url})});
+    loadRanks();
+  });
+}
 // 수집 종류: 직접 클릭 → 고정, 안 골랐으면 입력으로 자동 추정
 $$('#kindseg button').forEach(b=>b.onclick=()=>setKind(b.dataset.k,true));
 $('#srcval').oninput=()=>{if(!KINDMANUAL)setKind(autoKind($('#srcval').value),false);};
@@ -2938,6 +2995,10 @@ def _make_handler(state: dict):
                 self._send(200, json.dumps(_load_prefs()).encode())
             elif u.path == "/api/personas":
                 self._send(200, json.dumps(_personas_payload(), ensure_ascii=False).encode())
+            elif u.path == "/api/ranks":
+                from autoblog.rank import list_entries
+
+                self._send(200, json.dumps({"rows": list_entries()}, ensure_ascii=False).encode())
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -3044,6 +3105,19 @@ def _make_handler(state: dict):
                     elif body.get("id") is not None:
                         _save_emphasis_preset_tag(body.get("id"), body.get("tag", ""))
                     self._send(200, json.dumps(_emphasis_preview()).encode())
+                elif path == "/api/ranks":
+                    from autoblog.rank import add_entry, remove_entry
+
+                    body = self._json_body()
+                    if body.get("delete"):
+                        remove_entry(body.get("keyword", ""), body.get("url", ""))
+                    else:
+                        add_entry(body.get("keyword", ""), body.get("url", ""))
+                    self._send(200, b'{"ok":true}')
+                elif path == "/api/ranks/check":
+                    from autoblog.rank import check_all
+
+                    self._send(200, json.dumps({"rows": check_all()}, ensure_ascii=False).encode())
                 elif path == "/api/label":
                     lab = state["label"]
                     if lab.get("running"):

@@ -351,6 +351,45 @@ def doctor():
         typer.echo(f"{label}      : {status} [{model}]")
 
 
+rank_app = typer.Typer(help="키워드 순위 추적 — 게시 글의 블로그 검색 순위 실측")
+app.add_typer(rank_app, name="rank")
+
+
+@rank_app.command("add")
+def rank_add(keyword: str, url: str):
+    """추적 등록: 대표 키워드 + 게시 글 URL."""
+    from autoblog.rank import add_entry
+
+    e = add_entry(keyword, url)
+    typer.echo(f"등록됨: '{e['keyword']}' ← {e['url']}")
+
+
+@rank_app.command("check")
+def rank_check():
+    """전 항목 순위 확인(키워드당 API 1회) + 이력 저장."""
+    from autoblog.rank import check_all
+
+    rows = check_all()
+    if not rows:
+        typer.echo("추적 항목이 없어요 — rank add \"키워드\" <글URL> 로 등록하세요.")
+        return
+    for r in rows:
+        cur = f"{r['rank']}위" if r["rank"] else "100위 밖"
+        delta = ""
+        if r["prev"] and r["rank"]:
+            d = r["prev"] - r["rank"]
+            delta = f" ({'▲' if d > 0 else '▼'}{abs(d)})" if d else " (—)"
+        typer.echo(f"[{cur}{delta}] {r['keyword']} — {r['url']}")
+
+
+@rank_app.command("rm")
+def rank_rm(keyword: str, url: str):
+    """추적 항목 삭제."""
+    from autoblog.rank import remove_entry
+
+    typer.echo("삭제됨" if remove_entry(keyword, url) else "해당 항목 없음")
+
+
 stickers_app = typer.Typer(help="스티커 카탈로그 — 불러오기/라벨링/검수")
 app.add_typer(stickers_app, name="stickers")
 
