@@ -641,6 +641,17 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   </div>
   <div class=modalft><button class=btn id=tpok style="flex:1">★ 대표로 적용</button><button class="btn ghost" id=tpskip style="flex:0 0 110px">적용 안 함</button></div>
 </div></div>
+<div id=tsmodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
+  <div class=modalhd><span>🔁 사진 대체</span><button class=mx id=tsx>✕</button></div>
+  <div class=muted>외부 이미지 모델(ChatGPT·Midjourney·nano-banana 등)에 <b>원본사진 + 프롬프트</b>를 붙여넣어 만들고, 완성한 파일을 선택하면 ★ 대표가 바로 바뀌어요.</div>
+  <div style="margin-top:10px;text-align:center"><img id=tsimg style="max-width:150px;max-height:150px;border-radius:9px;border:1px solid #e5e7eb;object-fit:cover"></div>
+  <div style="display:flex;gap:8px;margin-top:10px">
+    <button class="btn ghost" id=tscopyimg style="flex:1">📋 사진 복사</button>
+    <a class="btn ghost" id=tsdl style="flex:1;text-align:center;text-decoration:none">⬇ 사진 저장</a>
+    <button class="btn ghost" id=tscopypr style="flex:1">📋 프롬프트 복사</button>
+  </div>
+  <div class=modalft><button class=btn id=tsfile style="flex:1">📁 완성한 이미지 파일 선택</button><button class="btn ghost" id=tscancel style="flex:0 0 100px">취소</button></div>
+</div></div>
 <div id=aimodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
   <div class=modalhd><span>✨ AI 사진 분석</span><button class=mx id=aix>✕</button></div>
   <div class=muted id=aidesc></div>
@@ -1582,7 +1593,7 @@ function renderPmeta(){
   });
   const tc=$('#thumbclr'); if(tc) tc.onclick=()=>{ THUMB=null; renderGrid(); renderPmeta(); };
   const tg=$('#thumbgen'); if(tg) tg.onclick=openThumbModal;
-  const ts=$('#thumbswap'); if(ts) ts.onclick=swapThumbFile;
+  const ts=$('#thumbswap'); if(ts) ts.onclick=openSwapModal;
 }
 // ===== 멀티 탭(워크스페이스) =====
 // 글마다 독립 탭. 흩어진 전역·입력값을 '한 글치 상태 객체'로 캡처/복원해, 탭을 바꿔도
@@ -1712,7 +1723,7 @@ async function runThumbGen(title,extra){
     renderPmeta();  // 🎨 버튼 복구
     PENDTHUMB={path:d.path,src,prompt:d.prompt||''};
     $('#tpimg').src='/photo?path='+encodeURIComponent(d.path);
-    const dl=$('#tpdl'); dl.href='/photo?path='+encodeURIComponent(src);  // 외부 모델에 넘길 원본
+    const dl=$('#tpdl'); dl.href='/photo?path='+encodeURIComponent(src)+'&full=1';  // 외부 모델에 넘길 원본(화질 그대로)
     dl.download=src.split(/[\\/]/).pop()||'원본사진';  // 실제 확장자 그대로
     $('#tpmodal').style.display='flex';
     toast(`AI 썸네일 완성! (${sec}초) 미리보기에서 적용 여부를 정하세요.`,'ok');
@@ -1733,7 +1744,25 @@ function adoptThumb(path, src){
   renderGrid(); renderPmeta();
   toast('새 이미지를 ★ 대표로 지정했어요.','ok');
 }
-// 🔁 사진 대체 — 외부에서 만든 이미지 파일을 업로드해 ★ 대표를 바로 교체
+// 🔁 사진 대체 — 원본사진·프롬프트를 챙겨 외부 이미지 모델에서 만들고, 완성 파일로 ★ 대표를 교체
+let TSPROMPT=null;  // 썸네일 프롬프트 템플릿 캐시(config/prompts/thumbnail.md)
+async function thumbPrompt(){
+  if(TSPROMPT===null){
+    try{const d=await (await fetch('/api/thumbprompt')).json();
+      TSPROMPT='첨부한 사진을 아래 [드로잉 규칙]대로 손그림 감성 일러스트 썸네일(1:1)로 그려주세요.\n\n'+d.prompt;}catch(e){}
+  }
+  return TSPROMPT;
+}
+function openSwapModal(){
+  const src=THUMB; if(!src)return;
+  $('#tsimg').src='/photo?path='+encodeURIComponent(src);
+  const dl=$('#tsdl'); dl.href='/photo?path='+encodeURIComponent(src)+'&full=1';
+  dl.download=src.split(/[\\/]/).pop()||'원본사진';
+  $('#tsmodal').style.display='flex';
+  thumbPrompt().then(p=>{ if(p)navigator.clipboard.writeText(p)
+    .then(()=>toast('프롬프트를 자동 복사했어요 — 외부 모델에 사진과 함께 붙여넣으세요.','ok')).catch(()=>{}); });
+}
+function closeTS(){ $('#tsmodal').style.display='none'; }
 function swapThumbFile(){
   const src=THUMB; if(!src)return;
   const fi=document.createElement('input'); fi.type='file'; fi.accept='image/*';
@@ -1746,6 +1775,7 @@ function swapThumbFile(){
         body:JSON.stringify({filename:f.name,data:dataurl.split(',')[1]})});
       const d=await res.json();
       if(!res.ok||!d.path)throw new Error(d.error||'업로드 실패');
+      closeTS();
       adoptThumb(d.path, src);
     }catch(e){errNotice('사진 대체 실패', e.message);}
   };
@@ -2781,6 +2811,21 @@ $('#tpx').onclick=closeTP; $('#tpskip').onclick=closeTP; $('#tpok').onclick=appl
 $('#tpcopy').onclick=async()=>{ const p=PENDTHUMB&&PENDTHUMB.prompt; if(!p){toast('복사할 프롬프트가 없어요.','info');return;}
   try{await navigator.clipboard.writeText(p); toast('프롬프트를 복사했어요 — 외부 이미지 모델에 붙여넣으세요.','ok');}
   catch(e){ prompt('아래 프롬프트를 복사하세요 (Ctrl/Cmd+C):', p); } };
+$('#tsx').onclick=closeTS; $('#tscancel').onclick=closeTS; $('#tsfile').onclick=swapThumbFile;
+$('#tsmodal').onclick=e=>{ if(e.target===$('#tsmodal'))closeTS(); };
+$('#tscopypr').onclick=async()=>{ const p=await thumbPrompt();
+  if(!p){toast('프롬프트 템플릿(config/prompts/thumbnail.md)을 못 읽었어요.','info');return;}
+  try{await navigator.clipboard.writeText(p); toast('프롬프트를 복사했어요 — 사진과 함께 붙여넣으세요.','ok');}
+  catch(e){ prompt('아래 프롬프트를 복사하세요 (Ctrl/Cmd+C):', p); } };
+$('#tscopyimg').onclick=async()=>{  // 원본을 PNG로 변환해 클립보드에 — 외부 모델 입력창에 바로 붙여넣기용
+  try{
+    const bm=await createImageBitmap(await (await fetch($('#tsdl').href)).blob());
+    const c=document.createElement('canvas'); c.width=bm.width; c.height=bm.height;
+    c.getContext('2d').drawImage(bm,0,0);
+    const blob=await new Promise(r=>c.toBlob(r,'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+    toast('원본사진을 복사했어요 — 외부 모델 입력창에 붙여넣으세요.','ok');
+  }catch(e){toast('이 브라우저에선 사진 복사가 안 돼요 — ⬇ 사진 저장을 이용하세요.','info');} };
 $('#tgmodal').onclick=e=>{ if(e.target===$('#tgmodal'))closeTG(); };
 $('#tgok').onclick=()=>{ const t=$('#tgtitle').value.trim(), ex=$('#tgextra').value.trim(); closeTG(); runThumbGen(t,ex); };
 $('#aix').onclick=closeAI; $('#aicancel').onclick=closeAI;
@@ -2980,6 +3025,12 @@ def _make_handler(state: dict):
                 self._send(200, json.dumps(_list_photos()).encode())
             elif u.path == "/photo":
                 p = _safe_photo(q.get("path", [""])[0])
+                if p and q.get("full"):  # 원본 그대로 — 외부 이미지 모델에 넘길 다운로드·복사용
+                    import mimetypes
+
+                    mime = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+                    self._send(200, p.read_bytes(), mime)
+                    return
                 img = _thumb(p, state["thumbs"]) if p else None
                 self._send(200, img, "image/jpeg") if img else self._send(404, b"x", "text/plain")
             elif u.path == "/img":
@@ -3006,6 +3057,10 @@ def _make_handler(state: dict):
             elif u.path == "/api/prompt":
                 kind = (parse_qs(u.query).get("kind", ["place"])[0] or "place")
                 self._send(200, json.dumps(_prompt_preview(kind)).encode())
+            elif u.path == "/api/thumbprompt":
+                from autoblog.thumbnail import load_thumbnail_prompt
+
+                self._send(200, json.dumps({"prompt": load_thumbnail_prompt()}, ensure_ascii=False).encode())
             elif u.path == "/api/style-pool":
                 self._send(200, json.dumps(_style_pool_payload(), ensure_ascii=False).encode())
             elif u.path == "/api/categories":
