@@ -300,6 +300,38 @@ def ui(
 
     from autoblog.webui import serve_ui
 
+    # 로그를 파일에도 남긴다 — 에러 traceback이 터미널에만 찍히면 창이 닫히는 순간
+    # 진단 근거가 사라진다(외부에서 tail로 지켜볼 수도 없다).
+    import sys
+    from datetime import datetime
+
+    from autoblog.config import DATA_DIR
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _log = open(DATA_DIR / "ui.log", "a", buffering=1, encoding="utf-8", errors="replace")
+    _log.write(f"\n===== ui 시작 {datetime.now():%Y-%m-%d %H:%M:%S} =====\n")
+
+    class _Tee:
+        def __init__(self, *streams):
+            self._streams = streams
+
+        def write(self, text):
+            for s in self._streams:
+                try:
+                    s.write(text)
+                except Exception:  # noqa: BLE001 - 로그가 본 동작을 죽이면 안 됨
+                    pass
+
+        def flush(self):
+            for s in self._streams:
+                try:
+                    s.flush()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    sys.stdout = _Tee(sys.stdout, _log)
+    sys.stderr = _Tee(sys.stderr, _log)
+
     server = None
     for p in range(port, port + 10):
         try:
