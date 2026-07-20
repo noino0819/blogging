@@ -3709,6 +3709,10 @@ def _make_handler(state: dict):
                     finally:
                         pub.close()
             except Exception as exc:  # noqa: BLE001 — 실패해도 스냅샷을 남겨 상단 탭에서 재시도 가능
+                import traceback
+
+                print(f"[webui] POST /api/publish 실패: {exc}", flush=True)
+                traceback.print_exc()
                 self._send(500, json.dumps(
                     {"error": _friendly_error(exc), "jobId": job_id}
                 ).encode())
