@@ -940,6 +940,49 @@ function warnModal(title, items){
   bg.onclick=e=>{if(e.target===bg)close();};
   document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc);}});
   $('#alerthost').appendChild(bg);bg.querySelector('.btn').focus();}
+// '확인 필요' 기록 — 모달을 실수로 닫아도 다시 볼 수 있게 localStorage에 쌓아둔다.
+// 탭바의 ⚠ 칩을 누르면 전체 기록 모달. '기록 비우기'로만 지워진다.
+const WARNLOG_KEY='autoblog.warnlog';
+function warnLogAll(){try{return JSON.parse(localStorage.getItem(WARNLOG_KEY))||[]}catch(e){return[]}}
+function warnLogAdd(title, items){
+  const log=warnLogAll(); log.unshift({t:title,w:items,at:Date.now()});
+  try{localStorage.setItem(WARNLOG_KEY,JSON.stringify(log.slice(0,30)))}catch(e){}  // ponytail: 최근 30건만 보관
+  renderWarnChip();
+}
+function renderWarnChip(){
+  const n=warnLogAll().length; let el=$('#warnchip');
+  if(!n){ if(el)el.remove(); return; }
+  if(!el){
+    el=document.createElement('div'); el.id='warnchip'; el.className='stab warn'; el.style.cursor='pointer';
+    el.title='실수로 닫은 확인 필요 안내를 다시 봅니다';
+    el.innerHTML='<span class=sdot style="color:#d98a00">⚠</span><span class=stitle></span>';
+    el.onclick=warnLogModal; $('#savebar').prepend(el);
+  }
+  el.querySelector('.stitle').textContent=`확인 필요 기록 ${n}건`;
+}
+function warnLogModal(){
+  const esc=s=>String(s).replace(/</g,'&lt;');
+  const secs=warnLogAll().map(e=>{
+    const d=new Date(e.at);
+    const ts=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return `<div style="margin:0 0 12px"><b style="color:var(--ink)">${esc(e.t)}</b> <span style="font-weight:600;font-size:12px">· ${ts}</span>
+      <ul style="margin:4px 0 0;padding-left:20px">${(e.w||[]).map(s=>'<li>'+esc(s)+'</li>').join('')}</ul></div>`;
+  }).join('');
+  const bg=document.createElement('div');bg.className='alertbg';
+  bg.innerHTML=`<div class="alertcard info"><div class=ai>⚠️</div>
+    <div class=at>확인 필요 기록</div>
+    <div class=am style="text-align:left;max-height:55vh;overflow:auto">${secs}</div>
+    <div class=ab style="justify-content:center">
+      <button class="btn ghost" data-clear style="width:auto;padding:9px 16px">기록 비우기</button>
+      <button class=btn data-close style="width:auto;padding:9px 16px">닫기</button></div></div>`;
+  const close=()=>bg.remove();
+  bg.querySelector('[data-close]').onclick=close;
+  bg.querySelector('[data-clear]').onclick=()=>{try{localStorage.removeItem(WARNLOG_KEY)}catch(e){} renderWarnChip(); close();};
+  bg.onclick=e=>{if(e.target===bg)close();};
+  document.addEventListener('keydown',function esc2(e){if(e.key==='Escape'){close();document.removeEventListener('keydown',esc2);}});
+  $('#alerthost').appendChild(bg);
+}
+renderWarnChip();  // 새로고침해도 지난 기록 칩이 되살아남
 // 예/아니오 확인 모달(최초 1회 안내 등). onYes/onNo 콜백. 배경/Esc는 '아니오'로 닫힘.
 function confirmModal(title, desc, yesLabel, noLabel, onYes, onNo, icon){
   const bg=document.createElement('div');bg.className='alertbg';
@@ -2118,8 +2161,13 @@ function runSave(r, retryId){
       const warns=d.warnings||[], infos=d.infos||[];  // infos=정상 동작 안내(확인 불필요)
       if(warns.length){
         tabSetState(r,'warn','⚠'); cntEl.textContent='확인 필요';
-        warnModal(`'${r.title}' 임시저장됨 — 일부 항목 확인 필요`,
-          warns.concat(['네이버 글쓰기 › 저장 목록에서 글을 열어 직접 보완해 주세요.']));
+        const wTitle=`'${r.title}' 임시저장됨 — 일부 항목 확인 필요`;
+        const wItems=warns.concat(['네이버 글쓰기 › 저장 목록에서 글을 열어 직접 보완해 주세요.']);
+        warnModal(wTitle, wItems);
+        warnLogAdd(r.title, wItems);  // 실수로 닫아도 ⚠ 기록 칩에서 다시 봄
+        // ⚠ 탭 자체를 눌러도 그 글의 안내를 다시 띄운다(✕·↻ 버튼 제외).
+        r.el.style.cursor='pointer';
+        r.el.onclick=e=>{ if(e.target.closest('button'))return; warnModal(wTitle, wItems); };
         notify('임시저장 완료 — 확인 필요', warns.join('\n'));
       }else{
         tabSetState(r,'ok','✓'); cntEl.textContent=`${sec}초`;
