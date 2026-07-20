@@ -70,7 +70,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  h2.title{font-size:20px;margin:0 0 4px}
  .desc{color:var(--sub);font-size:13px;margin:0 0 20px}
  /* write layout */
- .grid{display:grid;grid-template-columns:minmax(360px,460px) 1fr;gap:22px;align-items:start}
+ .grid{display:grid;grid-template-columns:minmax(360px,460px) minmax(0,1fr);gap:22px;align-items:start}
  .card{background:#fff;border:1px solid var(--line);border-radius:var(--r-lg);padding:20px}
  .card h3{font-size:13px;margin:0 0 12px;color:#374151}
  label.f{display:block;font-size:12px;color:#6b7280;margin:14px 0 6px;font-weight:600}
@@ -290,7 +290,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pcell .num{position:absolute;top:4px;left:4px;background:var(--green);color:#fff;width:18px;height:18px;border-radius:50%;font-size:11px;display:none;align-items:center;justify-content:center;font-weight:700}
  .pcell.sel .num{display:flex}
  /* preview */
- .doc{background:#fff;border:1px solid var(--line);border-radius:16px;padding:30px 34px;min-height:300px}
+ .doc{background:#fff;border:1px solid var(--line);border-radius:16px;padding:30px 34px;min-height:300px;overflow-wrap:anywhere}
  /* 노출 순위 추적(설정 탭) */
  .rkadd{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
  .rkadd input{flex:1;min-width:150px}
