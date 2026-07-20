@@ -212,6 +212,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .dropzone:hover,.dropzone.drag{border-color:var(--green);background:#f3fcf6;color:var(--green-d)}
  .dropzone.compact{padding:8px 12px;font-size:12px}  /* 사진이 있으면 낮게 접어 분류 공간 확보 */
  .draftlist{border:1px solid #e3e7ec;border-radius:10px;margin-bottom:10px;max-height:220px;overflow:auto}
+ #draftload.on{background:var(--green-soft);border-color:var(--green);color:var(--green-d)}
  .draftlist .ditem{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #f0f2f5;cursor:pointer;font-size:13px}
  .draftlist .ditem:last-child{border-bottom:none}
  .draftlist .ditem:hover{background:#f3fcf6}
@@ -1199,6 +1200,14 @@ async function handleFiles(files){
 let DRAFTBUSY=false, DRAFTS=null;
 let DRAFTMULTI=false;            // '여러 글 선택' 모드
 const DRAFTSEL=new Set();        // 선택된 글 idx(문자열) 집합
+// 목록 펼침/접힘 + 📥 버튼 모양을 함께 토글 — 열려 있으면 '다시 누르면 접힌다'가 보이게.
+function setDraftListOpen(open){
+  $('#draftlist').style.display=open?'block':'none';
+  if(!open) $('#draftbatch').style.display='none';
+  const btn=$('#draftload');
+  btn.classList.toggle('on',open);
+  btn.textContent=open?'▲ 목록 접기':'📥 임시저장에서 불러오기';
+}
 // 캐시된 목록을 #draftlist에 렌더(데이터만; 표시 여부는 호출부에서 토글).
 function renderDraftList(){
   const list=$('#draftlist'); list.innerHTML='';
@@ -1240,9 +1249,9 @@ async function fetchDrafts(){
     const sec=el.stop();
     DRAFTS=d.drafts||[];
     $('#draftrefresh').style.display='inline-block';  // 한 번 조회하면 새로고침 버튼 노출
-    if(!DRAFTS.length){ stat.textContent=`임시저장된 글이 없어요. (${sec}초)`; list.style.display='none'; DRAFTBUSY=false; return; }
+    if(!DRAFTS.length){ stat.textContent=`임시저장된 글이 없어요. (${sec}초)`; setDraftListOpen(false); DRAFTBUSY=false; return; }
     stat.textContent=`${DRAFTS.length}건 (${sec}초) — 사진을 가져올 글을 선택하세요`;
-    renderDraftList(); list.style.display='block'; $('#draftmultiwrap').style.display='inline-flex';
+    renderDraftList(); setDraftListOpen(true); $('#draftmultiwrap').style.display='inline-flex';
   }catch(e){ el.stop(); stat.textContent='불러오기 실패'; toast('임시저장 목록을 못 불러왔어요 — '+e.message,'err'); }
   DRAFTBUSY=false;
 }
@@ -1250,9 +1259,9 @@ function setupDraftImport(){
   const btn=$('#draftload'); if(!btn) return;
   btn.onclick=async()=>{
     const list=$('#draftlist');
-    if(list.style.display==='block'){ list.style.display='none'; $('#draftbatch').style.display='none'; return; }  // 펼쳐져 있으면 접기
+    if(list.style.display==='block'){ setDraftListOpen(false); return; }  // 펼쳐져 있으면 접기
     if(DRAFTS!==null){  // 캐시가 있으면 재조회 없이 즉시 펼침(글 불러온 뒤에도 그대로 유지)
-      if(DRAFTS.length){ renderDraftList(); list.style.display='block'; $('#draftmultiwrap').style.display='inline-flex'; updateDraftBatchBtn(); }
+      if(DRAFTS.length){ renderDraftList(); setDraftListOpen(true); $('#draftmultiwrap').style.display='inline-flex'; }
       else { $('#draftstat').textContent='임시저장된 글이 없어요. (🔄로 새로고침)'; }
       return;
     }
@@ -1281,7 +1290,7 @@ async function importDraft(idx, title, date){
     PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
     renderGrid(); renderPmeta(); updatePhotoSummary();
     // 글을 고르면 목록을 자동으로 접는다(캐시는 유지 — 📥로 다시 펼치면 재조회 없이 바로 뜸).
-    $('#draftlist').style.display='none';
+    setDraftListOpen(false);
     const vidNote = nVid? ` · 영상 ${nVid}개(▶ 타일에 무슨 영상인지 꼭 캡션하세요)` : '';
     stat.textContent = paths.length? `사진 ${nImg}장${vidNote} 불러옴 (${sec}초) — 아래에서 분류하세요` : '가져올 미디어가 없는 글이에요';
     if(paths.length) toast(nVid? `사진 ${nImg}장·영상 ${nVid}개 불러왔어요 — 영상 캡션 잊지 마세요`:`${nImg}장 불러왔어요 (기존 사진 교체됨)`,'ok');
