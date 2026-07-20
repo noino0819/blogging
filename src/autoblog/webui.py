@@ -1372,6 +1372,13 @@ function fillStateFromMedia(s, media, title, date){
   }
   return paths;
 }
+// 손 안 댄 빈 '새 글' 탭인지 — 인박스 사진(서버 풀 자동 로드)은 작업으로 안 침.
+function wsIsBlank(s){
+  return !s.PLAN && !s.IMPORTED_DRAFT && !(s.SELP&&s.SELP.length)
+    && !((s.memo||'').trim()) && !((s.srcval||'').trim()) && !((s.keywords||'').trim()) && !((s.itext||'').trim())
+    && !((s.links||'').trim()) && !(s.prod||[]).some(v=>(v||'').trim())
+    && (s.previewClass||'').includes('empty');
+}
 // 배치 불러오기: 선택된 글을 각각 '새 탭'으로 연다. 네이버 접속은 서버 락이 하나씩 처리하므로,
 // N개를 한꺼번에 쏴도 세션 충돌 없이 순서대로 채워진다(끝난 탭부터 사진이 들어옴).
 async function batchImport(){
@@ -1380,7 +1387,9 @@ async function batchImport(){
   if(!picks.length) return;
   stashCur();  // 현재 탭 상태 보존
   // 선택 수만큼 '불러오는 중' 탭 생성(전환은 첫 탭만). 제목은 임시로 원본 글 제목.
-  const tabs=picks.map(dr=>{ const w=pushWS(blankWS()); w.status='importing';
+  // 단, 현재 탭이 손 안 댄 빈 '새 글'이면 첫 글은 새 탭 대신 그 탭에 담는다(빈 탭 안 남게).
+  const cur=findWS(CURWS);
+  const tabs=picks.map((dr,i)=>{ const w=(i===0&&cur&&wsIsBlank(cur.state))?cur:pushWS(blankWS()); w.status='importing';
     w.state.IMPORTED_DRAFT={title:(dr.title||''), date:(dr.date||'')}; return {w,dr}; });
   CURWS=tabs[0].w.id; applyWS(tabs[0].w.state); renderTabs();
   closePhotoModal(); DRAFTSEL.clear(); updateDraftBatchBtn();
