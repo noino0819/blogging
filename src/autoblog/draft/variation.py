@@ -31,6 +31,10 @@ _LIST_KEYS = (
     "checklist_heading",
     "summary_connector",
     "pick_transition",
+    "title_format",
+    "title_hook",
+    "concept_tone",
+    "intro_opener",
 )
 
 # 카테고리 → (표시 이름, 뽑는 개수 범위)
@@ -239,5 +243,27 @@ def build_variation_block(
                 f'- (여러 곳 소개 글일 때) PICK 리스트 전환 멘트: "{rng.choice(transitions)}" '
                 "느낌으로 — 그대로 베끼지 말고 상황에 맞게 바꿔 써."
             )
+
+    # 제목·첫 문장 변주(모든 어투 유지 — 유사문서/도배 방지). 프롬프트는 "형식을 글마다 바꿔"라고만
+    # 해서 모델이 매번 같은 패턴("[키워드]…후기")으로 굳는다. 여기서 이번 글의 형식을 하나로 못박아
+    # 강제한다(대표 키워드를 앞 25자에 그대로 넣는 원칙은 형식과 무관하게 유지).
+    title_formats = pool.get("title_format") or []
+    if title_formats:
+        lines.append(f"- 검색 제목 형식: 이번 글은 {rng.choice(title_formats)} 형식으로만 써.")
+    title_hooks = pool.get("title_hook") or []
+    if title_hooks:
+        lines.append(
+            f"- 제목 훅: 이번 글은 {rng.choice(title_hooks)} 훅 하나를 넣어"
+            " — 본문에 실제로 나오는 사실만, 과장·어그로 단어 금지."
+        )
+    concept_tones = pool.get("concept_tone") or []
+    if concept_tones:
+        lines.append(f"- 대제목(콘셉트 한 줄) 톤: 이번 글은 {rng.choice(concept_tones)}으로.")
+    openers = pool.get("intro_opener") or []
+    if openers:
+        lines.append(
+            f"- 인트로 첫 문장: {rng.choice(openers)}"
+            " — 매 글 똑같은 인사말로 시작하지 마."
+        )
 
     return "\n".join(lines)
