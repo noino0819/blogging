@@ -91,7 +91,7 @@ def find_rank(items: list[dict], url: str) -> int | None:
     return None
 
 
-def _search_blog(keyword: str) -> list[dict]:
+def _search_blog_full(keyword: str) -> dict:
     env = load_env()
     if not env.has_naver_api:
         raise RuntimeError("검색 API 키 미설정 (.env의 NAVER_CLIENT_ID/SECRET)")
@@ -105,7 +105,47 @@ def _search_blog(keyword: str) -> list[dict]:
         timeout=10,
     )
     resp.raise_for_status()
-    return resp.json().get("items", [])
+    return resp.json()
+
+
+def _search_blog(keyword: str) -> list[dict]:
+    return _search_blog_full(keyword).get("items", [])
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def keyword_competition(keyword: str) -> dict:
+    """발행 전 키워드 경쟁 가늠 — 블로그 문서수(경쟁량) + 현재 상위결과 + 내 글 순위.
+
+    검색광고 API가 없어 '검색량'은 못 주고, 대신 openapi 블로그 검색으로
+    '이미 쓰인 문서 수'(경쟁강도의 대리 지표)와 상위 결과 면면을 보여준다.
+    공식 저경쟁 임계값은 존재하지 않으므로(리서치 검증), total은 참고용 상대 신호이고
+    실제 판단은 top(상위 블로그가 대형매체·최적화 블로그로 꽉 찼는지)과 mine(내 글이
+    이미 top100에 드는지)으로 눈으로 한다.
+    """
+    keyword = (keyword or "").strip()
+    if not keyword:
+        raise ValueError("키워드가 비어 있어요")
+    data = _search_blog_full(keyword)
+    items = data.get("items", [])
+    blog_id = (load_env().naver_blog_id or "").strip().lower()
+    mine = None
+    if blog_id:
+        for i, it in enumerate(items, 1):
+            link = (it.get("link", "") + " " + it.get("bloggerlink", "")).lower()
+            if f"blog.naver.com/{blog_id}" in link or f"/{blog_id}" in link:
+                mine = i
+                break
+    top = [
+        {
+            "title": _TAG_RE.sub("", it.get("title", "")).replace("&amp;", "&").strip(),
+            "blogger": it.get("bloggername", ""),
+            "link": it.get("link", ""),
+        }
+        for it in items[:5]
+    ]
+    return {"keyword": keyword, "total": data.get("total", 0), "mine": mine, "top": top}
 
 
 def check_all() -> list[dict]:

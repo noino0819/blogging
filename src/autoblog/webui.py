@@ -301,6 +301,16 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .rkurl{color:var(--green);text-decoration:none}
  .rkdel{cursor:pointer;color:#b0b8c1;padding:0 4px}
  .rkdel:hover{color:#c0392b}
+ /* 키워드 경쟁 확인 */
+ .kwchk{display:flex;gap:6px}
+ .kwchk input{flex:1;min-width:0}
+ .kwverdict{font-size:14px;font-weight:700;margin:10px 0 2px}
+ .kwmeta{font-size:12.5px;color:var(--sub);margin-bottom:8px}
+ .kwtop{font-size:12.5px;padding:5px 2px;border-top:1px solid var(--line);display:flex;gap:8px}
+ .kwtop .n{color:#b0b8c1;min-width:16px}
+ .kwtop .bl{color:var(--sub);flex:0 0 auto;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .kwtop .ti{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .kwtop.me{background:#eefaf3;font-weight:600}
  /* 자동 체크(노출 기본기·가이드라인 대조) — 미리보기 맨 위 */
  .ckok{font-size:12px;color:#0a8a4a;background:#eefaf3;border:1px solid #bfe8d2;border-radius:8px;padding:6px 10px;margin-bottom:14px}
  .ckbad{font-size:12px;color:#8a4a0a;background:#fdf6ec;border:1px solid #f0ddc0;border-radius:8px;padding:8px 10px;margin-bottom:14px}
@@ -891,6 +901,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <p class=desc>글쓰기 규칙과 임시저장 동작을 관리합니다.</p>
     <div class=card><h3>글쓰기 규칙 <span class=muted style="font-weight:400">— 초안 생성 때 켠 것만 반영돼요</span></h3><div id=rules></div></div>
     <div class=card style="margin-top:16px"><h3>임시저장</h3><div id=draftset></div><div id=cleanimp></div><div id=savedebug></div></div>
+    <div class=card style="margin-top:16px"><h3>키워드 경쟁 확인 <span class=muted style="font-weight:400">— 발행 전에 이 키워드로 노출 가능성이 있는지 가늠해요</span></h3>
+      <div class=kwchk>
+        <input id=kwq placeholder="예: 회현역 카페 주차" autocomplete=off>
+        <button class=btn id=kwbtn>확인</button>
+      </div>
+      <div id=kwres><div class=muted style="margin-top:8px">키워드를 넣으면 <b>이미 쓰인 블로그 글 수(경쟁)</b>·<b>현재 상위 글</b>·<b>내 글 순위</b>를 보여줘요. 문서 수가 적고 상위가 대형 블로그로 꽉 차 있지 않을수록 노려볼 만해요. (검색량은 별도 API가 필요해 빠져 있어요 — 경쟁 정도로 판단)</div></div>
+    </div>
     <div class=card style="margin-top:16px"><h3>노출 순위 추적 <span class=muted style="font-weight:400">— 블로그 검색 상위 100위(정확도순 근사) 실측</span></h3><div id=ranktrk><div class=muted>불러오는 중…</div></div></div>
   </section>
 </main>
@@ -1124,8 +1141,41 @@ $$('.nav').forEach(n=>n.onclick=()=>{
   $$('.view').forEach(v=>v.classList.remove('on')); $('.view.'+n.dataset.view).classList.add('on');
   if(n.dataset.view==='stickers') loadStickers();
   if(n.dataset.view==='persona') loadPersonas();
-  if(n.dataset.view==='settings') loadRanks();
+  if(n.dataset.view==='settings'){ loadRanks(); bindKwCheck(); }
 });
+// 키워드 경쟁 확인 — 발행 전에 '노려볼 만한 키워드인지' 가늠(설정 탭)
+function bindKwCheck(){
+  const btn=$('#kwbtn'), inp=$('#kwq'); if(!btn||!inp)return;
+  const run=async()=>{
+    const q=inp.value.trim(); if(!q){toast('키워드를 입력하세요','info');return;}
+    const res=$('#kwres'); res.innerHTML='<div class=muted style="margin-top:8px">확인 중…</div>';
+    try{
+      const r=await fetch('/api/keyword-check?q='+encodeURIComponent(q));
+      const d=await r.json();
+      if(!r.ok){ res.innerHTML=`<div class=ckbad style="margin-top:8px">${esc(d.error||'확인 실패')}</div>`; return; }
+      renderKwCheck(d);
+    }catch(e){ res.innerHTML=`<div class=ckbad style="margin-top:8px">확인 실패 — ${esc(e.message)}</div>`; }
+  };
+  btn.onclick=run;
+  inp.onkeydown=e=>{ if(e.key==='Enter')run(); };
+}
+// 문서수는 절대 기준이 아니라 상대 신호 — 대략의 밴드만 보여주고 판단은 상위결과로.
+function renderKwCheck(d){
+  const res=$('#kwres'); const n=d.total||0;
+  let band, color;
+  if(n<1000){ band='경쟁 적음 — 노려볼 만해요'; color='#0a8a4a'; }
+  else if(n<20000){ band='경쟁 보통 — 상위 글이 대형 블로그로 꽉 찼는지 보고 판단'; color='#8a6a0a'; }
+  else{ band='경쟁 치열 — 지금 체급으론 묻히기 쉬워요'; color='#c0392b'; }
+  const mine = d.mine ? `<b style="color:#0a8a4a">내 글이 이미 ${d.mine}위</b>` : '내 글은 상위 100위 밖';
+  let html=`<div class=kwverdict style="color:${color}">${esc(band)}</div>`
+    +`<div class=kwmeta>이미 쓰인 블로그 글 <b>${n.toLocaleString()}개</b> · ${mine} <span class=muted>(문서 수는 절대 기준이 아니라 상대 신호예요)</span></div>`;
+  (d.top||[]).forEach((t,i)=>{
+    const me = d.mine===i+1 ? ' me' : '';
+    html+=`<div class="kwtop${me}"><span class=n>${i+1}</span><span class=bl>${esc(t.blogger||'')}</span>`
+      +`<a class=ti href="${esc(t.link)}" target=_blank rel=noopener style="color:inherit;text-decoration:none">${esc(t.title||'')}</a></div>`;
+  });
+  res.innerHTML=html;
+}
 // 노출 순위 추적 — 등록한 (키워드, 글)의 블로그 검색 순위를 실측(설정 탭)
 async function loadRanks(){
   const box=$('#ranktrk'); if(!box)return;
@@ -3143,6 +3193,16 @@ def _make_handler(state: dict):
                 from autoblog.rank import list_entries
 
                 self._send(200, json.dumps({"rows": list_entries()}, ensure_ascii=False).encode())
+            elif u.path == "/api/keyword-check":
+                from autoblog.rank import keyword_competition
+
+                q = parse_qs(u.query).get("q", [""])[0]
+                try:
+                    self._send(200, json.dumps(
+                        keyword_competition(q), ensure_ascii=False
+                    ).encode())
+                except Exception as exc:  # noqa: BLE001 — 키 미설정·네트워크 등 안내로 전달
+                    self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode())
             else:
                 self._send(404, b"not found", "text/plain")
 
