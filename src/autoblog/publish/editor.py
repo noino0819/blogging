@@ -300,6 +300,11 @@ class BlogPublisher:
         self._heal_alignment(plan, warnings)
         # 대표사진 지정은 반드시 '맨 마지막' — 사진 조작이 더 남아 있으면 플래그가 또 옮겨간다.
         self._set_rep_photo(plan, warnings)
+        if reserve_at is not None:
+            # 예약 발행 = 발행이므로 임시저장/정리 팝업(딤 레이어)을 만들지 않고 바로 예약 발행한다
+            # — save_draft·prune의 목록 팝업이 발행 레이어 클릭을 가로채는 충돌을 피한다.
+            self._submit_reserved(reserve_at, category)
+            return warnings
         if save:
             # 임시저장에도 카테고리가 반영되도록, 발행 레이어에서 카테고리만 고르고 레이어를 닫는다.
             # (submit이면 아래 발행 분기에서 카테고리를 고르므로 중복 적용하지 않는다.)
@@ -324,10 +329,7 @@ class BlogPublisher:
                     )
                 except Exception:  # noqa: BLE001 - 정리 실패는 저장 결과에 영향 없음
                     pass
-        if reserve_at is not None:
-            # 예약 발행 — 예약 모드 확인 후에만 발행(fail-closed). 임시저장은 위에서 이미 됨.
-            self._submit_reserved(reserve_at, category)
-        elif submit:
+        if submit:
             if category:
                 self._open_publish_layer()
                 self.select_category(category)
@@ -2156,63 +2158,67 @@ class BlogPublisher:
     # ⚠️ 시간 피커 셀렉터가 라이브 미검증이라, 이 경로는 fail-closed로만 동작한다:
     # '예약' 모드가 확실히 켜진 걸 확인하지 못하면 발행을 아예 하지 않는다(즉시 발행 방지).
     def _reserve_is_selected(self) -> bool:
-        """발행 레이어에서 '예약' 발행시점이 실제로 선택됐는지 읽어 확인한다(가드용)."""
-        return bool(self._page.evaluate(r"""
-            () => {
-              const vis = el => el && el.offsetParent !== null;
-              // 라디오/버튼 중 '예약' 라벨이 선택 상태(checked/aria-checked/se-is-selected)인지.
-              const nodes = [...document.querySelectorAll('label, input[type=radio], button')];
-              for (const el of nodes) {
-                if (!vis(el)) continue;
-                const t = (el.innerText || el.getAttribute('aria-label') || '').trim();
-                if (!/예약/.test(t)) continue;
-                if (el.getAttribute('aria-checked') === 'true') return true;
-                if ((el.className || '').toString().includes('se-is-selected')) return true;
-                const forId = el.getAttribute('for');
-                const inp = forId ? document.getElementById(forId)
-                                  : el.querySelector('input[type=radio]');
-                if (inp && inp.checked) return true;
-                if (el.tagName === 'INPUT' && el.checked) return true;
-              }
-              return false;
-            }
-        """))
+        """'예약' 라디오가 실제로 checked인지 읽어 확인한다(fail-closed 가드용)."""
+        return bool(self._page.evaluate(
+            "(sel) => { const r = document.querySelector(sel); return !!(r && r.checked); }",
+            SMART_EDITOR["reserve_radio"],
+        ))
 
     def set_reserve_time(self, when) -> bool:
         """발행 레이어에서 '예약' 발행시점을 켜고 날짜/시간을 when(datetime)으로 설정.
 
-        반환값은 '예약 모드가 켜졌는지'다(_reserve_is_selected로 재확인). 날짜/시간 피커
-        셀렉터가 채워져 있으면 그 값도 설정하지만, 미채움(라이브 미검증)이면 예약 모드만
-        켜고 True를 돌려준다 — 정확한 시각 설정은 프로브로 셀렉터 확정 후 활성화한다.
-        레이어는 이미 열려 있다고 가정(호출부에서 _open_publish_layer)."""
-        # 1) '예약' 라디오 켜기 — 지정 셀렉터 우선, 없으면 텍스트로.
+        예약 라디오가 checked이고, 시/분 select가 원하는 값으로 '읽혀야' True를 돌려준다
+        (시각이 안 맞으면 False → 호출부가 발행을 중단 = fail-closed). 레이어는 이미
+        열려 있다고 가정(호출부에서 _open_publish_layer)."""
+        # 1) '예약' 라디오 켜기(라디오 직접 → 라벨 폴백).
+        radio = SMART_EDITOR["reserve_radio"]
         clicked = False
-        sel = SMART_EDITOR.get("reserve_radio")
-        for target in ([sel] if sel else []) + ['label:has-text("예약")', "text=예약"]:
+        for how in ("check", "click"):
             try:
-                self._page.click(target, timeout=2000)
+                getattr(self._page, how)(radio, timeout=3000)
                 clicked = True
                 break
             except Exception:
                 continue
         if not clicked:
-            return False
+            try:
+                self._page.click('label:has-text("예약")', timeout=2000)
+            except Exception:
+                return False
         self._page.wait_for_timeout(500)
-        # 2) 날짜/시간 — 셀렉터가 확정돼 있을 때만 설정(미확정이면 예약 모드만).
-        date_sel = SMART_EDITOR.get("reserve_date_input")
-        hour_sel = SMART_EDITOR.get("reserve_hour_select")
-        min_sel = SMART_EDITOR.get("reserve_minute_select")
+        if not self._reserve_is_selected():
+            return False
+        # 2) 날짜 — 오늘과 다를 때만 설정(형식 "YYYY. MM. DD"). 같으면 건드리지 않는다.
+        date_sel = SMART_EDITOR["reserve_date_input"]
+        want_date = when.strftime("%Y. %m. %d")
         try:
-            if date_sel:
-                self._page.fill(date_sel, when.strftime("%Y-%m-%d"))
-            if hour_sel:
-                self._page.select_option(hour_sel, when.strftime("%H"))
-            if min_sel:
-                # 네이버 예약은 보통 10분 단위 — 가장 가까운 하한으로 맞춤.
-                self._page.select_option(min_sel, f"{(when.minute // 10) * 10:02d}")
+            cur_date = (self._page.input_value(date_sel) or "").strip()
         except Exception:
-            pass  # 시간 설정 실패는 가드가 잡는다(예약 모드 확인 우선)
-        return self._reserve_is_selected()
+            cur_date = ""
+        if cur_date != want_date:
+            try:
+                self._page.fill(date_sel, want_date)
+                self._page.wait_for_timeout(300)
+            except Exception:
+                pass  # 실패해도 아래 시각 read-back이 최종 판정
+        # 3) 시/분 select — 옵션값은 "00"~"23" / 10분 단위 "00"~"50".
+        hour_sel = SMART_EDITOR["reserve_hour_select"]
+        min_sel = SMART_EDITOR["reserve_minute_select"]
+        want_hour = when.strftime("%H")
+        want_min = f"{(when.minute // 10) * 10:02d}"
+        try:
+            self._page.select_option(hour_sel, want_hour)
+            self._page.select_option(min_sel, want_min)
+            self._page.wait_for_timeout(200)
+        except Exception:
+            return False
+        # 4) read-back — 시/분이 원하는 값으로 실제 반영됐는지 확인(안 맞으면 발행 중단).
+        try:
+            got_hour = (self._page.input_value(hour_sel) or "").zfill(2)
+            got_min = (self._page.input_value(min_sel) or "").zfill(2)
+        except Exception:
+            return False
+        return got_hour == want_hour and got_min == want_min and self._reserve_is_selected()
 
     def _submit_reserved(self, when, category: str | None):
         """예약 발행 — 예약 모드 확인(fail-closed) 후에만 발행 버튼을 누른다.

@@ -28,21 +28,22 @@ def test_reserve_ready_reflects_selectors(monkeypatch):
     from autoblog.collect import selectors
     from autoblog.publish import editor
 
-    # 셀렉터가 비어 있으면(라이브 미검증) 예약 미준비.
-    assert editor.reserve_ready() is False
-    monkeypatch.setitem(selectors.SMART_EDITOR, "reserve_date_input", "input.d")
-    monkeypatch.setitem(selectors.SMART_EDITOR, "reserve_hour_select", "select.h")
-    monkeypatch.setitem(selectors.SMART_EDITOR, "reserve_minute_select", "select.m")
+    # 셀렉터가 채워져 있으면(라이브 검증 완료) 예약 준비됨.
     assert editor.reserve_ready() is True
+    # 하나라도 비면 미준비(fail-closed).
+    monkeypatch.setitem(selectors.SMART_EDITOR, "reserve_hour_select", "")
+    assert editor.reserve_ready() is False
 
 
-def test_submit_reserved_fails_closed_when_not_ready():
-    # 예약 셀렉터 미검증 상태에서 예약 발행을 시도하면, 페이지를 건드리기도 전에
-    # 예외를 던져 '즉시 발행' 사고를 막는다(_page 접근 없이 가드가 먼저 걸린다).
+def test_submit_reserved_fails_closed_when_not_ready(monkeypatch):
+    # 예약 셀렉터가 비면(미검증 상태 시뮬레이션) 페이지를 건드리기도 전에 예외를 던져
+    # '즉시 발행' 사고를 막는다(_page 접근 없이 가드가 먼저 걸린다).
     from datetime import datetime, timedelta
 
+    from autoblog.collect import selectors
     from autoblog.publish.editor import BlogPublisher
 
+    monkeypatch.setitem(selectors.SMART_EDITOR, "reserve_date_input", "")
     pub = BlogPublisher.__new__(BlogPublisher)  # __init__ 없이 — _page 미설정
     try:
         pub._submit_reserved(datetime.now() + timedelta(hours=1), None)
