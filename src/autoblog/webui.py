@@ -1288,7 +1288,12 @@ function renderGrid(){
   updatePhotoSummary();
 }
 async function loadPhotos(){
-  try{ const ps=await (await fetch('/api/photos')).json(); PHOTOS=ps.map(p=>p.path); renderGrid(); }catch(e){}
+  try{ const ps=await (await fetch('/api/photos')).json();
+    const pool=ps.map(p=>p.path);
+    // 서버 사진 풀(dev용 test/ 폴더)이 비어 있으면(=프로덕션 업로드 모델) 기존 업로드 사진을
+    // 절대 덮어쓰지 않는다. 이게 새로고침·새 탭 때 사진이 통째로 사라지던 원인이었다.
+    if(pool.length){ PHOTOS=pool; renderGrid(); }
+  }catch(e){}
 }
 function setupUpload(){const dz=$('#dropzone'), fi=$('#fileinput');
   dz.onclick=()=>fi.click(); fi.onchange=()=>handleFiles(fi.files);
@@ -1304,6 +1309,7 @@ async function handleFiles(files){
     }catch(e){}
   }
   renderGrid();
+  persistWS();  // 업로드 직후 저장 — 다시 올리기 아까운 작업이라 바로 남긴다
 }
 
 // 네이버 임시저장 글에서 사진 불러오기: 목록 조회 → 글 선택 → 본문 사진 다운로드 → PHOTOS에 추가
@@ -1822,6 +1828,34 @@ function renderTabs(){
 }
 // 현재 탭 상태를 저장해두는 헬퍼(전환·새탭·닫기 전에 호출).
 function stashCur(){ const c=findWS(CURWS); if(c) c.state=captureWS(); }
+
+// 탭 작업 상태를 localStorage에 저장/복원 — 새로고침·크래시·서버 재시작으로 사진·순서·분류가
+// 통째로 날아가던 문제를 막는다. 사진은 경로(작은 문자열)라 50장이어도 용량 문제 없음.
+// PMSEL(Set)만 배열로 직렬화(그 외 전역은 JSON 안전).
+const WS_KEY='autoblog_ws_v1';
+function serWS(w){ return {id:w.id, seq:w.seq, status:w.status,
+  state:{...w.state, PMSEL:[...(w.state.PMSEL||[])]}}; }
+function persistWS(){
+  try{
+    const c=findWS(CURWS); if(c) c.state=captureWS();   // 현재 탭의 라이브 상태 반영 후 저장
+    try{ localStorage.setItem(WS_KEY, JSON.stringify({CURWS, WS:WS.map(serWS)})); }
+    catch(e){ // 용량 초과 시 미리보기 HTML만 빼고 재시도(사진·순서·분류는 보존)
+      localStorage.setItem(WS_KEY, JSON.stringify({CURWS,
+        WS:WS.map(w=>{ const x=serWS(w); x.state.previewHTML=''; return x; })}));
+    }
+  }catch(e){}
+}
+function restoreWS(){
+  try{
+    const raw=localStorage.getItem(WS_KEY); if(!raw) return false;
+    const d=JSON.parse(raw); if(!d||!Array.isArray(d.WS)||!d.WS.length) return false;
+    WS=d.WS.map(w=>({id:w.id, seq:w.seq||0, status:w.status||'edit', state:w.state}));
+    WSSEQ=Math.max(0, ...WS.map(w=>w.seq||0));
+    CURWS=(d.CURWS && findWS(d.CURWS)) ? d.CURWS : WS[0].id;
+    applyWS(findWS(CURWS).state); renderTabs();
+    return true;
+  }catch(e){ return false; }
+}
 function switchWS(id){
   if(id===CURWS) return;
   const t=findWS(id); if(!t) return;
@@ -3054,7 +3088,11 @@ document.addEventListener('keydown',e=>{
 });
 // 메모를 치는 대로 현재 탭 제목이 갱신되게(초안 생성 전에도 어느 탭인지 알아보게).
 { const mo=$('#memo'); if(mo) mo.addEventListener('input', ()=>renderTabs()); }
-initWorkspaces();  // 초기 탭 1개 생성(맨 마지막: 위 초기화가 끝난 화면 상태를 캡처)
+// 저장된 탭 작업이 있으면 복원(새로고침·크래시 후 사진·순서·분류 유지), 없으면 새 탭 1개.
+if(!restoreWS()) initWorkspaces();
+// 자동 저장: 종료/새로고침 직전 + 10초마다(크래시·서버 재시작 대비).
+window.addEventListener('beforeunload', persistWS);
+setInterval(persistWS, 10000);
 </script></body></html>"""
 
 
