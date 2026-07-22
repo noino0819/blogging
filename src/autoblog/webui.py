@@ -117,6 +117,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .kwchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
  .kwchip b{font-weight:400;opacity:.5;cursor:pointer;padding:0 5px;font-size:13px;user-select:none}
  .kwchip b:hover{opacity:1;color:#c0392b}
+ /* 키워드 노출 판정 — 칩 색으로 '노려볼 만한 키워드인지' 바로 표시 */
+ .kwchip.jmid{background:#fdf6ec;border-color:#f0ddc0;color:#8a6a0a}
+ .kwchip.jbad{background:#fdeeee;border-color:#eec2c2;color:#b03a3a}
+ .kwchip.jwait{background:#f2f3f5;border-color:#e2e5ea;color:#8b93a0}
+ .kwchip .jbadge{font-size:11px;margin-right:3px;flex:0 0 auto}
+ .kwlegend{font-size:11.5px;color:var(--sub);margin-top:5px}
  .seg{display:flex;gap:6px}
  .seg button{flex:1;padding:9px;font-size:12px;background:#fff;color:#6b7280;border:1px solid #d6dade;border-radius:9px;cursor:pointer;font-weight:600}
  .seg button.on{background:#eafaf0;color:var(--green-d);border-color:var(--green)}
@@ -723,6 +729,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <div class=kwbox id=kwbox>
             <input type=text id=keywords placeholder="예: 강남맛집 (엔터로 추가)">
           </div>
+          <div class=kwlegend>키워드를 넣으면 노출 가능성을 바로 재요 — <b style="color:var(--green-d)">✅ 노려볼 만</b> · <b style="color:#8a6a0a">△ 애매</b> · <b style="color:#b03a3a">❌ 경쟁 과다</b> <span class=muted>(칩에 마우스 올리면 문서 수)</span></div>
           <div class=muted id=kwnote style="display:none;margin-top:4px;color:#2563eb;line-height:1.4"></div>
           <details class=moreopts id=moreopts>
             <summary><span class=chev>▶</span>세부 옵션 — 문체 톤 · 최소 글자 수</summary>
@@ -1410,12 +1417,38 @@ async function importDraft(idx, title, date){
 // KW가 확정된 키워드 배열. 탭 스냅샷·서버 전송은 기존과 같은 '쉼표 문자열'(kwGet/kwSet)로
 // 오가므로 서버 파싱·배경 탭 상태(fillStateFromMedia) 등 문자열 흐름과 그대로 호환된다.
 let KW=[];
+// 키워드별 노출 판정 캐시(소문자 키 → {cls,badge,tip}). 칩을 넣는 순간 /api/keyword-check로
+// 경쟁강도(문서수)를 재서, 지금 체급으로 '노려볼 만한 키워드인지'를 칩 색으로 바로 보여준다.
+const KWJUDGE={};
+function classifyKw(d){
+  const n=d.total||0;
+  const mine = d.mine ? ` · 내 글 ${d.mine}위` : '';
+  const docs = `문서 ${n.toLocaleString()}개`;
+  if(n<1000)  return {cls:'',     badge:'✅', tip:`노려볼 만해요 · ${docs}${mine}`};
+  if(n<20000) return {cls:'jmid', badge:'△',  tip:`애매 — 상위 글이 대형 블로그로 꽉 찼는지 보고 판단 · ${docs}${mine}`};
+  return              {cls:'jbad', badge:'❌', tip:`경쟁 과다 — 지금 체급엔 묻히기 쉬워요 · ${docs}${mine}`};
+}
+async function judgeKeyword(kw){
+  const key=kw.toLowerCase();
+  if(KWJUDGE[key]) return;                       // 캐시 — 재조회 안 함
+  KWJUDGE[key]={cls:'jwait',badge:'⏳',tip:'노출 가능성 확인 중…'}; kwRender();
+  try{
+    const r=await fetch('/api/keyword-check?q='+encodeURIComponent(kw));
+    const d=await r.json();
+    KWJUDGE[key]= r.ok ? classifyKw(d)
+                       : {cls:'',badge:'',tip:d.error||'확인 실패(키 설정 확인)'};
+  }catch(e){ KWJUDGE[key]={cls:'',badge:'',tip:'확인 실패'}; }
+  kwRender();
+}
 function kwHas(t){ return KW.some(k=>k.toLowerCase()===t.toLowerCase()); }
 function kwRender(){
   const box=$('#kwbox'), inp=$('#keywords'); if(!box||!inp) return;
   box.querySelectorAll('.kwchip').forEach(c=>c.remove());
   KW.forEach((k,i)=>{
-    const c=document.createElement('span'); c.className='kwchip';
+    const j=KWJUDGE[k.toLowerCase()];
+    const c=document.createElement('span'); c.className='kwchip'+(j&&j.cls?(' '+j.cls):'');
+    if(j&&j.tip) c.title=j.tip;
+    if(j&&j.badge){ const bd=document.createElement('span'); bd.className='jbadge'; bd.textContent=j.badge; c.append(bd); }
     const tx=document.createElement('span'); tx.textContent=k;
     const x=document.createElement('b'); x.textContent='×'; x.title='이 키워드 빼기';
     // mousedown: 입력칸 blur(=커밋·재렌더)보다 먼저 지워지도록
@@ -1424,7 +1457,7 @@ function kwRender(){
   });
   inp.placeholder=KW.length?'':'예: 강남맛집 (엔터로 추가)';
 }
-function kwAddMany(parts){ let n=0; parts.forEach(p=>{ p=(p||'').trim(); if(p&&!kwHas(p)){KW.push(p);n++;} }); if(n)kwRender(); return n; }
+function kwAddMany(parts){ let n=0; parts.forEach(p=>{ p=(p||'').trim(); if(p&&!kwHas(p)){KW.push(p);n++;judgeKeyword(p);} }); if(n)kwRender(); return n; }
 // 입력칸에 쓰다 만 텍스트를 칩으로 확정(쉼표 기준 — 띄어쓰기 포함 키워드는 통째로 유지)
 function kwCommit(){ const inp=$('#keywords'); if(!inp)return; const v=inp.value; inp.value=''; if(v.trim()) kwAddMany(v.split(',')); }
 // 직렬화: 칩 + 아직 확정 안 한 입력 중 텍스트까지 합쳐 쉼표 문자열로
