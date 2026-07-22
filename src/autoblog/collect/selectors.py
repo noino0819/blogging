@@ -67,6 +67,13 @@ SMART_EDITOR = {
     "publish_button": 'button[data-click-area="tpb.publish"]',  # 발행(설정 레이어 열기)
     "publish_confirm": 'button[data-click-area="tpb*i.publish"]',  # 레이어 내 최종 발행
     "category_button": 'button[data-click-area="tpb*i.category"]',  # 카테고리 선택 열기
+    # 예약 발행(발행시점) — ⚠️ 라이브 미검증. scripts/probe_reserve_ui.py 로 실제 셀렉터를
+    # 캡처해 채운 뒤 editor.set_reserve_time 을 확정한다. 미검증 상태에선 예약 경로가
+    # fail-closed(예약 확인 실패 시 발행 자체를 중단 — 즉시 발행 방지)로만 동작한다.
+    "reserve_radio": "",  # '예약' 라디오(예: label[for=...] 또는 input) — 프로브로 확정
+    "reserve_date_input": "",  # 날짜 입력/버튼 — 프로브로 확정
+    "reserve_hour_select": "",  # 시(hour) select/버튼 — 프로브로 확정
+    "reserve_minute_select": "",  # 분(minute) select/버튼 — 프로브로 확정
     # 서식 툴바 (글자색은 font-color 클래스)
     "toolbar_text_color": "button.se-font-color-toolbar-button",
     "toolbar_bg_color": "button.se-background-color-toolbar-button",

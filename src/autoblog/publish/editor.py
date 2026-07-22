@@ -236,10 +236,14 @@ class BlogPublisher:
         category: str | None = None,
         save: bool = True,
         submit: bool = False,
+        reserve_at=None,
         prune_same_title: bool = True,
         delete_imported: dict | None = None,
     ) -> list[str]:
         """게시 플랜을 에디터에 주입. 기본은 임시저장만, submit=True면 발행까지.
+
+        reserve_at(datetime)이 주어지면 그 시각으로 '예약 발행'한다(시간차 발행으로
+        연속 도배 방지). 예약 확인에 실패하면 발행하지 않고 예외를 던진다(즉시 발행 방지).
 
         category가 주어지면 발행 레이어에서 해당 카테고리를 선택한다(유저별 동적).
         prune_same_title=True면 임시저장 직후, 같은 제목의 이전 임시저장 글을 자동 정리한다
@@ -320,7 +324,10 @@ class BlogPublisher:
                     )
                 except Exception:  # noqa: BLE001 - 정리 실패는 저장 결과에 영향 없음
                     pass
-        if submit:
+        if reserve_at is not None:
+            # 예약 발행 — 예약 모드 확인 후에만 발행(fail-closed). 임시저장은 위에서 이미 됨.
+            self._submit_reserved(reserve_at, category)
+        elif submit:
             if category:
                 self._open_publish_layer()
                 self.select_category(category)
@@ -2145,6 +2152,93 @@ class BlogPublisher:
         except Exception:
             pass  # 발행 레이어 확인 버튼은 라이브에서 확정
 
+    # --- 예약 발행(발행시점) ---
+    # ⚠️ 시간 피커 셀렉터가 라이브 미검증이라, 이 경로는 fail-closed로만 동작한다:
+    # '예약' 모드가 확실히 켜진 걸 확인하지 못하면 발행을 아예 하지 않는다(즉시 발행 방지).
+    def _reserve_is_selected(self) -> bool:
+        """발행 레이어에서 '예약' 발행시점이 실제로 선택됐는지 읽어 확인한다(가드용)."""
+        return bool(self._page.evaluate(r"""
+            () => {
+              const vis = el => el && el.offsetParent !== null;
+              // 라디오/버튼 중 '예약' 라벨이 선택 상태(checked/aria-checked/se-is-selected)인지.
+              const nodes = [...document.querySelectorAll('label, input[type=radio], button')];
+              for (const el of nodes) {
+                if (!vis(el)) continue;
+                const t = (el.innerText || el.getAttribute('aria-label') || '').trim();
+                if (!/예약/.test(t)) continue;
+                if (el.getAttribute('aria-checked') === 'true') return true;
+                if ((el.className || '').toString().includes('se-is-selected')) return true;
+                const forId = el.getAttribute('for');
+                const inp = forId ? document.getElementById(forId)
+                                  : el.querySelector('input[type=radio]');
+                if (inp && inp.checked) return true;
+                if (el.tagName === 'INPUT' && el.checked) return true;
+              }
+              return false;
+            }
+        """))
+
+    def set_reserve_time(self, when) -> bool:
+        """발행 레이어에서 '예약' 발행시점을 켜고 날짜/시간을 when(datetime)으로 설정.
+
+        반환값은 '예약 모드가 켜졌는지'다(_reserve_is_selected로 재확인). 날짜/시간 피커
+        셀렉터가 채워져 있으면 그 값도 설정하지만, 미채움(라이브 미검증)이면 예약 모드만
+        켜고 True를 돌려준다 — 정확한 시각 설정은 프로브로 셀렉터 확정 후 활성화한다.
+        레이어는 이미 열려 있다고 가정(호출부에서 _open_publish_layer)."""
+        # 1) '예약' 라디오 켜기 — 지정 셀렉터 우선, 없으면 텍스트로.
+        clicked = False
+        sel = SMART_EDITOR.get("reserve_radio")
+        for target in ([sel] if sel else []) + ['label:has-text("예약")', "text=예약"]:
+            try:
+                self._page.click(target, timeout=2000)
+                clicked = True
+                break
+            except Exception:
+                continue
+        if not clicked:
+            return False
+        self._page.wait_for_timeout(500)
+        # 2) 날짜/시간 — 셀렉터가 확정돼 있을 때만 설정(미확정이면 예약 모드만).
+        date_sel = SMART_EDITOR.get("reserve_date_input")
+        hour_sel = SMART_EDITOR.get("reserve_hour_select")
+        min_sel = SMART_EDITOR.get("reserve_minute_select")
+        try:
+            if date_sel:
+                self._page.fill(date_sel, when.strftime("%Y-%m-%d"))
+            if hour_sel:
+                self._page.select_option(hour_sel, when.strftime("%H"))
+            if min_sel:
+                # 네이버 예약은 보통 10분 단위 — 가장 가까운 하한으로 맞춤.
+                self._page.select_option(min_sel, f"{(when.minute // 10) * 10:02d}")
+        except Exception:
+            pass  # 시간 설정 실패는 가드가 잡는다(예약 모드 확인 우선)
+        return self._reserve_is_selected()
+
+    def _submit_reserved(self, when, category: str | None):
+        """예약 발행 — 예약 모드 확인(fail-closed) 후에만 발행 버튼을 누른다.
+
+        예약 확인에 실패하면 발행하지 않고 예외를 던진다 — 시각 설정 실패가 즉시 발행으로
+        이어지는 사고를 막는다(사용자는 에디터에서 직접 예약하면 됨)."""
+        # 라이브 미검증 가드: 날짜/시간 셀렉터가 확정되지 않았으면 아예 발행하지 않는다.
+        # (예약 모드만 켜지고 시각이 안 잡힌 채 발행되는 사고를 원천 차단 — fail-closed)
+        if not reserve_ready():
+            raise RuntimeError(
+                "예약 발행이 아직 준비되지 않았어요 — 임시저장만 완료했어요. "
+                "예약 시간 피커 셀렉터를 확정(scripts/probe_reserve_ui.py)하기 전까지는 "
+                "네이버 에디터에서 직접 예약해 주세요."
+            )
+        self._open_publish_layer()
+        if category:
+            self.select_category(category)
+        if not self.set_reserve_time(when) or not self._reserve_is_selected():
+            self._page.keyboard.press("Escape")
+            raise RuntimeError(
+                "예약 설정을 확인하지 못해 발행을 중단했어요(즉시 발행 방지). "
+                "네이버 에디터에서 직접 예약 발행해 주세요 — 임시저장은 완료됐어요."
+            )
+        self._page.click(SMART_EDITOR["publish_confirm"], timeout=5000)
+        self._page.wait_for_timeout(1500)
+
     def close(self, save_session: bool = True):
         if self._ctx:
             if save_session and self.is_logged_in():
@@ -2163,3 +2257,10 @@ class BlogPublisher:
 def selectors_ready() -> bool:
     required = ("title_component", "content_component", "save_button", "publish_button")
     return all(SMART_EDITOR.get(k) for k in required)
+
+
+def reserve_ready() -> bool:
+    """예약 발행 셀렉터(날짜/시·분)가 라이브 검증돼 채워졌는지. 미채움이면 예약 경로는
+    fail-closed(발행 안 함) — scripts/probe_reserve_ui.py 로 확정 후 selectors.py에 채운다."""
+    return all(SMART_EDITOR.get(k) for k in
+               ("reserve_date_input", "reserve_hour_select", "reserve_minute_select"))

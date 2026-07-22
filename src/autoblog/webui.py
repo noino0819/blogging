@@ -98,6 +98,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pubbar .step{margin:0;flex:0 0 auto}
  .pubbar .catwrap{flex:1;min-width:0}
  .pubbar #save{width:auto;flex:0 0 auto;padding:11px 22px}
+ .pubbar .pubmode,.pubbar .reserveat{flex:0 0 auto;padding:9px 10px;border:1px solid var(--line);border-radius:var(--r-md);font-size:13px;background:#fff}
+ .reservehint{font-size:12.5px;color:var(--sub);margin:-6px 0 14px;padding:0 4px}
+ .reservehint.warn{color:#8a6a0a}
  /* 빈 미리보기 — 진행 안내 */
  .docguide{text-align:center;color:#b0b8c1}
  .docguide .dg-ic{font-size:38px;margin-bottom:12px}
@@ -767,8 +770,14 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
               <div class=muted id=catstat style="margin-top:6px"></div>
             </div>
           </div>
+          <select id=pubmode class=pubmode title="발행 방식 — 예약발행은 시간차를 둬 연속 도배를 막아요">
+            <option value=draft selected>임시저장만</option>
+            <option value=reserve>예약발행(시간차)</option>
+          </select>
+          <input type=datetime-local id=reserveat class=reserveat style="display:none">
           <button class=btn id=save disabled title="초안을 검토한 뒤 네이버 블로그에 임시저장">임시저장</button>
         </div>
+        <div id=reservehint class=reservehint style="display:none"></div>
         <div class="doc empty" id=preview><div class=docguide>
           <div class=dg-ic>✍️</div>
           <div class=dg-t>초안 미리보기가 여기에 나와요</div>
@@ -1111,6 +1120,8 @@ function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
 // 강조색·구분선/인용구·스티커는 항상 켜둠(즐겨찾기/설정이 없으면 자동으로 안 들어감) — 토글 UI 제거.
 const FMT={emphasis:true,structure:true,stickers:true,stickerAll:false,sponsored:false,sponsorSticker:'',hideDefault:true};
 let CATEGORY='';
+// 예약 발행 준비 여부(예약 시간피커 셀렉터가 라이브 검증돼 채워졌는지) — 서버가 주입.
+const RESERVE_READY = ("/*RESERVE_READY*/"==="true");
 const LINKS=()=>($('#links').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
 // 상품 링크 — 상품 리뷰에 꼭 넣을 링크. 카드로 한 번씩 삽입. 기본 1행 + [+ 링크 추가].
 function prodLinkRow(val){
@@ -2234,26 +2245,65 @@ function runSave(r, retryId){
 }
 // 한 건을 백그라운드로 게시. 지금 화면 상태와 무관하게 '누른 그 글'을 저장한다
 // (제목·카테고리·불러온 원본은 클릭 시점 값으로 고정해 넘긴다).
+// --- 발행 방식(임시저장만 / 예약발행) ---
+// 예약발행은 시간차를 둬 연속 도배를 막는다(네이버 네이티브 예약 사용). 기본 예약 시각은
+// '마지막 예약 + 2시간'(없으면 지금 + 1시간)으로 자동 벌려 준다 — 유저는 바꿔도 됨.
+function pad2(n){return String(n).padStart(2,'0');}
+function toLocalInput(d){return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;}
+function nextReserveDefault(){
+  const now=Date.now();
+  const last=parseInt(localStorage.getItem('lastReservedAt')||'0',10)||0;
+  let t=Math.max(now+60*60*1000, last+2*60*60*1000);  // 지금+1h 또는 마지막예약+2h 중 뒤
+  const d=new Date(t); d.setMinutes(Math.ceil(d.getMinutes()/10)*10,0,0);  // 10분 단위 올림
+  return d;
+}
+function pubModeChanged(){
+  const mode=$('#pubmode').value, at=$('#reserveat'), hint=$('#reservehint'), btn=$('#save');
+  if(mode==='reserve'){
+    at.style.display=''; hint.style.display='';
+    if(!at.value) at.value=toLocalInput(nextReserveDefault());
+    at.min=toLocalInput(new Date(Date.now()+5*60*1000));
+    btn.textContent='예약발행';
+    if(RESERVE_READY){ hint.className='reservehint'; hint.textContent='설정한 시각에 네이버가 발행해요. 글마다 시간을 벌리면 연속 도배를 막을 수 있어요.'; }
+    else{ hint.className='reservehint warn'; hint.textContent='⚠ 예약발행은 최초 1회 설정이 필요해요 — 지금 누르면 임시저장만 되고 예약은 건너뛰어요. (셋업 전까지는 임시저장 후 네이버에서 직접 예약)'; }
+  }else{
+    at.style.display='none'; hint.style.display='none'; btn.textContent='임시저장';
+  }
+}
+$('#pubmode').onchange=pubModeChanged;
 function fireSave(title, category){
   const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
            : ('s'+Date.now()+'-'+Math.round(Math.random()*1e6));
   // 불러온 글이면 그 글을 'in-place'로 갱신(원본 삭제 X, 사진 재업로드 X, 영상 보존).
   // 일반 새 글이면 importedDraft 없음 → 기존 방식(새 글 저장). 값은 지금 시점으로 고정.
   const inplace=!!IMPORTED_DRAFT, inplaceDraft=IMPORTED_DRAFT;
-  const r=SAVES[id]={id,title,el:makeSaveTab(id,title),timer:null,serverId:null,
-    body:{category,inplace,inplaceDraft,draftId:CURWS}};  // draftId=지금 탭 → 서버가 '그 탭 글'을 저장
+  // 예약발행이면 예약 시각(로컬 naive)을 실어 보낸다. 예약은 in-place가 아닌 새 글에만.
+  let reserveAt=null;
+  if($('#pubmode').value==='reserve' && !inplace){
+    reserveAt=($('#reserveat').value||'').trim()||null;
+    if(reserveAt) localStorage.setItem('lastReservedAt', String(new Date(reserveAt).getTime()));
+  }
+  const r=SAVES[id]={id,title,el:makeSaveTab(id,title),timer:null,serverId:null,reserved:!!reserveAt,
+    body:{category,inplace,inplaceDraft,draftId:CURWS,reserveAt}};  // draftId=지금 탭 → 서버가 '그 탭 글'을 저장
   runSave(r, null);
 }
 $('#save').onclick=()=>{
   if(!PLAN)return;
   ensureNotify();  // 유저 클릭(제스처) 시점에 알림 권한 요청 — 자리 비워도 결과 알림 받게
   const title=PLAN.title||'제목 없음';
+  const reserve=$('#pubmode').value==='reserve' && !IMPORTED_DRAFT;
+  if(reserve){
+    const v=($('#reserveat').value||'').trim();
+    if(!v){ toast('예약 시각을 선택하세요','info'); return; }
+    if(new Date(v).getTime() <= Date.now()){ toast('예약 시각은 미래여야 해요','info'); return; }
+  }
   // 1) 저장을 즉시 백그라운드 대기열로 보낸다(기다리지 않음).
   fireSave(title, CATEGORY);
   // 2) 같은 글 중복 저장 방지 — 다음 [초안 생성]/[받아온 글]에서 다시 활성화된다.
   $('#save').disabled=true;
   // 3) 바로 "새 글 쓸까요?" 확인 — 확인하면 새 탭을 연다(이 글 탭은 그대로 남음).
-  confirmModal('임시저장을 시작했어요',
+  const startMsg=reserve?'예약발행을 시작했어요':'임시저장을 시작했어요';
+  confirmModal(startMsg,
     '저장은 뒤에서 진행돼요. 새 글을 작성할까요?<br><span style="color:var(--sub)">새 탭이 열려요 · 이 글 탭은 그대로 남습니다.</span>',
     '새 글 작성', '이 글 유지', doNewPost, null, '📝');
 };
@@ -3120,7 +3170,10 @@ def _make_handler(state: dict):
             u = urlparse(self.path)
             q = parse_qs(u.query)
             if u.path == "/":
+                from autoblog.publish.editor import reserve_ready
+
                 html = _PAGE.replace("/*FONTFACES*/", _font_face_css())
+                html = html.replace("/*RESERVE_READY*/", "true" if reserve_ready() else "false")
                 self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
             elif u.path == "/font":
                 name = Path(q.get("name", [""])[0]).name  # 경로 차단
@@ -3743,6 +3796,7 @@ def _make_handler(state: dict):
                 prune = snap["prune"]
                 imported = snap["imported"]
                 inplace_draft = snap["inplace_draft"]
+                reserve_at = snap.get("reserve_at")
             else:
                 # 게시할 플랜은 '요청이 들어온 시점'의 초안으로 고정한다(락 대기 전에 스냅샷).
                 # 유저가 저장을 누른 뒤 곧바로 새 글을 써서 state["last"]가 바뀌어도,
@@ -3766,11 +3820,31 @@ def _make_handler(state: dict):
                 inplace_draft = body.get("inplaceDraft") if body.get("inplace") else None
                 if not isinstance(inplace_draft, dict) or not (inplace_draft.get("title") or "").strip():
                     inplace_draft = None
+                # 예약 발행 시각(로컬 naive, 예: "2026-07-22T15:30"). 새 글에만 적용(in-place 제외).
+                # 파싱 실패·과거 시각이면 400. 예약 경로는 editor에서 fail-closed(미준비면 발행 안 함).
+                reserve_at = None
+                reserve_raw = (body.get("reserveAt") or "").strip()
+                if reserve_raw and not inplace_draft:
+                    from datetime import datetime as _dt
+
+                    try:
+                        reserve_at = _dt.fromisoformat(reserve_raw)
+                    except ValueError:
+                        self._send(400, json.dumps(
+                            {"error": "예약 시각 형식이 올바르지 않아요"}, ensure_ascii=False
+                        ).encode())
+                        return
+                    if reserve_at <= _dt.now():
+                        self._send(400, json.dumps(
+                            {"error": "예약 시각은 미래여야 해요"}, ensure_ascii=False
+                        ).encode())
+                        return
                 # 이 글의 저장 옵션·플랜을 작업id로 스냅샷해 둔다 — 실패 시 재시도(retryJob)가 참조한다.
                 job_id = _uuid.uuid4().hex[:12]
                 jobs[job_id] = {
                     "result": result, "category": category, "prune": prune,
                     "imported": imported, "inplace_draft": inplace_draft,
+                    "reserve_at": reserve_at,
                 }
 
             prefs = _load_prefs()
@@ -3811,6 +3885,7 @@ def _make_handler(state: dict):
                                 category=category,
                                 save=True,
                                 submit=False,
+                                reserve_at=reserve_at,
                                 prune_same_title=prune,
                                 delete_imported=imported,
                             )
