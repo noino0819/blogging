@@ -508,16 +508,20 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .logsum{cursor:pointer;font-size:12px;font-weight:600;padding:6px 0;color:#4b5563}
  /* 도움말 툴팁(ⓘ) — 긴 설명을 마우스 오버로 */
  .hint{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
-   background:#dfe3e8;color:#fff;font-size:10px;font-weight:800;cursor:help;position:relative;vertical-align:middle;margin-left:4px;font-style:normal}
- .hint:hover{background:var(--green)}
+   background:#dfe3e8;color:#fff;font-size:10px;font-weight:800;cursor:help;position:relative;vertical-align:middle;margin-left:4px;font-style:normal;transition:background .12s,transform .12s}
+ .hint:hover{background:var(--green);transform:translateY(-1px)}
  /* 툴팁 박스는 ⓘ 왼쪽 기준으로 오른쪽으로 펼침 — 가운데 정렬이면 왼쪽 라벨에서 main overflow에 잘려 사이드바에 가려진다 */
+ /* 뜰 때 아래에서 살짝 떠올라(translateY) '올라오는' 느낌 — 그림자도 진하게 해 위로 뜬 카드처럼 */
  .hint::after{content:attr(data-tip);position:absolute;left:-10px;bottom:calc(100% + 8px);
    background:#1f2329;color:#fff;font-size:12px;font-weight:500;line-height:1.5;padding:9px 12px;border-radius:9px;
-   width:max-content;max-width:260px;white-space:normal;text-align:left;box-shadow:0 6px 22px rgba(0,0,0,.22);
-   opacity:0;visibility:hidden;transition:.12s;z-index:50;pointer-events:none}
- .hint::before{content:"";position:absolute;left:50%;bottom:calc(100% + 2px);transform:translateX(-50%);
-   border:6px solid transparent;border-top-color:#1f2329;opacity:0;visibility:hidden;transition:.12s;z-index:50}
- .hint:hover::after,.hint:hover::before{opacity:1;visibility:visible}
+   width:max-content;max-width:260px;white-space:normal;text-align:left;box-shadow:0 12px 30px rgba(0,0,0,.30);
+   opacity:0;visibility:hidden;transform:translateY(8px) scale(.96);transform-origin:left bottom;
+   transition:opacity .16s ease,transform .22s cubic-bezier(.2,.85,.25,1.15),visibility .22s;z-index:50;pointer-events:none}
+ .hint::before{content:"";position:absolute;left:50%;bottom:calc(100% + 2px);transform:translateX(-50%) translateY(8px);
+   border:6px solid transparent;border-top-color:#1f2329;opacity:0;visibility:hidden;
+   transition:opacity .16s ease,transform .22s cubic-bezier(.2,.85,.25,1.15),visibility .22s;z-index:50}
+ .hint:hover::after{opacity:1;visibility:visible;transform:translateY(0) scale(1)}
+ .hint:hover::before{opacity:1;visibility:visible;transform:translateX(-50%) translateY(0)}
  /* 협찬 섹션 — 토글 켤 때만 스티커 픽커·링크 펼침 */
  .togrow{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;
    padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fbfcfd}
