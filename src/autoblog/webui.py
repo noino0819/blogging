@@ -39,7 +39,7 @@ def _font_face_css() -> str:
 
 _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>블로그 자동작성</title><style>
+<title>글쓰기</title><style>
  /*FONTFACES*/
  :root{
    --green:#03c75a;--green-d:#02b350;--green-soft:#eafaf0;
@@ -687,7 +687,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 </div></div>
 <div id=alerthost></div>
 <aside class=side>
-  <div class=brand><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 블로그 자동작성</div>
+  <div class=brand><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 글쓰기</div>
   <div class="nav on" data-view=write><svg class=ic viewBox="0 0 24 24"><use href="#i-write"/></svg> 글쓰기</div>
   <div class=nav data-view=stickers><svg class=ic viewBox="0 0 24 24"><use href="#i-sticker"/></svg> 스티커</div>
   <div class=nav data-view=format><svg class=ic viewBox="0 0 24 24"><use href="#i-format"/></svg> 서식</div>
