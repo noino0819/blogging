@@ -17,6 +17,7 @@ import requests
 from autoblog.config import DATA_DIR, load_env
 
 _BLOG_SEARCH_URL = "https://openapi.naver.com/v1/search/blog.json"
+_AUTOCOMPLETE_URL = "https://ac.search.naver.com/nx/ac"  # 자동완성=연관검색어, 키 불필요
 _RANKS_PATH = DATA_DIR / "ranks.json"
 # 게시글 URL → (blogId, logNo). 데스크톱/모바일/PostView 형식 모두 수용.
 _POST_RE = re.compile(
@@ -146,6 +147,62 @@ def keyword_competition(keyword: str) -> dict:
         for it in items[:5]
     ]
     return {"keyword": keyword, "total": data.get("total", 0), "mine": mine, "top": top}
+
+
+def _related_terms(keyword: str) -> list[str]:
+    """네이버 자동완성(=연관검색어) — 검색창에 뜨는 추천어. 공개 엔드포인트라 키 불필요."""
+    resp = requests.get(
+        _AUTOCOMPLETE_URL,
+        params={"q": keyword, "st": 100, "r_format": "json", "frm": "nv", "ans": 2},
+        headers={"User-Agent": "Mozilla/5.0"},  # UA 없으면 빈 응답
+        timeout=6,
+    )
+    resp.raise_for_status()
+    out: list[str] = []
+    for group in resp.json().get("items", []) or []:
+        for row in group or []:
+            t = (row[0] if isinstance(row, list) and row else row) or ""
+            t = t.strip()
+            if t and t not in out:
+                out.append(t)
+    return out
+
+
+def _total(keyword: str) -> int:
+    """문서 수만 필요한 가벼운 조회(display=1) — 추천어 경쟁 정렬용."""
+    env = load_env()
+    resp = requests.get(
+        _BLOG_SEARCH_URL,
+        params={"query": keyword, "display": 1},
+        headers={
+            "X-Naver-Client-Id": env.naver_client_id or "",
+            "X-Naver-Client-Secret": env.naver_client_secret or "",
+        },
+        timeout=8,
+    )
+    resp.raise_for_status()
+    return int(resp.json().get("total", 0))
+
+
+def keyword_suggest(keyword: str, limit: int = 8) -> dict:
+    """연관검색어 중 '더 유리한(경쟁 낮은)' 키워드를 문서 수 오름차순으로 추천.
+
+    자동완성으로 실제 검색되는 연관어를 뽑고, 각각 문서 수(경쟁 대리 지표)를 재서
+    경쟁이 낮은 순으로 정렬한다. 검색광고 API가 없어 검색량은 못 주므로 경쟁만 본다.
+    """
+    kw = (keyword or "").strip()
+    if not kw:
+        raise ValueError("키워드가 비어 있어요")
+    seen = kw.lower()
+    terms = [t for t in _related_terms(kw) if t.lower() != seen][:limit]
+    scored = []
+    for t in terms:
+        try:
+            scored.append({"keyword": t, "total": _total(t)})
+        except Exception:  # noqa: BLE001 — 개별 실패는 건너뛰고 나머지로 추천
+            continue
+    scored.sort(key=lambda x: x["total"])
+    return {"keyword": kw, "suggestions": scored}
 
 
 def check_all() -> list[dict]:

@@ -123,6 +123,16 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .kwchip.jwait{background:#f2f3f5;border-color:#e2e5ea;color:#8b93a0}
  .kwchip .jbadge{font-size:11px;margin-right:3px;flex:0 0 auto}
  .kwlegend{font-size:11.5px;color:var(--sub);margin-top:5px}
+ /* 연관검색어 추천 — 경쟁 낮은(유리한) 순으로, 눌러서 바로 키워드에 추가 */
+ .kwrec{margin-top:7px}
+ .kwrec .kwrec-t{font-size:11.5px;color:var(--sub);margin-bottom:5px;display:flex;align-items:center;gap:4px}
+ .kwrec .kwrec-list{display:flex;flex-wrap:wrap;gap:6px}
+ .kwrec .rc{display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px dashed #cdd3da;color:#4b5563;
+   border-radius:999px;padding:4px 10px 4px 8px;font-size:12px;font-weight:600;cursor:pointer;transition:.12s}
+ .kwrec .rc:hover{border-style:solid;border-color:var(--green);color:var(--green-d);background:#f3fcf6;transform:translateY(-1px)}
+ .kwrec .rc .rcb{font-size:11px}
+ .kwrec .rc .rcplus{opacity:.4;font-weight:400;margin-left:1px}
+ .kwrec .rc:hover .rcplus{opacity:.8;color:var(--green-d)}
  .seg{display:flex;gap:6px}
  .seg button{flex:1;padding:9px;font-size:12px;background:#fff;color:#6b7280;border:1px solid #d6dade;border-radius:9px;cursor:pointer;font-weight:600}
  .seg button.on{background:#eafaf0;color:var(--green-d);border-color:var(--green)}
@@ -731,6 +741,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           </div>
           <div class=kwlegend>키워드를 넣으면 노출 가능성을 바로 재요 — <b style="color:var(--green-d)">✅ 노려볼 만</b> · <b style="color:#8a6a0a">△ 애매</b> · <b style="color:#b03a3a">❌ 경쟁 과다</b> <span class=muted>(칩에 마우스 올리면 문서 수)</span></div>
           <div class=muted id=kwnote style="display:none;margin-top:4px;color:#2563eb;line-height:1.4"></div>
+          <div class=kwrec id=kwrec style="display:none"></div>
           <details class=moreopts id=moreopts>
             <summary><span class=chev>▶</span>세부 옵션 — 문체 톤 · 최소 글자 수</summary>
             <label class=f>문체 톤 <span class=hint data-tip="비우면 기본 톤으로 써요. 위 문체와 함께 '이번 글'만의 조정으로 쓰여요. 예: 친근한 반말로 / 담백하고 차분하게">i</span></label>
@@ -1459,12 +1470,12 @@ function kwRender(){
     const tx=document.createElement('span'); tx.textContent=k;
     const x=document.createElement('b'); x.textContent='×'; x.title='이 키워드 빼기';
     // mousedown: 입력칸 blur(=커밋·재렌더)보다 먼저 지워지도록
-    x.onmousedown=e=>{ e.preventDefault(); e.stopPropagation(); KW.splice(i,1); kwRender(); };
+    x.onmousedown=e=>{ e.preventDefault(); e.stopPropagation(); KW.splice(i,1); kwRender(); kwRecRender(); };
     c.append(tx,x); box.insertBefore(c,inp);
   });
   inp.placeholder=KW.length?'':'예: 강남맛집 (엔터로 추가)';
 }
-function kwAddMany(parts){ let n=0; parts.forEach(p=>{ p=(p||'').trim(); if(p&&!kwHas(p)){KW.push(p);n++;judgeKeyword(p);} }); if(n)kwRender(); return n; }
+function kwAddMany(parts){ let n=0,first=null; parts.forEach(p=>{ p=(p||'').trim(); if(p&&!kwHas(p)){KW.push(p);n++;judgeKeyword(p);if(!first)first=p;} }); if(n){kwRender(); kwRecRender(); if(first&&!KWREC_SEED)suggestKeywords(first);} return n; }
 // 입력칸에 쓰다 만 텍스트를 칩으로 확정(쉼표 기준 — 띄어쓰기 포함 키워드는 통째로 유지)
 function kwCommit(){ const inp=$('#keywords'); if(!inp)return; const v=inp.value; inp.value=''; if(v.trim()) kwAddMany(v.split(',')); }
 // 직렬화: 칩 + 아직 확정 안 한 입력 중 텍스트까지 합쳐 쉼표 문자열로
@@ -1477,7 +1488,39 @@ function kwGet(){
 function kwSet(str){
   const seen=[]; (str||'').split(',').map(s=>s.trim()).filter(Boolean)
     .forEach(p=>{ if(!seen.some(k=>k.toLowerCase()===p.toLowerCase())) seen.push(p); });
-  KW=seen; const inp=$('#keywords'); if(inp)inp.value=''; kwRender();
+  KW=seen; const inp=$('#keywords'); if(inp)inp.value=''; kwRecReset(); kwRender();
+}
+// 연관검색어 추천 — 넣은 키워드(첫 키워드=주제 씨앗)로 '경쟁 낮은 유리한' 연관어를 눌러 담게.
+const KWREC={}; let KWREC_SEED='';
+function kwRecReset(){ for(const k in KWREC)delete KWREC[k]; KWREC_SEED=''; const b=$('#kwrec'); if(b){b.style.display='none';b.innerHTML='';} }
+function kwRecRender(){
+  const box=$('#kwrec'); if(!box) return;
+  const list=KWREC[KWREC_SEED];
+  if(!Array.isArray(list)){ box.style.display='none'; box.innerHTML=''; return; }
+  // 이미 넣은 키워드는 빼고, ❌(경쟁 과다)도 빼 '유리한' 것만 남긴다.
+  const items=list.map(s=>({kw:s.keyword,j:classifyKw({total:s.total})}))
+    .filter(s=>!kwHas(s.kw)&&s.j.badge!=='❌');
+  if(!items.length){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='block';
+  box.innerHTML='<div class=kwrec-t>💡 이 키워드는 어때요? <span class=muted>연관검색어 중 경쟁이 낮은 순</span></div>';
+  const wrap=document.createElement('div'); wrap.className='kwrec-list';
+  items.forEach(s=>{ const b=document.createElement('button'); b.type='button'; b.className='rc'; b.title=s.j.tip;
+    const bd=document.createElement('span'); bd.className='rcb'; bd.textContent=s.j.badge;
+    const tx=document.createTextNode(s.kw);
+    const pl=document.createElement('span'); pl.className='rcplus'; pl.textContent='+';
+    b.append(bd,tx,pl); b.onclick=()=>{ kwAddMany([s.kw]); }; wrap.append(b); });
+  box.append(wrap);
+}
+async function suggestKeywords(seed){
+  seed=(seed||'').trim(); if(!seed) return;
+  KWREC_SEED=seed;
+  if(KWREC[seed]!==undefined){ kwRecRender(); return; }   // 캐시 or 진행 중 — 재요청 안 함
+  KWREC[seed]=null;
+  const box=$('#kwrec'); if(box){ box.style.display='block'; box.innerHTML='<div class=kwrec-t><span class=muted>유리한 연관 키워드 찾는 중…</span></div>'; }
+  try{ const r=await fetch('/api/keyword-suggest?q='+encodeURIComponent(seed)); const d=await r.json();
+       KWREC[seed]=(r.ok&&Array.isArray(d.suggestions))?d.suggestions:[]; }
+  catch(e){ KWREC[seed]=[]; }
+  kwRecRender();
 }
 (()=>{ const inp=$('#keywords'), box=$('#kwbox'); if(!inp||!box) return;
   box.onclick=e=>{ if(e.target===box) inp.focus(); };
@@ -3339,6 +3382,16 @@ def _make_handler(state: dict):
                 try:
                     self._send(200, json.dumps(
                         keyword_competition(q), ensure_ascii=False
+                    ).encode())
+                except Exception as exc:  # noqa: BLE001 — 키 미설정·네트워크 등 안내로 전달
+                    self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode())
+            elif u.path == "/api/keyword-suggest":
+                from autoblog.rank import keyword_suggest
+
+                q = parse_qs(u.query).get("q", [""])[0]
+                try:
+                    self._send(200, json.dumps(
+                        keyword_suggest(q), ensure_ascii=False
                     ).encode())
                 except Exception as exc:  # noqa: BLE001 — 키 미설정·네트워크 등 안내로 전달
                     self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode())
