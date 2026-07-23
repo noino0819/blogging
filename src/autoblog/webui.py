@@ -3062,7 +3062,7 @@ $('#tpcopy').onclick=async()=>{ const p=PENDTHUMB&&PENDTHUMB.prompt; if(!p){toas
 $('#tsx').onclick=closeTS; $('#tscancel').onclick=closeTS; $('#tsfile').onclick=swapThumbFile;
 $('#tsmodal').onclick=e=>{ if(e.target===$('#tsmodal'))closeTS(); };
 $('#tscopypr').onclick=async()=>{ const p=await thumbPrompt();
-  if(!p){toast('프롬프트 템플릿(config/prompts/thumbnail.md)을 못 읽었어요.','info');return;}
+  if(!p){toast('프롬프트 템플릿(config/prompts/thumbnail_copy.md)을 못 읽었어요.','info');return;}
   try{await navigator.clipboard.writeText(p); toast('프롬프트를 복사했어요 — 사진과 함께 붙여넣으세요.','ok');}
   catch(e){ prompt('아래 프롬프트를 복사하세요 (Ctrl/Cmd+C):', p); } };
 $('#tscopyimg').onclick=async()=>{  // 원본을 PNG로 변환해 클립보드에 — 외부 모델 입력창에 바로 붙여넣기용
@@ -3313,9 +3313,9 @@ def _make_handler(state: dict):
                 kind = (parse_qs(u.query).get("kind", ["place"])[0] or "place")
                 self._send(200, json.dumps(_prompt_preview(kind)).encode())
             elif u.path == "/api/thumbprompt":
-                from autoblog.thumbnail import load_thumbnail_prompt
+                from autoblog.thumbnail import load_thumbnail_copy_prompt
 
-                self._send(200, json.dumps({"prompt": load_thumbnail_prompt()}, ensure_ascii=False).encode())
+                self._send(200, json.dumps({"prompt": load_thumbnail_copy_prompt()}, ensure_ascii=False).encode())
             elif u.path == "/api/style-pool":
                 self._send(200, json.dumps(_style_pool_payload(), ensure_ascii=False).encode())
             elif u.path == "/api/categories":

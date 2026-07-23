@@ -21,6 +21,7 @@ from io import BytesIO
 from autoblog.config import CONFIG_DIR, load_env
 
 PROMPT_PATH = CONFIG_DIR / "prompts" / "thumbnail.md"
+COPY_PROMPT_PATH = CONFIG_DIR / "prompts" / "thumbnail_copy.md"  # 외부 멀티모달 모델 복사용(한글 텍스트+콜라주)
 
 _FLUX_URL = "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev"
 _DIM = 1024  # 블로그 대표사진 1:1
@@ -32,6 +33,11 @@ class ThumbnailUnavailable(RuntimeError):
 
 def load_thumbnail_prompt() -> str:
     return PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def load_thumbnail_copy_prompt() -> str:
+    """복사 버튼 → 외부 멀티모달 모델에 그대로 붙여넣는 프롬프트(FLUX용과 분리)."""
+    return COPY_PROMPT_PATH.read_text(encoding="utf-8")
 
 
 def _decode_image(data: dict) -> bytes:
