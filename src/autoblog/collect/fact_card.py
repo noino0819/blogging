@@ -107,6 +107,7 @@ class PhotoItem(BaseModel):
     label: str = "기타"  # 음식/메뉴판/외관/내부/영수증/상품/기타
     caption: str = ""  # 맥락 유추 캡션(예: '데미소스 돈까스'). AI 자동 추천 또는 사용자 입력.
     thumbnail: bool = False  # 대표 썸네일 — 글 맨 위 첫 사진으로 강제 배치(최대 1장)
+    ai_generated: bool = False  # AI 생성 이미지(FLUX 썸네일·외부 AI 대체) — 게시 시 'AI 활용' 자율 표기 대상
     media_kind: str = "image"  # "image" | "video" — 영상도 같은 리스트로 흘려보낸다(확장자로 판별)
 
 

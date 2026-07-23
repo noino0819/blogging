@@ -239,6 +239,7 @@ class BlogPublisher:
         reserve_at=None,
         prune_same_title: bool = True,
         delete_imported: dict | None = None,
+        mark_ai: bool = True,
     ) -> list[str]:
         """게시 플랜을 에디터에 주입. 기본은 임시저장만, submit=True면 발행까지.
 
@@ -298,6 +299,9 @@ class BlogPublisher:
                 _ = exc
         # 저장 직전: 문단 정렬을 플랜과 대조해 자동복구(사진 정렬 상속/무음 실패 대비).
         self._heal_alignment(plan, warnings)
+        # AI 생성 이미지에 'AI 활용' 표시(대표 지정보다 먼저 — 대표 플래그를 안 건드림).
+        if mark_ai:
+            self._mark_ai_images(plan)
         # 대표사진 지정은 반드시 '맨 마지막' — 사진 조작이 더 남아 있으면 플래그가 또 옮겨간다.
         self._set_rep_photo(plan, warnings)
         if reserve_at is not None:
@@ -696,6 +700,60 @@ class BlogPublisher:
                 "대표사진 자동 지정에 실패했어요 — 발행 전에 대표사진이 맞는지 확인해 주세요."
             )
 
+    def _mark_ai_images(self, plan) -> None:
+        """AI 생성 이미지(plan의 ai_generated 블록)에 네이버 'AI 활용' 표시를 켠다(자율 표기).
+
+        매핑은 _set_rep_photo와 동일: 플랜의 k번째 이미지 블록 = 본문의 k번째 '단일 네이버
+        업로드' 사진(콜라주·외부 핫링크 제외). 이미지에 hover하면 뜨는 'AI 활용 설정' 배지의
+        토글 버튼(button.se-set-ai-mark-button-toggle)을 클릭한다 — 대표 배지와 같은 hover 방식.
+        클릭하면 se-is-selected가 붙어(=켜짐) 발행 시 이미지 우하단에 'AI 활용' 아이콘이 붙는다.
+        이미 켜져 있으면(se-is-selected) 다시 눌러 꺼지지 않게 건너뛴다. 표시는 보조 기능이라
+        실패해도 저장은 그대로 진행. SMART_EDITOR['image_ai_label']이 비면 no-op.
+        (라이브 검증 2026-07-23: scripts/probe_ai_label.py — hover→토글 클릭 시 se-is-selected 부착)"""
+        sel = SMART_EDITOR.get("image_ai_label")
+        if not sel:
+            return  # 토글 셀렉터 미설정 — 발행은 그대로
+        plan_imgs = [b.image_path for b in plan.blocks if b.kind == "image" and b.image_path]
+        ai_idx = [
+            plan_imgs.index(b.image_path)
+            for b in plan.blocks
+            if b.kind == "image" and b.image_path and b.ai_generated
+        ]
+        if not ai_idx:
+            return
+        page = self._page
+        page.evaluate(self._FORCE_LOAD_IMGS_JS)  # 외부/네이버 판별은 src 로드 후에만 가능
+        for k in ai_idx:
+            try:
+                handle = page.evaluate_handle(
+                    r"""(k) => {
+                      const singles = [...document.querySelectorAll('.se-component')].filter(c => {
+                        const imgs = c.querySelectorAll('img.se-image-resource');
+                        if (imgs.length !== 1) return false;
+                        const s = imgs[0].src || '';
+                        return !(/^https?:/.test(s) && !/pstatic\.net/.test(s));
+                      });
+                      return singles[k] || null;
+                    }""",
+                    k,
+                )
+                comp = handle.as_element()
+                if comp is None:
+                    continue
+                comp.scroll_into_view_if_needed()
+                comp.hover()  # 배지는 hover 시에만 렌더된다(대표 배지와 동일)
+                page.wait_for_timeout(300)
+                toggle = comp.query_selector(sel)
+                if toggle is None:
+                    continue
+                if "se-is-selected" in (toggle.get_attribute("class") or ""):
+                    continue  # 이미 켜짐 — 다시 누르면 꺼진다
+                toggle.click()
+                page.wait_for_timeout(200)
+            except Exception:  # noqa: BLE001 - AI 표시는 보조, 실패해도 저장 진행
+                page.keyboard.press("Escape")
+        page.keyboard.press("Escape")  # hover 상태 정리(대표 지정 단계로)
+
     def _anchor_before_first_media(self) -> bool:
         """첫 미디어(사진/영상) '위'에 커서를 둔다.
 
@@ -841,7 +899,7 @@ class BlogPublisher:
         draft_title: str | None = None, draft_date: str = "",
         photo_paths: list[str] | None = None,
         category: str | None = None, save: bool = True,
-        clean_imported: bool = True,
+        clean_imported: bool = True, mark_ai: bool = True,
     ) -> tuple[list[str], list[str]]:
         """불러온 임시저장 글을 'in-place'로 편집한다(영상·콜라주 고정, 사진은 플랜대로 재배치).
 
@@ -1019,6 +1077,9 @@ class BlogPublisher:
                 page.keyboard.press("Escape")
         # 저장 직전: 문단 정렬 검증·자동복구(in-place는 사진 앵커마다 사진 정렬을 상속해 특히 취약).
         self._heal_alignment(plan, warnings)
+        # AI 생성 이미지에 'AI 활용' 표시(대표 지정보다 먼저 — 대표 플래그를 안 건드림).
+        if mark_ai:
+            self._mark_ai_images(plan)
         # 대표사진 지정은 반드시 '맨 마지막' — 위의 삭제·재삽입이 네이버 대표 플래그를 남은
         # 아무 사진으로 옮겨놓기 때문에, 모든 사진 조작이 끝난 여기서 명시적으로 재지정한다.
         self._set_rep_photo(plan, warnings)

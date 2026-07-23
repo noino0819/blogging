@@ -270,6 +270,7 @@ class PublishBlock(BaseModel):
     image_path: str | None = None
     image_label: str = ""
     image_size: str | None = None  # 이미지 표시 크기 힌트: "small"(협찬 고지 사진 등). None=기본
+    ai_generated: bool = False  # AI 생성 이미지 — 게시 시 'AI 활용' 표시(네이버 자율 표기)
     variant: int = 1  # 구분선/인용구 종류(1=기본)
     sticker_pack: str | None = None  # 스티커 팩 코드(picker 해석 결과)
     sticker_index: int | None = None  # 스티커 data-index
@@ -417,7 +418,10 @@ def build_publish_plan(
     def media_block(ph: PhotoItem) -> PublishBlock:
         """PhotoItem → 이미지/영상 블록(media_kind로 kind 결정, 경로·라벨 필드는 공용)."""
         kind = "video" if ph.media_kind == "video" else "image"
-        return PublishBlock(kind=kind, image_path=ph.path, image_label=ph.caption or ph.label)
+        return PublishBlock(
+            kind=kind, image_path=ph.path, image_label=ph.caption or ph.label,
+            ai_generated=ph.ai_generated,
+        )
 
     def flush_text():
         text = "\n".join(text_buf).strip()

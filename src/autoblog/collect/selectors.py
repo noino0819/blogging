@@ -64,6 +64,11 @@ SMART_EDITOR = {
     "draft_load_confirm": "button.se-popup-button-confirm",  # 불러오기 시 뜨는 확인 팝업
     "draft_delete_confirm": "button.se-popup-button-confirm",  # 삭제 확인 팝업(확인)
     "editor_image": "img.se-image-resource",  # 본문 사진(지도 se-map-image는 제외됨)
+    # AI 활용 표시(네이버 자율 표기, 2025~): 이미지에 마우스를 올리면 뜨는 'AI 활용 설정' 배지의
+    # 토글 버튼(대표 배지와 같은 hover 방식). 클릭하면 se-is-selected가 붙고 발행 시 이미지
+    # 우하단에 'AI 활용' 아이콘이 붙는다. (라이브 검증 2026-07-23, scripts/probe_ai_label.py)
+    # 비워두면 _mark_ai_images가 no-op(발행은 그대로).
+    "image_ai_label": "button.se-set-ai-mark-button-toggle",
     "publish_button": 'button[data-click-area="tpb.publish"]',  # 발행(설정 레이어 열기)
     "publish_confirm": 'button[data-click-area="tpb*i.publish"]',  # 레이어 내 최종 발행
     "category_button": 'button[data-click-area="tpb*i.category"]',  # 카테고리 선택 열기
