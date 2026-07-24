@@ -2170,6 +2170,7 @@ $('#export').onclick=async()=>{
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES,
+      restyle:$('#restyleMode').checked,  // 켜면 export도 restyle.md 사용(원문 표·나열 보존)
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 [영상] 순서 고정 지시를 프롬프트에 포함
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     if(!r.body){closePM(); toast('프롬프트 생성 실패','err');return;}
@@ -3573,6 +3574,9 @@ def _make_handler(state: dict):
             from autoblog.draft.rules import CommonRules
             from autoblog.pipeline import build_export_prompt
 
+            # 리스타일 모드: 생성(/api/generate)과 동일하게 베이스를 restyle.md로 바꾸고
+            # 새 수집을 건너뛴다. 안 하면 default.md가 걸려 원문 표·나열을 문장으로 풀어버린다.
+            restyle = bool(body.get("restyle"))
             srcval, src = self._resolve_src(body)
             photos = [p for p in (body.get("photos") or []) if p]
             photo_meta = body.get("photoMeta") if isinstance(body.get("photoMeta"), dict) else {}
@@ -3580,6 +3584,11 @@ def _make_handler(state: dict):
             style = _style_for(body.get("personaId"), tone)
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
             guidelines = _build_guidelines(body)
+            base_prompt = None
+            if restyle:
+                from autoblog.draft.prompts import load_restyle_prompt
+
+                base_prompt = load_restyle_prompt()
             dkeys, qkeys = _enabled_variant_keys()  # '서식'에서 고른 종류만 프롬프트에 안내
 
             # 진행 상태를 스트리밍으로 흘려보내며 수집·조립(수집 캐시 재사용으로 반복 호출 빠름)
@@ -3595,9 +3604,10 @@ def _make_handler(state: dict):
             try:
                 text = build_export_prompt(
                     body.get("memo", ""),
-                    place_url=srcval if src == "place" else None,
-                    product=srcval if src == "product" else None,
-                    card_kind=src,
+                    place_url=None if restyle else (srcval if src == "place" else None),
+                    product=None if restyle else (srcval if src == "product" else None),
+                    card_kind="place" if restyle else src,
+                    base_prompt=base_prompt,
                     photos=photos or None,
                     photo_meta=photo_meta,
                     style=style,
