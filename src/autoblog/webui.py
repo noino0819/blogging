@@ -126,6 +126,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  /* 연관검색어 추천 — 경쟁 낮은(유리한) 순으로, 눌러서 바로 키워드에 추가 */
  .kwrec{margin-top:7px}
  .kwrec .kwrec-t{font-size:11.5px;color:var(--sub);margin-bottom:5px;display:flex;align-items:center;gap:4px}
+ .kwrec .kwrec-re{margin-left:auto;background:none;border:none;color:var(--green-d);font-size:11px;font-weight:600;cursor:pointer;padding:2px 6px;border-radius:6px;white-space:nowrap}
+ .kwrec .kwrec-re:hover{background:#eafaf0}
  .kwrec .kwrec-list{display:flex;flex-wrap:wrap;gap:6px}
  .kwrec .rc{display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px dashed #cdd3da;color:#4b5563;
    border-radius:999px;padding:4px 10px 4px 8px;font-size:12px;font-weight:600;cursor:pointer;transition:.12s}
@@ -1480,7 +1482,8 @@ function kwRender(){
   });
   inp.placeholder=KW.length?'':'예: 강남맛집 (엔터로 추가)';
 }
-function kwAddMany(parts){ let n=0,first=null; parts.forEach(p=>{ p=(p||'').trim(); if(p&&!kwHas(p)){KW.push(p);n++;judgeKeyword(p);if(!first)first=p;} }); if(n){kwRender(); kwRecRender(); if(first&&!KWREC_SEED)suggestKeywords(first);} return n; }
+// fromSuggest=true(추천칩 클릭)면 씨앗 안 바꿈 — 손으로 새로 넣은 키워드면 그걸 씨앗 삼아 다시 검색.
+function kwAddMany(parts,fromSuggest){ let n=0,last=null; parts.forEach(p=>{ p=(p||'').trim(); if(p&&!kwHas(p)){KW.push(p);n++;judgeKeyword(p);last=p;} }); if(n){kwRender(); kwRecRender(); if(last&&!fromSuggest)suggestKeywords(last);} return n; }
 // 입력칸에 쓰다 만 텍스트를 칩으로 확정(쉼표 기준 — 띄어쓰기 포함 키워드는 통째로 유지)
 function kwCommit(){ const inp=$('#keywords'); if(!inp)return; const v=inp.value; inp.value=''; if(v.trim()) kwAddMany(v.split(',')); }
 // 직렬화: 칩 + 아직 확정 안 한 입력 중 텍스트까지 합쳐 쉼표 문자열로
@@ -1505,16 +1508,33 @@ function kwRecRender(){
   // 이미 넣은 키워드는 빼고, ❌(경쟁 과다)도 빼 '유리한' 것만 남긴다.
   const items=list.map(s=>({kw:s.keyword,j:classifyKw({total:s.total})}))
     .filter(s=>!kwHas(s.kw)&&s.j.badge!=='❌');
-  if(!items.length){ box.style.display='none'; box.innerHTML=''; return; }
-  box.style.display='block';
-  box.innerHTML='<div class=kwrec-t>💡 이 키워드는 어때요? <span class=muted>연관검색어 중 경쟁이 낮은 순</span></div>';
+  box.style.display='block'; box.innerHTML='';
+  // 헤더 + '🔄 다시 추천'(넣은 키워드를 돌아가며 새 연관어를 뽑아줌 — 첫 단어에 안 묶임)
+  const head=document.createElement('div'); head.className='kwrec-t';
+  head.append(document.createTextNode('💡 이 키워드는 어때요? '));
+  const m=document.createElement('span'); m.className='muted'; m.textContent=`'${KWREC_SEED}' 연관검색어 중 경쟁 낮은 순`; head.append(m);
+  const rb=document.createElement('button'); rb.type='button'; rb.className='kwrec-re'; rb.textContent='🔄 다시 추천';
+  rb.title='넣은 키워드를 돌아가며 다른 연관어를 추천해요'; rb.onclick=reSuggest; head.append(rb);
+  box.append(head);
+  if(!items.length){
+    const e=document.createElement('div'); e.className='muted'; e.style.fontSize='11.5px';
+    e.textContent='이 키워드로는 더 추천할 게 없어요. 🔄로 다른 키워드에서 찾아보세요.'; box.append(e); return;
+  }
   const wrap=document.createElement('div'); wrap.className='kwrec-list';
   items.forEach(s=>{ const b=document.createElement('button'); b.type='button'; b.className='rc'; b.title=s.j.tip;
     const bd=document.createElement('span'); bd.className='rcb'; bd.textContent=s.j.badge;
     const tx=document.createTextNode(s.kw);
     const pl=document.createElement('span'); pl.className='rcplus'; pl.textContent='+';
-    b.append(bd,tx,pl); b.onclick=()=>{ kwAddMany([s.kw]); }; wrap.append(b); });
+    b.append(bd,tx,pl); b.onclick=()=>{ kwAddMany([s.kw],true); }; wrap.append(b); });  // true=추천 클릭 → 씨앗 안 바꿈
   box.append(wrap);
+}
+// '🔄 다시 추천' — 넣은 키워드를 순서대로 돌며(첫 단어만이 아니라) 캐시를 비우고 새로 뽑는다.
+function reSuggest(){
+  if(!KW.length) return;
+  const i=KW.findIndex(k=>k.toLowerCase()===(KWREC_SEED||'').toLowerCase());
+  const next=KW[(i+1)%KW.length]||KW[0];
+  delete KWREC[next];              // 캐시 비워 강제 재조회
+  suggestKeywords(next);
 }
 async function suggestKeywords(seed){
   seed=(seed||'').trim(); if(!seed) return;
