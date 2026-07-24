@@ -15,6 +15,7 @@ from autoblog.config import CONFIG_DIR
 DEFAULT_PROMPT_PATH = CONFIG_DIR / "prompts" / "default.md"
 PRODUCT_PROMPT_PATH = CONFIG_DIR / "prompts" / "product.md"
 COMMON_STYLE_PROMPT_PATH = CONFIG_DIR / "prompts" / "common_style.md"
+RESTYLE_PROMPT_PATH = CONFIG_DIR / "prompts" / "restyle.md"
 
 
 def _strip_meta(text: str) -> str:
@@ -41,6 +42,20 @@ def load_base_prompt(path: str | Path | None = None, *, card=None) -> str:
     text = _strip_meta(Path(path or DEFAULT_PROMPT_PATH).read_text(encoding="utf-8"))
     if not explicit_path and COMMON_STYLE_PROMPT_PATH.exists():
         # 공통 문체 규칙(맛집·상품 공용, 단일 출처)
+        common = _strip_meta(COMMON_STYLE_PROMPT_PATH.read_text(encoding="utf-8"))
+        if common:
+            text = f"{text}\n\n{common}"
+    return text
+
+
+def load_restyle_prompt() -> str:
+    """리스타일 베이스(원문 구조·정보 유지, 문체만 재적용) + 공통 문체 규칙.
+
+    외부에서 받아온 완성 초안에 내 문체·포맷을 다시 입히는 경로(webui 리스타일 모드)의
+    base_prompt. 맛집/상품처럼 common_style.md를 뒤에 이어 붙여 줄바꿈·서술 규칙을 공유한다.
+    """
+    text = _strip_meta(RESTYLE_PROMPT_PATH.read_text(encoding="utf-8"))
+    if COMMON_STYLE_PROMPT_PATH.exists():
         common = _strip_meta(COMMON_STYLE_PROMPT_PATH.read_text(encoding="utf-8"))
         if common:
             text = f"{text}\n\n{common}"

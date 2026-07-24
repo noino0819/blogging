@@ -721,7 +721,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
       <div class=col>
         <div class=card>
           <div class=step><span class=stepn>1</span><span class=stept>글감</span><span class=steps>무엇에 대해 쓸까요?</span></div>
-          <label class=f>경험 메모<span class=req>필수</span> <span class=hint data-tip="글의 중심이 되는 실제 경험을 자유롭게 적어주세요. 이 내용을 토대로 글이 작성됩니다.">i</span></label>
+          <label class=f style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;margin-bottom:8px"><input type=checkbox id=restyleMode style="width:auto;margin:0;transform:scale(1.15)"> 리스타일 모드 <span class=hint data-tip="켜면 아래 칸에 붙여넣은 '완성된 외부 초안'(다른 AI가 쓴 글 등)에 내 문체·이모티콘을 다시 입히고 사진을 배치해요. 원문의 구조·정보·순서·수치는 그대로 두고 말투·줄바꿈만 바꿉니다 — 맛집/상품 구조를 강제하지 않아요. 수집(아래 URL)은 무시됩니다.">i</span></label>
+          <label class=f id=memolabel>경험 메모<span class=req>필수</span> <span class=hint data-tip="글의 중심이 되는 실제 경험을 자유롭게 적어주세요. 이 내용을 토대로 글이 작성됩니다.">i</span></label>
           <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
           <label class=f>수집 <span class=hint data-tip="선택 사항이에요. 맛집 플레이스 URL을 붙여넣거나 상품 검색어를 적으면 정보를 자동으로 수집합니다.">i</span></label>
           <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력">
@@ -2131,6 +2132,7 @@ $('#gen').onclick=async()=>{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES,
       draftId:CURWS,  // 이 탭의 글로 서버에 보관(게시 때 이 id로 '그 탭 글'을 정확히 저장)
+      restyle:$('#restyleMode').checked,  // 켜면 외부 초안에 내 문체만 재적용(맛집/상품 구조 강제 안 함)
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 in-place 편집(새 글용 사진 재정렬 휴리스틱 끔)
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
@@ -2138,6 +2140,13 @@ $('#gen').onclick=async()=>{
     genDone(true); PLAN=d; setTimeout(()=>renderPreview(d),350); st('생성 완료. 검토 후 임시저장하세요.'); toast('초안 생성 완료! 오른쪽 미리보기를 확인하세요.','ok'); $('#save').disabled=false; renderTabs();
     if(d.debug)showLog(d.debug);
   }catch(e){genDone(false); st('오류: '+e); toast('초안 생성 오류: '+e,'err');}finally{$('#gen').disabled=false;}
+};
+// 리스타일 모드 토글 — 메모칸을 '외부 초안 붙여넣기'로 바꾸고 버튼 문구도 전환(백엔드 분기는 restyle 플래그)
+$('#restyleMode').onchange=e=>{
+  const on=e.target.checked;
+  $('#memo').placeholder = on ? '여기에 완성된 외부 초안을 통째로 붙여넣으세요 (예: 다른 AI가 쓴 빽다방 칼로리 글 전체)' : '예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요.';
+  const lab=$('#memolabel'); if(lab&&lab.childNodes[0])lab.childNodes[0].nodeValue = on ? '외부 초안 붙여넣기' : '경험 메모';
+  const gb=$('#gen'); if(gb)gb.textContent = on ? '내 문체로 변환' : '초안 생성';
 };
 // 프롬프트 내보내기: 모달 안에서 진행바 + 실제 단계 메시지 보여주고, 합쳐진 프롬프트 표시·복사
 let EXPTIMER=null;
@@ -3796,6 +3805,10 @@ def _make_handler(state: dict):
             from autoblog.draft.rules import CommonRules
             from autoblog.pipeline import run_pipeline
 
+            # 리스타일 모드: 메모칸에 붙여넣은 '완성된 외부 초안'에 내 문체·이모티콘만 다시
+            # 입힌다. 맛집/상품 구조를 강제하지 않도록 베이스 프롬프트를 restyle.md로 바꾸고,
+            # 새로 수집(place/product)하지 않는다(사진 분류만 유지). 나머지 파이프라인은 동일.
+            restyle = bool(body.get("restyle"))
             srcval, src = self._resolve_src(body)
             photos = [p for p in (body.get("photos") or []) if p]
             photo_meta = body.get("photoMeta") if isinstance(body.get("photoMeta"), dict) else {}
@@ -3803,13 +3816,19 @@ def _make_handler(state: dict):
             style = _style_for(body.get("personaId"), tone)
             rules = CommonRules(**body["rules"]) if body.get("rules") else None
             guidelines = _build_guidelines(body)
+            base_prompt = None
+            if restyle:
+                from autoblog.draft.prompts import load_restyle_prompt
+
+                base_prompt = load_restyle_prompt()
             dv, qv = _enabled_variants()  # 활성 종류 중 첫 번째를 기본 적용(다중 중 우선)
             dkeys, qkeys = _enabled_variant_keys()  # 프롬프트에 안내할 고른 종류 전체
             result = run_pipeline(
                 body["memo"],
-                place_url=srcval if src == "place" else None,
-                product=srcval if src == "product" else None,
-                card_kind=src,
+                place_url=None if restyle else (srcval if src == "place" else None),
+                product=None if restyle else (srcval if src == "product" else None),
+                card_kind="place" if restyle else src,
+                base_prompt=base_prompt,
                 photos=photos or None,
                 photo_meta=photo_meta,
                 style=style,
