@@ -99,6 +99,56 @@ def test_build_plan_leftover_photos_spread_across_body():
     assert [b.image_path for b in plan.blocks if b.kind == "image"] == ["a.jpg", "b.jpg"]
 
 
+def test_build_plan_leftover_photos_skip_header_blocks():
+    # 남은 사진 분산이 헤더(대제목·해시태그) 블록 뒤에 꽂히지 않는다 —
+    # 예전엔 첫 leftover가 대제목과 해시태그 줄 사이에 들어갔다.
+    draft = DraftResult(
+        text=(
+            "제목 스물자 내외로 맞춘 예시\n"
+            "대제목 한 줄\n"
+            "#태그1 #태그2 #태그3\n\n"
+            "인트로 문단.\n\n"
+            "본문 문단."
+        )
+    )
+    photos = [PhotoItem(path="a.jpg", label="음식"), PhotoItem(path="b.jpg", label="내부")]
+    plan = build_publish_plan(draft, photos, structure_styles=_structure_styles())
+    big = next(i for i, b in enumerate(plan.blocks) if b.text == "대제목 한 줄")
+    tags = next(i for i, b in enumerate(plan.blocks) if "#태그1" in b.text)
+    # 헤더 블록(대제목·해시태그) 바로 뒤에는 사진이 없다
+    assert plan.blocks[big + 1].kind != "image"
+    assert plan.blocks[tags + 1].kind != "image"
+    # 사진은 전부 본문에 들어간다
+    assert [b.image_path for b in plan.blocks if b.kind == "image"] == ["a.jpg", "b.jpg"]
+
+
+def test_build_plan_leftover_not_between_photo_and_caption_text():
+    # 남은 사진이 '마커 사진 → 설명 문단' 짝 사이에 끼어들지 않는다
+    draft = DraftResult(
+        text="제목\n\n인트로 문단.\n[사진:외관]\n외관 설명 문단.\n[구분선]\n마무리 문단."
+    )
+    photos = [PhotoItem(path="ext.jpg", label="외관"), PhotoItem(path="rest.jpg", label="음식")]
+    plan = build_publish_plan(draft, photos)
+    ext = next(i for i, b in enumerate(plan.blocks) if b.image_path == "ext.jpg")
+    # 마커 사진 바로 다음은 설명 문단(사진이 연달아 붙지 않음)
+    assert plan.blocks[ext + 1].kind == "text" and "외관 설명" in plan.blocks[ext + 1].text
+
+
+def test_build_plan_photo_caption_marker_pins_exact_photo():
+    # 같은 라벨 사진이 여러 장일 때 [사진:캡션]으로 특정 사진을 콕 집을 수 있다
+    draft = DraftResult(
+        text="제목\n\n본문.\n[사진:떡볶이]\n떡볶이 설명.\n[사진:음식]\n치즈카츠 설명."
+    )
+    photos = [
+        PhotoItem(path="katsu.jpg", label="음식", caption="치즈카츠 클로즈업"),
+        PhotoItem(path="tteok.jpg", label="음식", caption="떡볶이"),
+    ]
+    plan = build_publish_plan(draft, photos)
+    imgs = [b.image_path for b in plan.blocks if b.kind == "image"]
+    # [사진:떡볶이]는 캡션 매칭으로 tteok을, [사진:음식]은 남은 katsu를 집는다
+    assert imgs == ["tteok.jpg", "katsu.jpg"]
+
+
 def test_build_plan_leftover_photos_no_text_appended():
     # 본문 텍스트 블록이 없으면 남은 사진은 그대로 첨부
     draft = DraftResult(text="제목\n\n[구분선]")
