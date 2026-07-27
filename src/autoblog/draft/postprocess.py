@@ -185,6 +185,25 @@ def wrap_long_lines(text: str, max_len: int = 30, *, keep_list_lines: bool = Fal
     return "\n".join(out)
 
 
+# 외부 챗봇 응답의 최종본 구분 마커 — 내보내기 프롬프트가 '초안 → 자가 점검 → =====최종본====='
+# 순서로 출력하게 지시한다(한 응답 안에서 검수가 실제로 이뤄지게). 모델이 굵게(**)나
+# 제목(#)으로 꾸며 내보내는 변형도 함께 인식한다.
+_FINAL_CUT_RE = re.compile(r"^[ \t#*]*={3,}\s*최종본\s*={3,}[ \t*#]*$", re.MULTILINE)
+
+
+def extract_final_draft(text: str) -> str:
+    """외부 챗봇 응답에서 '=====최종본=====' 마커 아래 완성본만 추출.
+
+    내보내기 프롬프트의 출력 프로토콜(초안→자가 점검→최종본)을 따른 응답 전체를
+    붙여넣어도 마지막 최종본만 쓴다. 마커가 없으면(프로토콜 무시·구버전 프롬프트·
+    직접 쓴 글) 원문을 그대로 돌려준다.
+    """
+    matches = list(_FINAL_CUT_RE.finditer(text))
+    if not matches:
+        return text
+    return text[matches[-1].end():].strip()
+
+
 def fix_leading_hashtag(text: str) -> str:
     """헤더 태그줄의 첫 태그에 빠진 # 복원.
 

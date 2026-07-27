@@ -8,8 +8,12 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import re
+import time
 from datetime import datetime, timezone
 
 import requests
@@ -18,6 +22,7 @@ from autoblog.config import DATA_DIR, load_env
 
 _BLOG_SEARCH_URL = "https://openapi.naver.com/v1/search/blog.json"
 _AUTOCOMPLETE_URL = "https://ac.search.naver.com/nx/ac"  # 자동완성=연관검색어, 키 불필요
+_SEARCHAD_URL = "https://api.searchad.naver.com"  # 검색광고 API — 월간 검색량(키워드 도구)
 _RANKS_PATH = DATA_DIR / "ranks.json"
 # 게시글 URL → (blogId, logNo). 데스크톱/모바일/PostView 형식 모두 수용.
 _POST_RE = re.compile(
@@ -146,7 +151,76 @@ def keyword_competition(keyword: str) -> dict:
         }
         for it in items[:5]
     ]
-    return {"keyword": keyword, "total": data.get("total", 0), "mine": mine, "top": top}
+    vol = search_volumes([keyword]).get(keyword) or {}
+    return {
+        "keyword": keyword, "total": data.get("total", 0), "mine": mine, "top": top,
+        "volume": vol.get("volume"),  # 월간 검색수(PC+모바일) — 검색광고 키 없으면 None
+        "comp_idx": vol.get("comp_idx", ""),
+    }
+
+
+def _searchad_headers(method: str, path: str) -> dict:
+    """검색광고 API 인증 헤더 — {timestamp}.{method}.{path}를 비밀키로 HMAC-SHA256 서명."""
+    env = load_env()
+    ts = str(round(time.time() * 1000))
+    sig = base64.b64encode(
+        hmac.new(
+            (env.searchad_secret or "").encode(),
+            f"{ts}.{method}.{path}".encode(),
+            hashlib.sha256,
+        ).digest()
+    ).decode()
+    return {
+        "X-Timestamp": ts,
+        "X-API-KEY": env.searchad_api_key or "",
+        "X-Customer": env.searchad_customer_id or "",
+        "X-Signature": sig,
+    }
+
+
+def _qc(v) -> int:
+    """월간 검색수 필드 파싱 — 10 미만이면 '< 10' 문자열로 오므로 5로 근사."""
+    if isinstance(v, str):
+        return 5 if "<" in v else int(re.sub(r"[^\d]", "", v) or 0)
+    return int(v or 0)
+
+
+def search_volumes(keywords: list[str]) -> dict[str, dict]:
+    """키워드별 월간 검색수(PC+모바일)·광고 경쟁도. 검색광고 키 미설정이면 {}.
+
+    keywordstool의 hintKeywords는 공백 불가·한 번에 5개까지라, 공백을 뺀 형태로
+    5개씩 끊어 조회하고 응답 relKeyword(공백 없는 대문자)를 원래 키워드로 되맞춘다.
+    검색량은 부가 정보라 개별 실패는 건너뛴다(경쟁도만으로도 동작해야 함).
+    """
+    if not load_env().has_searchad:
+        return {}
+    want = {}  # 정규화(공백 제거·대문자) → 원래 키워드
+    for kw in keywords:
+        k = (kw or "").strip()
+        if k:
+            want.setdefault(k.replace(" ", "").upper(), k)
+    out: dict[str, dict] = {}
+    hints = list(want.keys())
+    for i in range(0, len(hints), 5):
+        try:
+            resp = requests.get(
+                _SEARCHAD_URL + "/keywordstool",
+                params={"hintKeywords": ",".join(hints[i : i + 5]), "showDetail": 1},
+                headers=_searchad_headers("GET", "/keywordstool"),
+                timeout=10,
+            )
+            resp.raise_for_status()
+            # 응답엔 힌트 외 연관 키워드도 잔뜩 오므로, 요청한 것만 골라 담는다.
+            for row in resp.json().get("keywordList", []) or []:
+                orig = want.get((row.get("relKeyword") or "").replace(" ", "").upper())
+                if orig and orig not in out:
+                    out[orig] = {
+                        "volume": _qc(row.get("monthlyPcQcCnt")) + _qc(row.get("monthlyMobileQcCnt")),
+                        "comp_idx": row.get("compIdx") or "",  # 광고 입찰 경쟁도(낮음/중간/높음)
+                    }
+        except Exception:  # noqa: BLE001
+            continue
+    return out
 
 
 def _related_terms(keyword: str) -> list[str]:
@@ -185,10 +259,11 @@ def _total(keyword: str) -> int:
 
 
 def keyword_suggest(keyword: str, limit: int = 8) -> dict:
-    """연관검색어 중 '더 유리한(경쟁 낮은)' 키워드를 문서 수 오름차순으로 추천.
+    """연관검색어 중 '더 유리한' 키워드 추천.
 
-    자동완성으로 실제 검색되는 연관어를 뽑고, 각각 문서 수(경쟁 대리 지표)를 재서
-    경쟁이 낮은 순으로 정렬한다. 검색광고 API가 없어 검색량은 못 주므로 경쟁만 본다.
+    자동완성으로 실제 검색되는 연관어를 뽑고 각각 문서 수(경쟁 대리 지표)를 잰다.
+    검색광고 키가 있으면 월간 검색량도 붙여 '검색량 대비 경쟁이 유리한' 순으로,
+    없으면 기존대로 문서 수 오름차순으로 정렬한다.
     """
     kw = (keyword or "").strip()
     if not kw:
@@ -201,8 +276,17 @@ def keyword_suggest(keyword: str, limit: int = 8) -> dict:
             scored.append({"keyword": t, "total": _total(t)})
         except Exception:  # noqa: BLE001 — 개별 실패는 건너뛰고 나머지로 추천
             continue
-    scored.sort(key=lambda x: x["total"])
-    return {"keyword": kw, "suggestions": scored}
+    vols = search_volumes([s["keyword"] for s in scored])
+    for s in scored:
+        v = vols.get(s["keyword"]) or {}
+        s["volume"] = v.get("volume")
+    has_volume = any(s["volume"] is not None for s in scored)
+    if has_volume:
+        # 많이 검색되는데 문서(경쟁)는 적은 키워드가 위로 오게 검색량/문서수 비로 정렬
+        scored.sort(key=lambda x: (x["volume"] or 0) / (x["total"] + 1), reverse=True)
+    else:
+        scored.sort(key=lambda x: x["total"])
+    return {"keyword": kw, "suggestions": scored, "has_volume": has_volume}
 
 
 def check_all() -> list[dict]:

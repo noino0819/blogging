@@ -69,12 +69,19 @@ def load_restyle_prompt() -> str:
 # (맛집 글에 예외를 언급하면 허용되는 것으로 오독할 수 있음).
 
 
-def build_selfcheck_instruction(is_product: bool = False, ornaments: bool = True) -> str:
+def build_selfcheck_instruction(
+    is_product: bool = False,
+    ornaments: bool = True,
+    has_photos: bool = False,
+    has_stickers: bool = False,
+) -> str:
     """자가 점검 지시문(시스템 프롬프트 맨 끝에 붙이는 블록).
 
     is_product=True(상품 리뷰)면 나열 박스(1️⃣~·✅) 예외 문구를 함께 넣는다.
     ornaments=False(발랄체가 아닌 어투)면 어투 결합 항목(느낌표→.ᐟ 치환, 이모지 허용
     목록)을 뺀다 — 그 어투에는 해당 규칙이 없고, 기준은 [추가 문체 지시]가 정한다.
+    has_photos/has_stickers면 사진 분산·이모티콘 채움 점검 항목을 추가한다
+    (사진·스티커가 없는 글에 넣으면 지킬 수 없는 항목이 돼 점검 전체의 신뢰를 깎는다).
     """
     box_note = " (요약 박스 1️⃣~·추천 체크리스트 ✅ 한 줄은 예외)" if is_product else ""
     bullet_note = " (요약 박스·추천 체크리스트만 예외)" if is_product else ""
@@ -88,6 +95,17 @@ def build_selfcheck_instruction(is_product: bool = False, ornaments: bool = True
     items.append(f"나열 기호 — 본문 줄 앞에 •, -, *, ▶, → 를 붙여 나열한 곳이 없는가?{bullet_note}")
     if ornaments:
         items.append("이모지 — 허용 목록 밖 이모지(💖 💕 🔥 😍 🤤 💯 등)를 쓰지 않았는가?")
+    if has_photos:
+        items.append(
+            "사진 분산 — [사진] 마커 없이 글만 이어지는 문단이 3개 이상 연속되는 구간이 없는가? "
+            "총평·꿀팁처럼 딱 맞는 사진이 없는 섹션에도 느슨하게 어울리는 남은 사진을 배치했는가? "
+            "있다면 앞쪽에 몰린 사진 마커를 뒤로 옮겨 고르게 나눠."
+        )
+    if has_stickers:
+        items.append(
+            "이모티콘 — 사진이 안 붙어 글만 남은 문단에는 [스티커:상황] 을 넣어 허전함을 채웠는가? "
+            "(과하지 않게 — 연속된 문단마다 붙이지는 마)"
+        )
     items += [
         "검색 제목 — 첫 줄 제목이 20~40자이고, 대표 검색 키워드가 앞 25자 안에 띄어쓰기까지 "
         "그대로 들어가 있는가? 제목에 넣은 숫자·훅은 본문에서 실제로 다뤘는가? (불일치는 낚시로 찍힘)",

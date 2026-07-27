@@ -149,10 +149,18 @@ class Env(BaseModel):
     openai_api_key: str | None = None  # OpenAI(GPT) API 키(.env OPENAI_API_KEY)
     gemini_api_key: str | None = None  # Google Gemini API 키(.env GEMINI_API_KEY)
     nvidia_api_key: str | None = None  # NVIDIA API 키(.env NVIDIA_API_KEY) — AI 썸네일 생성
+    # 네이버 검색광고 API(월간 검색량 조회) — searchad.naver.com 도구>API 사용관리에서 발급
+    searchad_api_key: str | None = None  # 액세스라이선스(.env NAVER_SEARCHAD_API_KEY)
+    searchad_secret: str | None = None  # 비밀키(.env NAVER_SEARCHAD_SECRET)
+    searchad_customer_id: str | None = None  # CUSTOMER_ID(.env NAVER_SEARCHAD_CUSTOMER_ID)
 
     @property
     def has_naver_api(self) -> bool:
         return bool(self.naver_client_id and self.naver_client_secret)
+
+    @property
+    def has_searchad(self) -> bool:
+        return bool(self.searchad_api_key and self.searchad_secret and self.searchad_customer_id)
 
 
 @lru_cache
@@ -165,6 +173,9 @@ def load_env() -> Env:
         openai_api_key=os.getenv("OPENAI_API_KEY"),
         gemini_api_key=os.getenv("GEMINI_API_KEY"),
         nvidia_api_key=os.getenv("NVIDIA_API_KEY"),
+        searchad_api_key=os.getenv("NAVER_SEARCHAD_API_KEY"),
+        searchad_secret=os.getenv("NAVER_SEARCHAD_SECRET"),
+        searchad_customer_id=os.getenv("NAVER_SEARCHAD_CUSTOMER_ID"),
     )
 
 

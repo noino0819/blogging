@@ -275,6 +275,10 @@ def build_export_prompt(
         inplace=inplace,
     )
     system, user = build_prompt(req)
+    # 출력 프로토콜: 초안 → 자가 점검 → 최종본. 자가 점검을 "쓰기 전에 명심해라"로만 두면
+    # 생성 중 한 번 읽고 지나가 실제로는 잘 안 지켜진다(특히 느낌표·줄 길이·사진 분산).
+    # 이미 출력한 글은 되돌려 고칠 수 없으므로, 점검을 '눈에 보이는 단계'로 강제하고
+    # 고친 최종본을 다시 쓰게 한다. 붙여넣기(가져오기)에서 =====최종본===== 아래만 자동 추출.
     return (
         "# 지시문 (이 규칙대로 블로그 글을 써줘)\n\n"
         f"{system}\n\n"
@@ -282,8 +286,15 @@ def build_export_prompt(
         "# 입력 자료\n\n"
         f"{user}\n\n"
         "---\n\n"
-        "위 지시문을 지켜서 네이버 블로그 글 본문을 완성해줘. "
-        "출력은 완성된 글만 — 인사말, 작업 설명, 요약, 마무리 코멘트 등 글 외의 말은 일절 쓰지 마."
+        "위 지시문을 지켜서 네이버 블로그 글 본문을 완성해줘.\n"
+        "출력은 반드시 아래 3단계 순서로 해줘 — 이렇게 해야 '제출 전 자가 점검'이 실제로 이뤄져:\n"
+        "1) 완성한 글 전체를 먼저 출력\n"
+        "2) '## 자가 점검' 제목 아래, 지시문 맨 끝의 자가 점검 목록을 한 항목씩 1)의 글과 "
+        "대조해 통과/어김을 한 줄씩 짧게 판정해줘(어긴 항목은 어디를 어떻게 고칠지 함께)\n"
+        "3) =====최종본===== 를 한 줄 단독으로 쓰고, 그 아래에 2)에서 찾은 문제를 모두 고친 "
+        "완성본 전체를 다시 출력해줘. 고칠 게 하나도 없어도 =====최종본===== 아래 전체 글을 "
+        "빠짐없이 다시 써줘(이 마커 아래 글만 최종 결과로 쓰여).\n"
+        "인사말, 작업 설명, 요약, 마무리 코멘트 등 글 외의 말은 어느 단계에도 일절 쓰지 마."
     )
 
 
@@ -363,7 +374,7 @@ def plan_from_text(
         place_address=place_address, sponsor=sponsored, sponsor_links=sponsor_links,
         product_links=product_links,
         sponsor_sticker=sponsor_sticker, sticker_catalog=catalog,
-        inplace=inplace,
+        inplace=inplace, bare_text_sticker=True,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)
 
@@ -460,6 +471,6 @@ def run_pipeline(
         place_address=place_address, sponsor=sponsored, sponsor_links=sponsor_links,
         product_links=product_links,
         sponsor_sticker=sponsor_sticker, sticker_catalog=catalog,
-        inplace=inplace,
+        inplace=inplace, bare_text_sticker=True,
     )
     return PipelineResult(card=card, draft=draft, plan=plan)

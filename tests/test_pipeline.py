@@ -14,7 +14,7 @@ def test_run_pipeline_wires_stickers(monkeypatch):
     captured = {}
 
     def fake_chat(messages, model=None):
-        captured["system"] = messages[0]["content"]
+        captured.setdefault("system", messages[0]["content"])  # 첫(생성) 호출만
         return "초밥 후기\n\n정말 맛있었어요.\n[스티커:맛있음]\n또 갈래요."
 
     monkeypatch.setattr(gen, "chat", fake_chat)
@@ -43,7 +43,7 @@ def test_run_pipeline_no_stickers_no_marker(monkeypatch):
     captured = {}
 
     def fake_chat(messages, model=None):
-        captured["system"] = messages[0]["content"]
+        captured.setdefault("system", messages[0]["content"])  # 첫(생성) 호출만
         return "제목\n\n본문\n[스티커:맛있음]\n끝"
 
     monkeypatch.setattr(gen, "chat", fake_chat)

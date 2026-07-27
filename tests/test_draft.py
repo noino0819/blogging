@@ -173,7 +173,8 @@ def test_variation_block_in_system_prompt(monkeypatch):
     captured: dict[str, str] = {}
 
     def fake_chat(messages, model=None):
-        captured["system"] = messages[0]["content"]
+        # 2차 자가검수 호출이 뒤따르므로 첫(생성) 호출의 시스템 프롬프트만 잡는다
+        captured.setdefault("system", messages[0]["content"])
         return "제목\n\n본문"
 
     monkeypatch.setattr(gen, "chat", fake_chat)
@@ -353,7 +354,7 @@ def test_structure_flag_appends_instruction(monkeypatch):
     captured: dict[str, str] = {}
 
     def fake_chat(messages, model=None):
-        captured["system"] = messages[0]["content"]
+        captured.setdefault("system", messages[0]["content"])  # 첫(생성) 호출만
         return "제목\n\n본문\n[구분선]\n끝"
 
     monkeypatch.setattr(gen, "chat", fake_chat)
@@ -374,7 +375,7 @@ def test_sticker_labels_append_instruction(monkeypatch):
     captured: dict[str, str] = {}
 
     def fake_chat(messages, model=None):
-        captured["system"] = messages[0]["content"]
+        captured.setdefault("system", messages[0]["content"])  # 첫(생성) 호출만
         return "제목\n\n본문"
 
     monkeypatch.setattr(gen, "chat", fake_chat)
@@ -383,6 +384,124 @@ def test_sticker_labels_append_instruction(monkeypatch):
     )
     gen.generate_draft(req)
     assert "맛있음" in captured["system"] and "[스티커:상황]" in captured["system"]
+
+
+def test_selfcheck_photo_and_sticker_items_conditional():
+    # 사진/스티커가 있을 때만 분산·이모티콘 점검 항목이 붙는다
+    from autoblog.draft.prompts import build_selfcheck_instruction
+
+    plain = build_selfcheck_instruction()
+    assert "사진 분산" not in plain and "[스티커:상황]" not in plain
+    both = build_selfcheck_instruction(has_photos=True, has_stickers=True)
+    assert "사진 분산" in both and "[스티커:상황]" in both
+
+
+def test_selfreview_second_pass_applied(monkeypatch):
+    # 생성 후 2차 자가검수 호출이 돌고, 검수 결과가 초안 텍스트로 쓰인다
+    from autoblog.draft import generate as gen
+
+    calls: list[str] = []
+
+    def fake_chat(messages, model=None):
+        calls.append(messages[0]["content"])
+        if len(calls) == 1:
+            return "제목 스무자 내외의 예시\n\n본문인데 느낌표가 있다!"
+        return "제목 스무자 내외의 예시\n\n본문인데 느낌표가 있다.ᐟ"
+
+    monkeypatch.setattr(gen, "chat", fake_chat)
+    result = gen.generate_draft(
+        gen.DraftRequest(fact_card=_place_card(), experience_memo="메모", postprocess=False)
+    )
+    assert len(calls) == 2
+    assert "검수" in calls[1]  # 두 번째 호출은 검수 프롬프트
+    assert ".ᐟ" in result.text
+    assert result.debug["reviewed"]  # 고쳐진 사실이 디버그에 남는다
+
+
+def test_selfreview_falls_back_on_marker_loss(monkeypatch):
+    # 검수 응답이 마커를 훼손하면(개수 변화) 원본을 유지한다
+    from autoblog.draft import generate as gen
+
+    raw = "제목\n\n본문.\n[사진:음식]\n설명."
+
+    def fake_chat(messages, model=None):
+        return "제목\n\n본문.\n설명인데 사진 마커를 지워버림."
+
+    monkeypatch.setattr(gen, "chat", fake_chat)
+    req = gen.DraftRequest(fact_card=_place_card(), experience_memo="메모")
+    assert gen.review_draft_text(raw, req) == raw
+
+
+def test_selfreview_falls_back_on_shrunk_output(monkeypatch):
+    # 검수 응답이 지나치게 짧으면(내용 소실 의심) 원본을 유지한다
+    from autoblog.draft import generate as gen
+
+    raw = "제목\n\n" + "본문 문단입니다.\n" * 20
+
+    monkeypatch.setattr(gen, "chat", lambda messages, model=None: "짧은 응답")
+    req = gen.DraftRequest(fact_card=_place_card(), experience_memo="메모")
+    assert gen.review_draft_text(raw, req) == raw
+
+
+def test_selfreview_skipped_for_raw_override(monkeypatch):
+    # 외부 챗봇 붙여넣기(raw_override) 경로에서는 LLM 검수 호출이 없다
+    from autoblog.draft import generate as gen
+
+    def boom(messages, model=None):
+        raise AssertionError("raw_override 경로에서 chat이 호출되면 안 됨")
+
+    monkeypatch.setattr(gen, "chat", boom)
+    result = gen.generate_draft(
+        gen.DraftRequest(fact_card=_place_card(), experience_memo=""),
+        raw_override="제목\n\n본문입니다.",
+    )
+    assert "본문입니다" in result.text
+
+
+def test_extract_final_draft_takes_last_section():
+    from autoblog.draft.postprocess import extract_final_draft
+
+    resp = (
+        "제목\n\n초안 본문인데 느낌표가 있다!\n\n"
+        "## 자가 점검\n1. 느낌표 — 어김: .ᐟ 로 교체\n\n"
+        "=====최종본=====\n제목\n\n고친 본문이다.ᐟ"
+    )
+    assert extract_final_draft(resp) == "제목\n\n고친 본문이다.ᐟ"
+
+
+def test_extract_final_draft_tolerates_decorated_marker():
+    from autoblog.draft.postprocess import extract_final_draft
+
+    resp = "초안.\n\n**=====최종본=====**\n최종 글."
+    assert extract_final_draft(resp) == "최종 글."
+
+
+def test_extract_final_draft_passthrough_without_marker():
+    from autoblog.draft.postprocess import extract_final_draft
+
+    plain = "제목\n\n마커 없는 보통 글."
+    assert extract_final_draft(plain) == plain
+
+
+def test_raw_override_extracts_final_section():
+    # 외부 챗봇 응답을 통째로 붙여넣어도 최종본만 초안으로 쓰인다
+    from autoblog.draft import generate as gen
+
+    resp = "제목\n\n초안 본문.\n\n## 자가 점검\n통과\n\n=====최종본=====\n제목\n\n최종 본문이다."
+    result = gen.generate_draft(
+        gen.DraftRequest(fact_card=_place_card(), experience_memo=""), raw_override=resp
+    )
+    assert "최종 본문이다" in result.text
+    assert "자가 점검" not in result.text and "초안 본문" not in result.text
+
+
+def test_export_prompt_includes_review_protocol():
+    # 내보내기 프롬프트가 초안→자가 점검→최종본 3단계 출력 프로토콜을 지시한다
+    from autoblog.pipeline import build_export_prompt
+
+    text = build_export_prompt("메모", card=_place_card())
+    assert "=====최종본=====" in text
+    assert "## 자가 점검" in text
 
 
 def test_wrap_long_lines():

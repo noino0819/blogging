@@ -34,6 +34,10 @@ class DraftRequest(BaseModel):
     guidelines: Guidelines | None = None
     photo_count: int | None = None
     postprocess: bool = True  # 결정적 포맷 규칙 후처리 강제
+    # 생성 직후 LLM 2차 자가검수 패스 — 시스템 프롬프트 끝의 자가 점검 지시는 생성 중
+    # 한 번 읽고 지나가 실제로는 자주 안 지켜진다(특히 느낌표·줄 길이·사진 분산).
+    # 같은 점검 목록으로 '검수만' 하는 별도 호출을 한 번 더 돌려 실제로 교정하게 한다.
+    selfreview: bool = True
     # 강조(서식) — 켜면 LLM이 <<role:text>> 마킹 → 순환/고정 매핑 배정
     emphasis: bool = False
     # 구조 마커 — 켜면 LLM이 [구분선]/[인용구]…[/인용구] 마커를 알아서 삽입(plan에서 블록으로 변환)
@@ -132,11 +136,53 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
         pname = req.fact_card.place.name if req.fact_card.place else None
         system = f"{system}\n\n{build_place_instruction(pname or None)}"
     # 자가 점검은 항상 맨 끝에(모델이 마지막으로 읽는 최종 게이트) — 맛집·상품 공통.
-    system = f"{system}\n\n{build_selfcheck_instruction(is_product, ornaments=style.ornaments)}"
+    system = f"{system}\n\n{_selfcheck_for(req)}"
     user = build_user_prompt(
         req.fact_card, req.experience_memo, req.template_text, inplace=req.inplace
     )
     return system, user
+
+
+def _selfcheck_for(req: DraftRequest) -> str:
+    """요청 상황(상품 여부·어투·사진·스티커)에 맞춘 자가 점검 지시문 — 생성·검수가 같은 목록을 쓴다."""
+    imgs = [p for p in req.fact_card.photos if p.media_kind != "video"]
+    return build_selfcheck_instruction(
+        req.fact_card.is_product,
+        ornaments=effective_style(req).ornaments,
+        has_photos=bool(imgs),
+        has_stickers=bool(req.sticker_labels),
+    )
+
+
+# 검수 결과 검증용 마커 접두사 — 개수가 바뀌면 검수가 마커를 훼손한 것(원본 유지)
+_REVIEW_MARKERS = ("[사진", "[영상", "[지도", "[구분선", "[인용구", "[스티커", "<<")
+
+
+def review_draft_text(raw: str, req: DraftRequest, model: str | None = None) -> str:
+    """생성 직후 2차 자가검수 — 같은 점검 목록으로 초안을 다시 읽고 어긴 곳만 고친 전체 글을 받는다.
+
+    결과가 의심스러우면(빈 응답·길이 급감·마커 개수 변화) 원본을 그대로 돌려준다(안전 폴백).
+    """
+    system = (
+        "너는 방금 이 네이버 블로그 초안을 작성한 저자 본인이고, 지금은 제출 직전 검수 단계다. "
+        "아래 점검 목록을 한 항목씩 초안과 대조해서, 어긴 부분만 최소한으로 고쳐라.\n"
+        "반드시 지켜라:\n"
+        "- 글의 내용·구성·문체·분량은 그대로 두고, 규칙을 어긴 문장만 손본다.\n"
+        "- 대괄호 마커([사진]·[사진:라벨]·[영상]·[지도]·[구분선]·[인용구]·[/인용구]·[스티커:이름])와 "
+        "<<이름:문구>> 강조 마킹은 지우거나 새로 만들지 않는다. 단, '사진 분산' 항목을 어겼으면 "
+        "기존 [사진] 마커의 위치를 옮기는 것은 허용된다(개수는 유지).\n"
+        "- 설명·주석·머리말 없이, 고친 최종 글 전체만 출력한다(첫 줄 제목부터 끝까지 빠짐없이).\n\n"
+        + _selfcheck_for(req)
+    )
+    fixed = chat(
+        [{"role": "system", "content": system}, {"role": "user", "content": raw}], model=model
+    ).strip()
+    if not fixed or len(fixed) < len(raw) * 0.6:
+        return raw
+    for m in _REVIEW_MARKERS:
+        if raw.count(m) != fixed.count(m):
+            return raw
+    return fixed
 
 
 def generate_draft(
@@ -150,8 +196,12 @@ def generate_draft(
     from autoblog.publish.emphasis import DEFAULT_STYLES, load_default_power_shortcuts
 
     if raw_override is not None:
+        from autoblog.draft.postprocess import extract_final_draft
+
+        # 외부 챗봇 응답: '초안→자가 점검→=====최종본=====' 프로토콜 응답 전체를
+        # 붙여넣어도 최종본만 골라낸다(마커 없으면 원문 그대로).
         system, user = "", ""
-        raw = raw_override.strip()
+        raw = extract_final_draft(raw_override).strip()
     else:
         system, user = build_prompt(req)
         raw = chat(
@@ -159,12 +209,22 @@ def generate_draft(
             model=model,
         ).strip()
     text = raw
+    reviewed = ""
+    if raw_override is None and req.selfreview:
+        try:
+            text = review_draft_text(raw, req, model)
+        except Exception:  # noqa: BLE001 - 검수는 보조 단계, 실패해도 초안은 그대로 진행
+            text = raw
+        if text != raw:
+            reviewed = text
     # 상품 리뷰: 나열 박스(✅/1️⃣~) 보존 — 판정은 FactCard.is_product 단일 출처
     # (베이스 프롬프트 선택과 같은 기준이어야 지시와 후처리가 어긋나지 않는다).
     is_product = req.fact_card.is_product
     # 어투 치환(!→.ᐟ 등)은 꾸밈 어투에서만 — 프롬프트와 후처리가 같은 어투 기준을 쓴다.
     ornaments = effective_style(req).ornaments
     debug = {"system": system, "user": user, "raw": raw, "model": model or ""}
+    if reviewed:  # 2차 자가검수가 실제로 고친 경우 — 디버그에서 원본과 비교 가능하게
+        debug["reviewed"] = reviewed
 
     # 강조 마킹 추출(포맷 후처리 전에 — 줄바꿈이 <<>>를 깨지 않도록)
     emphases: list[StyledSpan] = []

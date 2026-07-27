@@ -616,7 +616,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 </div></div>
 <div id=imodal class=modal style="display:none"><div class=modalbox>
   <div class=modalhd><span><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg> 받아온 글 붙여넣기</span><button class=mx id=imclose>✕</button></div>
-  <div class=muted>다른 챗봇에서 받은 글을 붙여넣으세요. 강조 &lt;&lt;…&gt;&gt; · [구분선] · [인용구] · [스티커:상황] 마커가 있으면 그대로 적용돼 미리보기로 보여줍니다. 선택한 사진도 함께 배치돼요.</div>
+  <div class=muted>다른 챗봇에서 받은 글을 붙여넣으세요. 강조 &lt;&lt;…&gt;&gt; · [구분선] · [인용구] · [스티커:상황] 마커가 있으면 그대로 적용돼 미리보기로 보여줍니다. 선택한 사진도 함께 배치돼요. 응답에 자가 점검·=====최종본===== 이 섞여 있어도 <b>통째로 붙여넣으면 최종본만 자동으로 골라내요</b>.</div>
   <textarea id=itext placeholder="여기에 받아온 글을 붙여넣기"></textarea>
   <div class=modalft><button class=btn id=iapply style="flex:1">이 글로 미리보기</button><button class="btn ghost" id=imclose2 style="flex:0 0 120px">닫기</button></div>
 </div></div>
@@ -946,7 +946,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
         <input id=kwq placeholder="예: 회현역 카페 주차" autocomplete=off>
         <button class=btn id=kwbtn>확인</button>
       </div>
-      <div id=kwres><div class=muted style="margin-top:8px">키워드를 넣으면 <b>이미 쓰인 블로그 글 수(경쟁)</b>·<b>현재 상위 글</b>·<b>내 글 순위</b>를 보여줘요. 문서 수가 적고 상위가 대형 블로그로 꽉 차 있지 않을수록 노려볼 만해요. (검색량은 별도 API가 필요해 빠져 있어요 — 경쟁 정도로 판단)</div></div>
+      <div id=kwres><div class=muted style="margin-top:8px">키워드를 넣으면 <b>이미 쓰인 블로그 글 수(경쟁)</b>·<b>현재 상위 글</b>·<b>내 글 순위</b>를 보여줘요. 문서 수가 적고 상위가 대형 블로그로 꽉 차 있지 않을수록 노려볼 만해요.</div></div>
+      <div id=kwad style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)"></div>
     </div>
     <div class=card style="margin-top:16px"><h3>노출 순위 추적 <span class=muted style="font-weight:400">— 블로그 검색 상위 100위(정확도순 근사) 실측</span></h3><div id=ranktrk><div class=muted>불러오는 중…</div></div></div>
   </section>
@@ -1184,7 +1185,7 @@ $$('.nav').forEach(n=>n.onclick=()=>{
   $$('.view').forEach(v=>v.classList.remove('on')); $('.view.'+n.dataset.view).classList.add('on');
   if(n.dataset.view==='stickers') loadStickers();
   if(n.dataset.view==='persona') loadPersonas();
-  if(n.dataset.view==='settings'){ loadRanks(); bindKwCheck(); }
+  if(n.dataset.view==='settings'){ loadRanks(); bindKwCheck(); loadKwAd(); }
 });
 // 키워드 경쟁 확인 — 발행 전에 '노려볼 만한 키워드인지' 가늠(설정 탭)
 function bindKwCheck(){
@@ -1202,6 +1203,33 @@ function bindKwCheck(){
   btn.onclick=run;
   inp.onkeydown=e=>{ if(e.key==='Enter')run(); };
 }
+// 검색광고 API 키 등록(월간 검색량) — 키워드 경쟁 확인 카드 하단(설정 탭)
+async function loadKwAd(){
+  const box=$('#kwad'); if(!box)return;
+  let set=false; try{ set=!!(await (await fetch('/api/searchad-key')).json()).set; }catch(e){}
+  const inpSt='padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:#fff';
+  box.innerHTML=`<div class=muted style="font-size:12px">${set
+    ?'🔑 <b>검색광고 API 연결됨</b> — 키워드 판정·추천에 월간 검색량(PC+모바일)이 함께 나와요. <a href=# id=kwadedit>키 변경</a>'
+    :'월간 <b>검색량</b>까지 보려면 <a href="https://searchad.naver.com" target=_blank rel=noopener>네이버 검색광고</a>(무료 가입) → 도구 → API 사용관리에서 키를 발급받아 등록하세요. 등록하면 추천이 \'검색량 대비 경쟁 유리한 순\'으로 똑똑해져요.'}</div>
+  <div id=kwadform style="display:${set?'none':'flex'};gap:6px;flex-wrap:wrap;margin-top:8px">
+    <input id=kwadkey placeholder="액세스라이선스(API 키)" autocomplete=off style="flex:2 1 200px;${inpSt}">
+    <input id=kwadsec type=password placeholder="비밀키" autocomplete=off style="flex:2 1 160px;${inpSt}">
+    <input id=kwadcid placeholder="CUSTOMER_ID" autocomplete=off style="flex:1 1 110px;${inpSt}">
+    <button class="btn ghost" id=kwadsave>저장</button>
+  </div>`;
+  const ed=$('#kwadedit'); if(ed) ed.onclick=e=>{ e.preventDefault(); $('#kwadform').style.display='flex'; };
+  $('#kwadsave').onclick=async()=>{
+    const k=$('#kwadkey').value.trim(), s=$('#kwadsec').value.trim(), c=$('#kwadcid').value.trim();
+    if(!k||!s||!c){ toast('액세스라이선스·비밀키·CUSTOMER_ID를 모두 입력하세요','info'); return; }
+    const sv=$('#kwadsave'); sv.disabled=true;
+    try{
+      const r=await fetch('/api/searchad-key',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({api_key:k,secret:s,customer_id:c})});
+      if(!r.ok) throw new Error((await r.json().catch(()=>({}))).error||'저장 실패');
+      toast('검색광고 API 키 저장됨 ✓ — 이제 검색량이 함께 나와요','ok'); loadKwAd();
+    }catch(e){ toast('저장 실패 — '+e.message,'err'); }
+    finally{ const x=$('#kwadsave'); if(x)x.disabled=false; }
+  };
+}
 // 문서수는 절대 기준이 아니라 상대 신호 — 대략의 밴드만 보여주고 판단은 상위결과로.
 function renderKwCheck(d){
   const res=$('#kwres'); const n=d.total||0;
@@ -1210,8 +1238,10 @@ function renderKwCheck(d){
   else if(n<20000){ band='경쟁 보통 — 상위 글이 대형 블로그로 꽉 찼는지 보고 판단'; color='#8a6a0a'; }
   else{ band='경쟁 치열 — 지금 체급으론 묻히기 쉬워요'; color='#c0392b'; }
   const mine = d.mine ? `<b style="color:#0a8a4a">내 글이 이미 ${d.mine}위</b>` : '내 글은 상위 100위 밖';
+  const vol = d.volume!=null
+    ? `월간 검색 <b>${(d.volume||0).toLocaleString()}회</b>(PC+모바일)${d.comp_idx?` · 광고 경쟁 ${esc(d.comp_idx)}`:''} · ` : '';
   let html=`<div class=kwverdict style="color:${color}">${esc(band)}</div>`
-    +`<div class=kwmeta>이미 쓰인 블로그 글 <b>${n.toLocaleString()}개</b> · ${mine} <span class=muted>(문서 수는 절대 기준이 아니라 상대 신호예요)</span></div>`;
+    +`<div class=kwmeta>${vol}이미 쓰인 블로그 글 <b>${n.toLocaleString()}개</b> · ${mine} <span class=muted>(문서 수는 절대 기준이 아니라 상대 신호예요)</span></div>`;
   (d.top||[]).forEach((t,i)=>{
     const me = d.mine===i+1 ? ' me' : '';
     html+=`<div class="kwtop${me}"><span class=n>${i+1}</span><span class=bl>${esc(t.blogger||'')}</span>`
@@ -1454,11 +1484,14 @@ const KWJUDGE={};
 function classifyKw(d){
   const n=d.total||0;
   const mine = d.mine ? ` · 내 글 ${d.mine}위` : '';
+  const vol = d.volume!=null ? ` · 월 검색 ${fmtVol(d.volume)}회` : '';  // 검색광고 키 있을 때만
   const docs = `문서 ${n.toLocaleString()}개`;
-  if(n<1000)  return {cls:'',     badge:'✅', tip:`노려볼 만해요 · ${docs}${mine}`};
-  if(n<20000) return {cls:'jmid', badge:'△',  tip:`애매 — 상위 글이 대형 블로그로 꽉 찼는지 보고 판단 · ${docs}${mine}`};
-  return              {cls:'jbad', badge:'❌', tip:`경쟁 과다 — 지금 체급엔 묻히기 쉬워요 · ${docs}${mine}`};
+  if(n<1000)  return {cls:'',     badge:'✅', tip:`노려볼 만해요 · ${docs}${vol}${mine}`};
+  if(n<20000) return {cls:'jmid', badge:'△',  tip:`애매 — 상위 글이 대형 블로그로 꽉 찼는지 보고 판단 · ${docs}${vol}${mine}`};
+  return              {cls:'jbad', badge:'❌', tip:`경쟁 과다 — 지금 체급엔 묻히기 쉬워요 · ${docs}${vol}${mine}`};
 }
+// 검색량 짧은 표기: 12345 → 1.2만
+function fmtVol(v){ v=v||0; return v>=10000 ? ((v/10000).toFixed(v%10000?1:0))+'만' : v.toLocaleString(); }
 async function judgeKeyword(kw){
   const key=kw.toLowerCase();
   if(KWJUDGE[key]) return;                       // 캐시 — 재조회 안 함
@@ -1515,13 +1548,16 @@ function kwRecRender(){
   const list=KWREC[KWREC_SEED];
   if(!Array.isArray(list)){ box.style.display='none'; box.innerHTML=''; return; }
   // 이미 넣은 키워드는 빼고, ❌(경쟁 과다)도 빼 '유리한' 것만 남긴다.
-  const items=list.map(s=>({kw:s.keyword,j:classifyKw({total:s.total})}))
+  const items=list.map(s=>({kw:s.keyword,vol:s.volume,j:classifyKw({total:s.total,volume:s.volume})}))
     .filter(s=>!kwHas(s.kw)&&s.j.badge!=='❌');
+  const hasVol=items.some(s=>s.vol!=null);
   box.style.display='block'; box.innerHTML='';
   // 헤더 + '🔄 다시 추천'(넣은 키워드를 돌아가며 새 연관어를 뽑아줌 — 첫 단어에 안 묶임)
   const head=document.createElement('div'); head.className='kwrec-t';
   head.append(document.createTextNode('💡 이 키워드는 어때요? '));
-  const m=document.createElement('span'); m.className='muted'; m.textContent=`'${KWREC_SEED}' 연관검색어 중 경쟁 낮은 순`; head.append(m);
+  const m=document.createElement('span'); m.className='muted';
+  m.textContent=hasVol?`'${KWREC_SEED}' 연관검색어 중 검색량 대비 경쟁 유리한 순`:`'${KWREC_SEED}' 연관검색어 중 경쟁 낮은 순`;
+  head.append(m);
   const rb=document.createElement('button'); rb.type='button'; rb.className='kwrec-re'; rb.textContent='🔄 다시 추천';
   rb.title='넣은 키워드를 돌아가며 다른 연관어를 추천해요'; rb.onclick=reSuggest; head.append(rb);
   box.append(head);
@@ -1533,8 +1569,11 @@ function kwRecRender(){
   items.forEach(s=>{ const b=document.createElement('button'); b.type='button'; b.className='rc'; b.title=s.j.tip;
     const bd=document.createElement('span'); bd.className='rcb'; bd.textContent=s.j.badge;
     const tx=document.createTextNode(s.kw);
+    b.append(bd,tx);
+    if(s.vol!=null){ const vv=document.createElement('span'); vv.className='muted';
+      vv.style.cssText='font-size:10.5px;margin-left:4px'; vv.textContent=`월 ${fmtVol(s.vol)}`; b.append(vv); }
     const pl=document.createElement('span'); pl.className='rcplus'; pl.textContent='+';
-    b.append(bd,tx,pl); b.onclick=()=>{ kwAddMany([s.kw],true); }; wrap.append(b); });  // true=추천 클릭 → 씨앗 안 바꿈
+    b.append(pl); b.onclick=()=>{ kwAddMany([s.kw],true); }; wrap.append(b); });  // true=추천 클릭 → 씨앗 안 바꿈
   box.append(wrap);
 }
 // '🔄 다시 추천' — 넣은 키워드를 순서대로 돌며(첫 단어만이 아니라) 캐시를 비우고 새로 뽑는다.
@@ -3498,6 +3537,10 @@ def _make_handler(state: dict):
                     ).encode())
                 except Exception as exc:  # noqa: BLE001 — 키 미설정·네트워크 등 안내로 전달
                     self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode())
+            elif u.path == "/api/searchad-key":
+                from autoblog.config import load_env
+
+                self._send(200, json.dumps({"set": load_env().has_searchad}).encode())
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -3584,6 +3627,24 @@ def _make_handler(state: dict):
                     body = self._json_body()
                     _set_llm_key(body.get("provider", "anthropic"), body.get("key", ""))
                     self._send(200, b'{"ok":true}')
+                elif path == "/api/searchad-key":
+                    # 네이버 검색광고 API(월간 검색량) 키 3종을 .env에 저장
+                    from autoblog.config import save_env_value
+
+                    body = self._json_body()
+                    vals = {
+                        "NAVER_SEARCHAD_API_KEY": (body.get("api_key") or "").strip(),
+                        "NAVER_SEARCHAD_SECRET": (body.get("secret") or "").strip(),
+                        "NAVER_SEARCHAD_CUSTOMER_ID": (body.get("customer_id") or "").strip(),
+                    }
+                    if not all(vals.values()):
+                        self._send(400, json.dumps(
+                            {"error": "액세스라이선스·비밀키·CUSTOMER_ID를 모두 입력하세요"},
+                            ensure_ascii=False).encode())
+                    else:
+                        for k, v in vals.items():
+                            save_env_value(k, v)
+                        self._send(200, b'{"ok":true}')
                 elif path == "/api/format":
                     import yaml
 
