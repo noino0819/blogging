@@ -185,6 +185,25 @@ def wrap_long_lines(text: str, max_len: int = 30, *, keep_list_lines: bool = Fal
     return "\n".join(out)
 
 
+def fix_leading_hashtag(text: str) -> str:
+    """헤더 태그줄의 첫 태그에 빠진 # 복원.
+
+    LLM이 프롬프트 예시 습관으로 첫 태그만 # 없이 쓰는 버릇("혜화맛집 #대학로맛집 …")을
+    "#혜화맛집 #대학로맛집 …"으로 보정한다. 첫 토큰만 #이 없고 나머지 토큰 전부가
+    #태그인 줄(태그 3개 이상)에만 적용 — 본문 문장 속 우연한 해시태그 줄은 건드리지 않는다.
+    """
+    lines = text.split("\n")
+    for i, ln in enumerate(lines):
+        toks = ln.split()
+        if (
+            len(toks) >= 3
+            and not toks[0].startswith("#")
+            and all(t.startswith("#") for t in toks[1:])
+        ):
+            lines[i] = ln.replace(toks[0], "#" + toks[0], 1)
+    return "\n".join(lines)
+
+
 def enforce_format(
     text: str,
     wrap: bool = True,
@@ -207,6 +226,7 @@ def enforce_format(
     text = _HEADER_RE.sub("", text)  # 마크다운 헤더 마커 제거
     text = bullet_re.sub("", text)  # 글머리 기호 제거
     text = _DASH_BULLET_RE.sub("", text)  # 줄 앞 '- ' 제거
+    text = fix_leading_hashtag(text)  # 헤더 태그줄 첫 태그의 빠진 # 복원
     if wrap:  # 전체 문서 모드 — 첫 줄(제목)은 장식 문자 제거, 본문만 치환
         # lstrip()으로 공백-only 선행 줄까지 걷어내야 실제 제목이 첫 줄로 잡힌다
         # (wrap_long_lines의 제목 판정과 동일 기준).

@@ -484,6 +484,10 @@ def build_publish_plan(
             # 자동 구분선을 또 넣지 않는다 — 안 그러면 구분선이 위·아래로 2개가 된다.
             prev_is_divider = bool(blocks) and blocks[-1].kind == "divider"
             toks = s.split()
+            # 첫 태그만 # 없는 줄("혜화맛집 #대학로맛집 …") 보정 — LLM 예시 습관/외부 챗봇 글.
+            # 나머지 토큰 전부가 #태그일 때만(본문 단어가 섞인 줄은 건드리지 않음).
+            if not toks[0].startswith("#") and all(t.startswith("#") for t in toks[1:]):
+                toks[0] = "#" + toks[0]
             per = max(1, ss.hashtags.per_line)
             rows = [" ".join(toks[i : i + per]) for i in range(0, len(toks), per)]
             spans = [StyledSpan(text=r, preset_id=None, style=ss.hashtags.to_style()) for r in rows]

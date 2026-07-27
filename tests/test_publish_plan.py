@@ -258,8 +258,9 @@ def test_structure_styles_header_and_subheading():
     assert all(sp.style.text_color == "#395D73" for sp in big.emphases)
 
     # 해시태그는 2개씩 줄바꿈 + 줄마다 span, 바로 뒤에 가운데 꺾인 선(variant 4)
+    # 첫 태그의 빠진 #("혜화맛집")은 플랜이 자동 복원한다("#혜화맛집")
     tag_block = next(b for b in plan.blocks if "#대학로맛집" in b.text)
-    assert tag_block.text == "혜화맛집 #대학로맛집\n#혜화내돈내산 #메종아카이"
+    assert tag_block.text == "#혜화맛집 #대학로맛집\n#혜화내돈내산 #메종아카이"
     assert len(tag_block.emphases) == 2
     idx = plan.blocks.index(tag_block)
     assert plan.blocks[idx + 1].kind == "divider" and plan.blocks[idx + 1].variant == 4
@@ -486,6 +487,23 @@ def test_rep_image_path_inplace_also_set():
     # 끌어올림은 없음 — 마커 순서 유지
     imgs = [b.image_path for b in plan.blocks if b.kind == "image"]
     assert imgs == ["a.jpg", "b.jpg"]
+
+
+def test_rep_image_path_inplace_unmarked_thumb_inserted():
+    # 초안 작성 뒤 'AI 사진 대체'로 추가된 ★ 썸네일은 마커가 없다 — inplace에서도
+    # 사라지지 않고 첫 이미지 자리에 들어가 대표로 지정돼야 한다(무음 소실 회귀 방지).
+    draft = DraftResult(text="제목\n\n본문.\n[사진:음식]\n다음.\n[사진:외관]")
+    photos = [
+        PhotoItem(path="a.jpg", label="음식"),
+        PhotoItem(path="b.jpg", label="외관"),
+        PhotoItem(path="ai.png", label="음식", thumbnail=True, ai_generated=True),
+    ]
+    plan = build_publish_plan(draft, photos, inplace=True)
+    imgs = [b.image_path for b in plan.blocks if b.kind == "image"]
+    assert imgs == ["ai.png", "a.jpg", "b.jpg"]
+    assert plan.rep_image_path == "ai.png"
+    ai_block = next(b for b in plan.blocks if b.image_path == "ai.png")
+    assert ai_block.ai_generated  # 'AI 활용' 표시 대상 유지
 
 
 def test_rep_image_path_excludes_sponsor_fallback_first():

@@ -134,7 +134,8 @@ def check_exposure(draft: str) -> list[CheckItem]:
         toks = ln.split()
         cnt = sum(1 for t in toks if t.startswith("#"))
         if cnt >= 2:
-            # 헤더 태그줄 관례: 첫 태그는 # 없이 씀("혜화맛집 #대학로맛집 …")
+            # 첫 태그만 # 없는 옛 초안도 태그로 인정("혜화맛집 #대학로맛집 …")
+            # — 예전 LLM 습관. 지금은 postprocess/plan이 #을 자동 복원한다.
             all_tail_tags = all(t.startswith("#") for t in toks[1:])
             n_tags = len(toks) if (not toks[0].startswith("#") and all_tail_tags) else cnt
             break
