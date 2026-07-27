@@ -116,6 +116,9 @@ class BlogPublisher:
         self.state_path = state_path or STATE_PATH
         self._ctx = None
         self._page = None
+        # 업로드가 확인되지 않은 이미지 경로 — 대표 지정·AI 표시의 k번째 매핑에서 제외해
+        # 인덱스가 밀리는 걸 막는다(webp 등 미지원 형식 무음 실패 대비).
+        self._failed_images: set[str] = set()
 
     # --- 세션/브라우저 ---
     def start(self):
@@ -254,6 +257,7 @@ class BlogPublisher:
         자동 삽입에 실패해 본문에서 빠진 항목(예: 검색 결과 없는 지도)이 있으면 사람이
         읽을 수 있는 경고 메시지 목록으로 반환한다(유저가 나중에 직접 보완하도록 안내용)."""
         warnings: list[str] = []
+        self._failed_images = set()  # 지난 저장의 실패 기록이 이번 매핑에 섞이지 않게
         self.open_write_page()
         self._type_title(plan.title)
         self._page.click(SMART_EDITOR["content_component"])
@@ -671,8 +675,18 @@ class BlogPublisher:
         rep = getattr(plan, "rep_image_path", None)
         if not rep:
             return
+        if rep in self._failed_images:  # 대표사진 자체가 업로드 실패 — 지정 불가
+            warnings.append(
+                "★ 대표사진 업로드가 실패해 대표 지정을 건너뛰었어요 — 에디터에서 사진을 "
+                "직접 추가하고 대표로 지정해 주세요."
+            )
+            return
         page = self._page
-        plan_imgs = [b.image_path for b in plan.blocks if b.kind == "image" and b.image_path]
+        # 업로드 실패한 이미지는 본문에 없으므로 매핑에서 빼야 k번째가 안 밀린다
+        plan_imgs = [
+            b.image_path for b in plan.blocks
+            if b.kind == "image" and b.image_path and b.image_path not in self._failed_images
+        ]
         try:
             k = plan_imgs.index(rep)
             page.evaluate(self._FORCE_LOAD_IMGS_JS)  # 외부/네이버 판별은 src 로드 후에만 가능
@@ -720,11 +734,16 @@ class BlogPublisher:
         sel = SMART_EDITOR.get("image_ai_label")
         if not sel:
             return  # 토글 셀렉터 미설정 — 발행은 그대로
-        plan_imgs = [b.image_path for b in plan.blocks if b.kind == "image" and b.image_path]
+        # 업로드 실패한 이미지는 본문에 없으므로 매핑에서 빼야 k번째가 안 밀린다
+        plan_imgs = [
+            b.image_path for b in plan.blocks
+            if b.kind == "image" and b.image_path and b.image_path not in self._failed_images
+        ]
         ai_idx = [
             plan_imgs.index(b.image_path)
             for b in plan.blocks
             if b.kind == "image" and b.image_path and b.ai_generated
+            and b.image_path in plan_imgs
         ]
         if not ai_idx:
             return
@@ -931,6 +950,7 @@ class BlogPublisher:
         page = self._page
         warnings: list[str] = []
         infos: list[str] = []  # 정상 동작 안내 — warnings와 달리 '확인 필요'가 아님
+        self._failed_images = set()  # 지난 저장의 실패 기록이 이번 매핑에 섞이지 않게
         self.open_write_page()
         if draft_title:
             idx = self._resolve_draft_idx(draft_title, draft_date)
@@ -2152,7 +2172,15 @@ class BlogPublisher:
                 uploaded = True
                 break
         page.wait_for_timeout(800)  # 컴포넌트 출현 직후 에디터 내부 처리 여유
-        if size == "small" and not (uploaded and self._resize_image_smallest()):
+        if not uploaded:
+            # 무음 실패 방지 — 여기서 안 알리면 사진이 조용히 빠지고, 대표 지정·AI 표시의
+            # k번째 매핑도 밀려 엉뚱한 사진에 배지가 붙는다(실패 경로는 매핑에서 제외).
+            self._failed_images.add(path)
+            return (
+                f"사진 자동 삽입이 확인되지 않았어요: ‘{Path(path).name}’ — 파일 형식(webp 등)이나 "
+                "용량 문제일 수 있어요. 발행 전에 본문 사진과 대표사진을 확인해 주세요."
+            )
+        if size == "small" and not self._resize_image_smallest():
             return (
                 "협찬 사진 크기·정렬 자동 변경 실패 — 에디터에서 사진을 선택해 "
                 "‘작게’·가운데 정렬로 직접 바꿔 주세요."
