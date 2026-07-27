@@ -3292,14 +3292,37 @@ def _safe_photo(path: str) -> Path | None:
 
 
 def _save_upload(filename: str, b64: str) -> str:
-    """업로드 미디어(사진/영상)를 data/uploads/에 저장하고 경로 반환."""
+    """업로드 미디어(사진/영상)를 data/uploads/에 저장하고 경로 반환.
+
+    네이버 에디터가 못 받는 이미지 형식(webp·bmp 등 — 외부 AI 모델 다운로드가 흔히 webp)은
+    저장 시점에 PNG/JPEG로 변환한다. 안 그러면 게시 단계에서 업로드가 조용히 실패해
+    사진이 빠지고 ★ 대표 지정도 어긋난다. 변환 실패 시엔 원본 그대로 저장(영상은 대상 아님).
+    """
     import base64
     import uuid
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    raw = base64.b64decode(b64)
     safe = Path(filename).name or "media"
+    ext = Path(safe).suffix.lower()
+    if not is_video(safe) and ext not in {".jpg", ".jpeg", ".png", ".gif"}:
+        try:
+            from PIL import Image
+
+            im = Image.open(BytesIO(raw))
+            buf = BytesIO()
+            if "A" in im.getbands():  # 투명도 보존
+                im.save(buf, format="PNG")
+                new_ext = ".png"
+            else:
+                im.convert("RGB").save(buf, format="JPEG", quality=92)
+                new_ext = ".jpg"
+            raw = buf.getvalue()
+            safe = (Path(safe).stem or "media") + new_ext
+        except Exception:  # noqa: BLE001 - 변환은 보조, 실패해도 원본 저장
+            pass
     dest = UPLOAD_DIR / f"{uuid.uuid4().hex[:8]}_{safe}"
-    dest.write_bytes(base64.b64decode(b64))
+    dest.write_bytes(raw)
     return str(dest)
 
 
