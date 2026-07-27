@@ -2151,28 +2151,36 @@ function genDone(ok){ if(GENTIMER)clearInterval(GENTIMER);
   const sec=GENT0?((Date.now()-GENT0)/1000).toFixed(1):null;
   if(ok){const fl=$('#genfill'); if(fl){fl.style.width='100%'; $('#genpct').textContent='100%';}
     const sb=$('#gensub'); if(sb&&sec)sb.textContent=`완성! ${sec}초 걸렸어요`;} }
+// 생성 중에는 같은 버튼이 [취소]가 된다 — 서버가 늦게 답해도 언제든 빠져나올 수 있게.
+let GENABORT=null;
+const genLabel=()=>$('#restyleMode').checked?'내 문체로 변환':'초안 생성';
 $('#gen').onclick=async()=>{
+  if(GENABORT){GENABORT.abort(); return;}
   if(!$('#memo').value.trim()){st('경험 메모를 입력하세요.');return;}
-  $('#gen').disabled=true;$('#save').disabled=true; st('생성 중…',true); genLoading();
+  GENABORT=new AbortController(); $('#gen').textContent='✕ 취소';
+  $('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES,
       draftId:CURWS,  // 이 탭의 글로 서버에 보관(게시 때 이 id로 '그 탭 글'을 정확히 저장)
       restyle:$('#restyleMode').checked,  // 켜면 외부 초안에 내 문체만 재적용(맛집/상품 구조 강제 안 함)
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 in-place 편집(새 글용 사진 재정렬 휴리스틱 끔)
-    const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+    const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:GENABORT.signal});
     const d=await r.json();
     if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); errNotice('초안 생성 실패', d.error); return;}
     genDone(true); PLAN=d; setTimeout(()=>renderPreview(d),350); st('생성 완료. 검토 후 임시저장하세요.'); toast('초안 생성 완료! 오른쪽 미리보기를 확인하세요.','ok'); $('#save').disabled=false; renderTabs();
     if(d.debug)showLog(d.debug);
-  }catch(e){genDone(false); st('오류: '+e); toast('초안 생성 오류: '+e,'err');}finally{$('#gen').disabled=false;}
+  }catch(e){genDone(false);
+    if(e.name==='AbortError'){$('#preview').innerHTML='<div class=genload><div style="font-size:40px">✋</div><div class=genmsg>생성을 취소했어요</div><div class=gensub>다시 [초안 생성]을 누르면 새로 시작해요</div></div>'; st('취소했어요'); toast('초안 생성을 취소했어요','ok');}
+    else{st('오류: '+e); toast('초안 생성 오류: '+e,'err');}
+  }finally{GENABORT=null; $('#gen').disabled=false; $('#gen').textContent=genLabel();}
 };
 // 리스타일 모드 토글 — 메모칸을 '외부 초안 붙여넣기'로 바꾸고 버튼 문구도 전환(백엔드 분기는 restyle 플래그)
 $('#restyleMode').onchange=e=>{
   const on=e.target.checked;
   $('#memo').placeholder = on ? '여기에 완성된 외부 초안을 통째로 붙여넣으세요 (예: 다른 AI가 쓴 빽다방 칼로리 글 전체)' : '예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요.';
   const lab=$('#memolabel'); if(lab&&lab.childNodes[0])lab.childNodes[0].nodeValue = on ? '외부 초안 붙여넣기' : '경험 메모';
-  const gb=$('#gen'); if(gb)gb.textContent = on ? '내 문체로 변환' : '초안 생성';
+  const gb=$('#gen'); if(gb&&!GENABORT)gb.textContent=genLabel();  // 생성 중이면 [취소] 유지
 };
 // 프롬프트 내보내기: 모달 안에서 진행바 + 실제 단계 메시지 보여주고, 합쳐진 프롬프트 표시·복사
 let EXPTIMER=null;

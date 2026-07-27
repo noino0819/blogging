@@ -13,6 +13,11 @@ class LLMUnavailable(RuntimeError):
     """텍스트 모델이 연동되지 않았거나(키 미설정/패키지 미설치) 사용할 수 없을 때."""
 
 
+# 공급자가 응답을 안 주면 무한 대기하지 않게 — SDK 기본값(제한 없음/10분+재시도)이면
+# 웹UI가 '생성 중…'에서 영영 멈춘 것처럼 보인다. 초과하면 에러로 떨어져 안내된다.
+TIMEOUT_SEC = 180
+
+
 def default_text_model() -> str:
     return load_models_config().effective().text
 
@@ -37,7 +42,9 @@ def _chat_anthropic(messages: list[dict], model: str, fmt: str | None = None) ->
         for m in messages
         if m["role"] in ("user", "assistant")
     ]
-    client = anthropic.Anthropic(api_key=env.anthropic_api_key)
+    client = anthropic.Anthropic(
+        api_key=env.anthropic_api_key, timeout=TIMEOUT_SEC, max_retries=1
+    )
     try:
         resp = client.messages.create(
             model=model, max_tokens=16000, messages=conv, **({"system": system} if system else {})
@@ -77,7 +84,7 @@ def _chat_openai(
         kwargs["response_format"] = {"type": "json_object"}
         # system은 맨 앞에 — qwen 등 일부 챗 템플릿은 중간/끝 system을 거부한다
         msgs = [{"role": "system", "content": "JSON으로만 답하세요."}] + msgs
-    client = OpenAI(api_key=key, base_url=base_url)
+    client = OpenAI(api_key=key, base_url=base_url, timeout=TIMEOUT_SEC, max_retries=1)
     try:
         resp = client.chat.completions.create(model=model, messages=msgs, **kwargs)
     except AuthenticationError as exc:
@@ -132,7 +139,10 @@ def _chat_gemini(messages: list[dict], model: str, fmt: str | None = None) -> st
         system_instruction=system or None,
         response_mime_type="application/json" if fmt == "json" else None,
     )
-    client = genai.Client(api_key=env.gemini_api_key)
+    client = genai.Client(
+        api_key=env.gemini_api_key,
+        http_options=types.HttpOptions(timeout=TIMEOUT_SEC * 1000),  # ms 단위
+    )
     try:
         resp = client.models.generate_content(model=model, contents=contents, config=cfg)
     except errors.APIError as exc:
@@ -156,7 +166,10 @@ def _vision_gemini(prompt: str, images: list[bytes], model: str, *, fmt: str | N
     cfg = types.GenerateContentConfig(
         response_mime_type="application/json" if fmt == "json" else None,
     )
-    client = genai.Client(api_key=env.gemini_api_key)
+    client = genai.Client(
+        api_key=env.gemini_api_key,
+        http_options=types.HttpOptions(timeout=TIMEOUT_SEC * 1000),  # ms 단위
+    )
     try:
         resp = client.models.generate_content(
             model=model, contents=[types.Content(role="user", parts=parts)], config=cfg
@@ -212,14 +225,15 @@ def chat(
     *,
     fmt: str | None = None,
     temperature: float = 0.7,
-    timeout: int = 600,
+    timeout: int = TIMEOUT_SEC,
 ) -> str:
     """텍스트 LLM 호출 → 응답 텍스트.
 
     messages: [{"role": "system"|"user"|"assistant", "content": "..."}].
     모델명 접두사로 라우팅(claude→Claude, gpt/o*→GPT, gemini→Gemini, org/model→NVIDIA).
     API 전용 — 그 외 모델명은 미지원. fmt="json"이면 JSON 응답 강제.
-    temperature/timeout은 호환을 위해 받지만 API 경로에서는 사용하지 않는다.
+    temperature는 호환을 위해 받지만 사용하지 않는다. 응답 대기는 TIMEOUT_SEC로 제한된다
+    (timeout 인자는 호환용 — 공급자별 클라이언트에 TIMEOUT_SEC가 그대로 적용된다).
     """
     model = model or default_text_model()
     provider = provider_for(model)
