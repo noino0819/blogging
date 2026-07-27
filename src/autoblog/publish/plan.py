@@ -745,6 +745,16 @@ def build_publish_plan(
         cur = next((i for i in img_idx if blocks[i].image_path == thumb_path), None)
         if first is not None and cur is not None and cur != first:
             blocks.insert(first, blocks.pop(cur))
+    # inplace에서 ★ 썸네일이 마커로 소비되지 않은 경우(초안 작성 뒤 'AI 사진 대체'·AI 썸네일로
+    # 새로 추가된 이미지가 대표적) — 남은 미디어 분산을 건너뛰는 inplace 특성상 여기서 블록을
+    # 안 만들어 주면 이미지가 통째로 사라지고 대표사진도 다른 사진으로 떨어진다.
+    # 첫 이미지 자리(이미지가 없으면 맨 끝)에 삽입해 본문에 들어가고 대표 지정도 되게 한다.
+    if thumb_path and inplace and all(
+        b.image_path != thumb_path for b in blocks if b.kind == "image"
+    ):
+        ph = next(ph for ph in photos if ph.path == thumb_path)
+        first_img = next((i for i, b in enumerate(blocks) if b.kind == "image"), len(blocks))
+        blocks.insert(first_img, media_block(ph))
 
     # 마지막으로, 사진이 앞에 몰려 사진 없이 글만 남은 뒤쪽 문단에 이모티콘을 채운다
     # (모든 재배치가 끝난 뒤라야 어느 문단에 사진이 붙는지 정확히 판단한다).
