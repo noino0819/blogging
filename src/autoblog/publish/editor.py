@@ -264,7 +264,9 @@ class BlogPublisher:
                 self._type_text_block(block)
                 emphases.extend(block.emphases)
             elif block.kind == "image" and block.image_path:
-                self._insert_image(block.image_path, size=block.image_size)
+                warn = self._insert_image(block.image_path, size=block.image_size)
+                if warn:
+                    warnings.append(warn)
             elif block.kind == "video" and block.image_path:
                 if not self._insert_video(block.image_path, title=block.image_label):
                     warnings.append(
@@ -1032,7 +1034,9 @@ class BlogPublisher:
 
         def _insert_one(block):
             if block.kind == "image" and block.image_path:
-                self._insert_image(block.image_path, size=block.image_size)
+                warn = self._insert_image(block.image_path, size=block.image_size)
+                if warn:
+                    warnings.append(warn)
             elif block.kind == "text":
                 self._type_text_block(block)
                 emphases.extend(block.emphases)
@@ -2127,18 +2131,33 @@ class BlogPublisher:
                 results.append(Sticker(pack=pack, index=idx, animated=item["animated"], image=rel))
         return results
 
-    def _insert_image(self, path: str, size: str | None = None):
+    def _insert_image(self, path: str, size: str | None = None) -> str | None:
         """이미지 툴바 버튼 → 파일 다이얼로그로 업로드.
 
         size="small"이면(협찬 고지 사진 등) 업로드 후 그 사진을 선택해 에디터 네이티브
-        크기 컨트롤로 가장 작은 크기로 바꾼다(원본 파일은 그대로).
+        크기 컨트롤로 가장 작은 크기 + 가운데 정렬로 바꾼다(원본 파일은 그대로).
+        크기·정렬 변경에 실패하면 사람이 읽을 경고 메시지를 반환한다(성공/해당없음=None).
         """
-        with self._page.expect_file_chooser() as fc_info:
-            self._page.click(SMART_EDITOR["image_upload_button"])
+        page = self._page
+        before = len(page.query_selector_all(SMART_EDITOR["editor_image"]))
+        with page.expect_file_chooser() as fc_info:
+            page.click(SMART_EDITOR["image_upload_button"])
         fc_info.value.set_files(path)
-        self._page.wait_for_timeout(2500)  # 업로드 대기
-        if size == "small":
-            self._resize_image_smallest()
+        # 업로드 완료 폴링 — 고정 대기(2.5초)는 글의 첫 이미지(세션 워밍업)나 큰 파일에서
+        # 모자라, 협찬 사진 '작게' 변경이 사진을 못 찾고 조용히 스킵되는 원인이었다.
+        uploaded = False
+        for _ in range(30):  # 최대 15초
+            page.wait_for_timeout(500)
+            if len(page.query_selector_all(SMART_EDITOR["editor_image"])) > before:
+                uploaded = True
+                break
+        page.wait_for_timeout(800)  # 컴포넌트 출현 직후 에디터 내부 처리 여유
+        if size == "small" and not (uploaded and self._resize_image_smallest()):
+            return (
+                "협찬 사진 크기·정렬 자동 변경 실패 — 에디터에서 사진을 선택해 "
+                "‘작게’·가운데 정렬로 직접 바꿔 주세요."
+            )
+        return None
 
     def _insert_video(self, path: str, title: str = "") -> bool:
         """동영상 업로더 모달로 영상 삽입(사진과 흐름이 다름).
@@ -2210,36 +2229,74 @@ class BlogPublisher:
         except Exception:
             pass
 
-    def _resize_image_smallest(self):
-        """방금 삽입한 본문 사진을 선택해 에디터 '크기' 컨트롤로 가장 작게 변경.
+    def _resize_image_smallest(self) -> bool:
+        """방금 삽입한 본문 사진을 '작게' + 가운데 정렬로 변경. 성공 여부를 반환.
 
         SE-ONE은 사진을 클릭하면 해당 컴포넌트가 선택(se-is-selected)되고 사진 전용 크기
         툴바가 뜬다. 거기서 '가장 작은' 크기 항목을 누른다. 정확한 셀렉터는 라이브에서
         캡처해 SMART_EDITOR에 채운다(scripts/probe_image_resize.py). 실패해도 본문은 유지.
+        '작게'(normal 배치)는 기본이 왼쪽 정렬이라, 이어서 구분선·스티커와 같은 컴포넌트
+        정렬 메커니즘(data-name="align")으로 가운데를 적용하고 클래스로 검증한다.
         """
         page = self._page
         size_sel = SMART_EDITOR.get("image_size_smallest")
         if not size_sel:
-            return  # 크기 셀렉터 미설정 — 기본 크기로 두고 넘어감(라이브 캡처 후 채움)
+            return False  # 크기 셀렉터 미설정 — 기본 크기로 두고 넘어감(라이브 캡처 후 채움)
         try:
             imgs = page.query_selector_all(SMART_EDITOR["editor_image"])
             if not imgs:
-                return
+                return False
             imgs[-1].click()  # 마지막(방금 삽입) 사진 선택 → 크기 툴바 노출
             page.wait_for_timeout(300)
             menu_sel = SMART_EDITOR.get("image_size_menu")
             if menu_sel:  # 크기 메뉴를 먼저 펼쳐야 하는 경우
                 page.click(menu_sel)
                 page.wait_for_timeout(200)
-            page.click(size_sel)
+            page.click(size_sel, timeout=8000)
             page.wait_for_timeout(300)
+            ok = self._center_last_image()
             # '작게' 버튼 클릭 뒤엔 포커스가 그 툴바 버튼에 남는다. 이 상태로 다음 블록을
             # 타이핑하면 글자가 본문이 아닌 허공으로 들어가 그 블록이 통째로 사라진다.
             # 사진 선택을 풀고 본문 끝에 새 문단을 만들어 커서를 본문으로 되돌린다.
             self._focus_body_end()
+            return ok
         except Exception:
             page.keyboard.press("Escape")  # 크기 변경 실패해도 사진은 남김
             self._focus_body_end()
+            return False
+
+    def _center_last_image(self) -> bool:
+        """마지막(방금 삽입) 사진 컴포넌트를 가운데 정렬하고 클래스로 검증.
+
+        사진도 구분선·스티커처럼 텍스트 '문단'이 아닌 컴포넌트라 커서 정렬(_apply_align)이
+        안 닿는다 — 컴포넌트를 선택해 data-name="align" 옵션을 누르고, 내부 .se-section의
+        se-section-align-center 클래스로 실제 적용을 확인한다(_align_divider와 동일)."""
+        page = self._page
+        comps = page.query_selector_all(".se-component.se-image")
+        if not comps:
+            return False
+        comp = comps[-1]
+        for _ in range(3):
+            sec = comp.query_selector("[class*='se-section-']")
+            if sec and "se-section-align-center" in (sec.get_attribute("class") or ""):
+                return True
+            try:
+                comp.scroll_into_view_if_needed()
+                comp.click()  # 컴포넌트 선택(객체 선택)
+            except Exception:  # noqa: BLE001
+                page.keyboard.press("Escape")
+            page.wait_for_timeout(200)
+            page.evaluate(
+                "()=>{const b=document.querySelector('li.se-toolbar-item-align button');if(b)b.click();}"
+            )
+            page.wait_for_timeout(300)
+            page.evaluate(
+                "()=>{const o=document.querySelector("
+                "'button[data-name=\"align\"][data-value=\"center\"]');if(o)o.click();}"
+            )
+            page.wait_for_timeout(250)
+        sec = comp.query_selector("[class*='se-section-']")
+        return bool(sec and "se-section-align-center" in (sec.get_attribute("class") or ""))
 
     def _focus_body_end(self):
         """사진/객체 선택을 풀고 본문 끝에 빈 문단을 만들어 커서를 본문으로 되돌린다.
