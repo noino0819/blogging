@@ -75,8 +75,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .card h3{font-size:13px;margin:0 0 12px;color:#374151}
  label.f{display:block;font-size:12px;color:#6b7280;margin:14px 0 6px;font-weight:600}
  label.f:first-child{margin-top:0}
- input[type=text],input[type=number],input[type=url],textarea{width:100%;border:1px solid #d6dade;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;background:#fbfcfd}
- input[type=text]:focus,input[type=number]:focus,input[type=url]:focus,textarea:focus{outline:2px solid #03c75a33;border-color:var(--green)}
+ /* type 없는 <input>도 text — 셀렉터에 빠지면 테두리·패딩 없는 맨 input으로 보인다(키워드 경쟁 확인·순위 추적) */
+ input:where(:not([type])),input[type=text],input[type=number],input[type=url],textarea{width:100%;border:1px solid #d6dade;border-radius:10px;padding:10px 12px;font-size:13px;font-family:inherit;background:#fbfcfd}
+ input:where(:not([type])):focus,input[type=text]:focus,input[type=number]:focus,input[type=url]:focus,textarea:focus{outline:2px solid #03c75a33;border-color:var(--green)}
  input[type=number]{-moz-appearance:textfield}
  input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
  textarea{min-height:130px;resize:vertical;line-height:1.6}
@@ -98,7 +99,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pubbar .step{margin:0;flex:0 0 auto}
  .pubbar .catwrap{flex:1;min-width:0}
  .pubbar #save{width:auto;flex:0 0 auto;padding:11px 22px}
- .pubbar .pubmode,.pubbar .reserveat{flex:0 0 auto;padding:9px 10px;border:1px solid var(--line);border-radius:var(--r-md);font-size:13px;background:#fff}
+ .pubbar .pubmode,.pubbar .reserveat{flex:0 0 auto;padding:9px 10px;border:1px solid var(--line);border-radius:var(--r-sm);font-size:13px;background:#fff}
  .reservehint{font-size:12.5px;color:var(--sub);margin:-6px 0 14px;padding:0 4px}
  .reservehint.warn{color:#8a6a0a}
  /* 빈 미리보기 — 진행 안내 */
@@ -325,6 +326,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  /* 키워드 경쟁 확인 */
  .kwchk{display:flex;gap:6px}
  .kwchk input{flex:1;min-width:0}
+ /* .btn은 기본이 block+width:100%(큰 기본 버튼) — flex 한 줄 안에서는 내용 폭으로 */
+ .kwchk .btn,.rkadd .btn{width:auto;flex:0 0 auto;padding:10px 18px}
  .kwverdict{font-size:14px;font-weight:700;margin:10px 0 2px}
  .kwmeta{font-size:12.5px;color:var(--sub);margin-bottom:8px}
  .kwtop{font-size:12.5px;padding:5px 2px;border-top:1px solid var(--line);display:flex;gap:8px}
