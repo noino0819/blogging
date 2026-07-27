@@ -1503,10 +1503,13 @@ function kwSet(str){
   const seen=[]; (str||'').split(',').map(s=>s.trim()).filter(Boolean)
     .forEach(p=>{ if(!seen.some(k=>k.toLowerCase()===p.toLowerCase())) seen.push(p); });
   KW=seen; const inp=$('#keywords'); if(inp)inp.value=''; kwRecReset(); kwRender();
+  KW.forEach(k=>judgeKeyword(k));        // 배치 불러오기·탭 복원으로 들어온 키워드도 판정(캐시되면 재조회 없음)
+  if(KW.length) suggestKeywords(KW[0]);  // 첫 키워드(=주제 씨앗)로 연관 추천도 살림
 }
 // 연관검색어 추천 — 넣은 키워드(첫 키워드=주제 씨앗)로 '경쟁 낮은 유리한' 연관어를 눌러 담게.
 const KWREC={}; let KWREC_SEED='';
-function kwRecReset(){ for(const k in KWREC)delete KWREC[k]; KWREC_SEED=''; const b=$('#kwrec'); if(b){b.style.display='none';b.innerHTML='';} }
+// 캐시(KWREC)는 남긴다 — 탭을 오갈 때마다 kwSet이 추천을 다시 살리는데, 지우면 매번 네이버 재조회.
+function kwRecReset(){ KWREC_SEED=''; const b=$('#kwrec'); if(b){b.style.display='none';b.innerHTML='';} }
 function kwRecRender(){
   const box=$('#kwrec'); if(!box) return;
   const list=KWREC[KWREC_SEED];
@@ -1576,6 +1579,7 @@ function applyDraftTitleKeyword(title){
   kwCommit();
   const dup=kwHas(t);
   if(!dup){ KW.unshift(t); kwRender(); }
+  judgeKeyword(t); suggestKeywords(t);  // 손으로 넣을 때와 똑같이 노출 판정·연관 추천을 돌린다
   if(note){
     note.textContent = dup
       ? `📥 불러온 글 제목 "${t}"은(는) 이미 키워드에 있어요.`
