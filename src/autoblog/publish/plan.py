@@ -423,14 +423,30 @@ def build_publish_plan(
     quote_variant = 1
     used = [False] * len(photos)  # 사진별 사용 여부(순서 아닌 라벨로 매칭)
     first_body_seen = False  # 대제목은 본문 첫 줄에만 부여
+    header_ids: set[int] = set()  # 헤더(대제목·해시태그) 텍스트 블록 — 남은 미디어·링크 분산에서 제외
 
     def take_photo(label: str | None, media_kind: str = "image") -> PhotoItem | None:
-        """media_kind(사진/영상)가 같은 것 중, 라벨이 같은 안 쓴 것 우선·없으면 순서대로. 다 쓰면 None."""
+        """media_kind(사진/영상)가 같은 것 중 라벨이 같은 안 쓴 것 우선 → 캡션 매칭 → 순서대로.
+
+        캡션 매칭: 같은 라벨 사진이 여러 장일 때 LLM이 특정 사진을 짚도록 마커에
+        캡션([사진:치즈카츠 클로즈업])을 쓸 수 있다 — '사진 내용' 목록의 설명과
+        부분 일치하면 그 사진을 집는다(라벨 오타·의역으로 임의 사진이 잡히는 것 완화)."""
         if label:
             for i, ph in enumerate(photos):
                 if not used[i] and ph.media_kind == media_kind and ph.label == label:
                     used[i] = True
                     return ph
+            if len(label) >= 2:
+                for i, ph in enumerate(photos):
+                    cap = (ph.caption or "").strip()
+                    if (
+                        not used[i]
+                        and ph.media_kind == media_kind
+                        and cap
+                        and (label in cap or cap in label)
+                    ):
+                        used[i] = True
+                        return ph
         for i, ph in enumerate(photos):
             if not used[i] and ph.media_kind == media_kind:
                 used[i] = True
@@ -496,6 +512,7 @@ def build_publish_plan(
                     kind="text", text="\n".join(rows), emphases=spans, align=ss.hashtags.align
                 )
             )
+            header_ids.add(id(blocks[-1]))
             div = ss.hashtags.divider
             if div and div in DIVIDER_META and not prev_is_divider:
                 blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0], align="center"))
@@ -523,6 +540,7 @@ def build_publish_plan(
                 kind="text", text=wrapped, emphases=spans, align=role_style.align or "center"
             )
         )
+        header_ids.add(id(blocks[-1]))
 
     for line in body_lines:
         s = line.strip()
@@ -653,20 +671,25 @@ def build_publish_plan(
     # 하지 않는다 — 마커 안 단 미디어는 원래 자리에 그대로 두고, 실행기가 텍스트만 끼운다.
     leftover = [ph for i, ph in enumerate(photos) if not used[i]]
     if leftover and not inplace:
-        text_pos = [i for i, b in enumerate(blocks) if b.kind == "text"]
-        if not text_pos:  # 본문 텍스트가 없으면 그대로 끝에
+        # 헤더(대제목·해시태그) 블록은 앵커에서 제외 — 안 그러면 첫 leftover가
+        # 대제목과 해시태그 줄 사이에 꽂힌다(실제 발생했던 배치 사고).
+        text_pos = [
+            i for i, b in enumerate(blocks) if b.kind == "text" and id(b) not in header_ids
+        ]
+        # 바로 뒤에 사진/영상이 없는 문단만 후보로 — 마커 사진과 그 아래 설명 문단
+        # 사이에 남은 사진이 끼어들지 않게(사진→설명 짝 보존), 사진 연속 구간도 안 만든다.
+        candidates = [
+            i for i in text_pos
+            if i + 1 >= len(blocks) or blocks[i + 1].kind not in _MEDIA_KINDS
+        ] or text_pos
+        if not candidates:  # 본문 텍스트가 없으면 그대로 끝에
             for ph in leftover:
                 blocks.append(media_block(ph))
         else:
-            def trailing_end(idx: int) -> int:  # 텍스트 블록 뒤 마커 미디어(사진/영상)까지 건너뛴 위치
-                while idx + 1 < len(blocks) and blocks[idx + 1].kind in ("image", "video"):
-                    idx += 1
-                return idx
-
             after: dict[int, list[PhotoItem]] = {}
-            t = len(text_pos)
+            t = len(candidates)
             for k, ph in enumerate(leftover):
-                anchor = trailing_end(text_pos[(k * t) // len(leftover)])
+                anchor = candidates[(k * t) // len(leftover)]
                 after.setdefault(anchor, []).append(ph)
             spread: list[PublishBlock] = []
             for i, b in enumerate(blocks):
@@ -689,7 +712,9 @@ def build_publish_plan(
         return PublishBlock(kind="link", link_url=url, keep_url_text=keep)
 
     if links:
-        text_pos = [i for i, b in enumerate(blocks) if b.kind == "text"]
+        text_pos = [
+            i for i, b in enumerate(blocks) if b.kind == "text" and id(b) not in header_ids
+        ]
         if not text_pos:  # 본문 텍스트가 없으면 그대로 끝에
             for url in links:
                 blocks.append(link_block(url))
