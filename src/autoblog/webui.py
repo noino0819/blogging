@@ -1930,8 +1930,28 @@ function restoreWS(){
     WSSEQ=Math.max(0, ...WS.map(w=>w.seq||0));
     CURWS=(d.CURWS && findWS(d.CURWS)) ? d.CURWS : WS[0].id;
     applyWS(findWS(CURWS).state); renderTabs();
+    dropMissingPhotos();  // 복원된 경로 중 파일이 없어진 것 정리(타일이 깨진 아이콘으로 남지 않게)
     return true;
   }catch(e){ return false; }
+}
+// 복원 상태엔 이제 없는 사진 경로가 섞일 수 있다(앱 이동·데이터 폴더 변경·파일 삭제).
+// 그대로 두면 모든 타일이 이유 없이 깨져 보이므로, 서버에 한 번 물어보고 전 탭에서 걷어낸다.
+async function dropMissingPhotos(){
+  const all=[...new Set(WS.flatMap(w=>(w.state.PHOTOS||[])))]; if(!all.length) return;
+  let miss;
+  try{ const r=await fetch('/api/photos/missing',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({paths:all})});
+       miss=new Set((await r.json()).missing||[]); }catch(e){ return; }  // 서버가 못 답하면 그냥 둔다
+  if(!miss.size) return;
+  WS.forEach(w=>{ const s=w.state;
+    s.PHOTOS=(s.PHOTOS||[]).filter(p=>!miss.has(p));
+    s.SELP=(s.SELP||[]).filter(p=>!miss.has(p));
+    (s.PMSEL instanceof Set) && [...s.PMSEL].forEach(p=>miss.has(p)&&s.PMSEL.delete(p));
+    if(s.PHOTOMETA) miss.forEach(p=>delete s.PHOTOMETA[p]);
+    if(miss.has(s.THUMB)) s.THUMB=null;
+    Object.keys(s.SUBCATS||{}).forEach(k=>{ s.SUBCATS[k]=(s.SUBCATS[k]||[]).filter(p=>!miss.has(p)); });
+  });
+  applyWS(findWS(CURWS).state); persistWS();
+  toast(`사진 ${miss.size}장이 파일이 없어져 목록에서 빠졌어요 — 임시저장에서 다시 불러오거나 업로드하세요.`,'err');
 }
 function switchWS(id){
   if(id===CURWS) return;
@@ -3384,6 +3404,8 @@ def _make_handler(state: dict):
                     self._send(200, p.read_bytes(), mime)
                     return
                 img = _thumb(p, state["thumbs"]) if p else None
+                if not img:  # 타일이 '깨진 아이콘'으로만 보이면 원인을 못 찾는다 — 경로를 로그에 남긴다
+                    print(f"[webui] /photo 404: {q.get('path', [''])[0]!r}", flush=True)
                 self._send(200, img, "image/jpeg") if img else self._send(404, b"x", "text/plain")
             elif u.path == "/img":
                 img = _sticker_image(q.get("ref", [""])[0])
@@ -3477,6 +3499,12 @@ def _make_handler(state: dict):
                     self._list_drafts()
                 elif path == "/api/drafts/import":
                     self._import_draft_photos(self._json_body())
+                elif path == "/api/photos/missing":
+                    # 탭 복원 상태의 사진 경로 중 '지금 서버가 못 주는 것'을 알려준다.
+                    # (앱을 옮기거나 dev↔패키지 앱을 섞어 쓰면 경로가 어긋나 타일이 전부 깨진다)
+                    paths = self._json_body().get("paths") or []
+                    missing = [p for p in paths if isinstance(p, str) and not _safe_photo(p)]
+                    self._send(200, json.dumps({"missing": missing}).encode())
                 elif path == "/api/favorite":
                     body = self._json_body()
                     n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
