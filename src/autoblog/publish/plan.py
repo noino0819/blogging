@@ -36,6 +36,26 @@ _STICKER_RE = re.compile(r"^\[스티커(?::(.+?))?\]$")
 _PLACE_RE = re.compile(r"^\[지도(?::\s*(.+?))?\]$")
 # 마커 인자가 URL(naver.me 단축 등)인지 — SE 장소 검색은 URL이면 결과 0건이라 이름으로 해석 필요
 _PLACE_URL_RE = re.compile(r"https?://|naver\.me/|\.naver\.com/", re.I)
+# 마크다운 표 — 챗봇/리스타일 출력의 `| a | b |` 행. 앞뒤 파이프가 있어야 표 행으로 본다
+# (본문에 파이프 하나 섞인 산문을 표로 오인하지 않게). 구분행(|---|:--|)은 셀 없이 대시·콜론뿐.
+_TABLE_ROW_RE = re.compile(r"^\|.*\|$")
+_TABLE_SEP_RE = re.compile(r"^\|[\s:|-]+\|$")
+
+
+def parse_md_table(lines: list[str]) -> list[list[str]] | None:
+    """마크다운 표 행 목록 → [[셀,…],…]. 구분행(|---|)이 있어야 유효(없으면 None=표 아님)."""
+    rows: list[list[str]] = []
+    has_sep = False
+    for ln in lines:
+        s = ln.strip()
+        if _TABLE_SEP_RE.match(s) and "-" in s:
+            has_sep = True
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        rows.append(cells)
+    if not has_sep or not rows:
+        return None
+    return rows
 
 # 쿠팡파트너스 링크 도메인(link.coupang.com / coupa.ng 단축 / coupang.com 상품)
 _COUPANG_HOSTS = ("coupang.com", "coupa.ng")
@@ -262,8 +282,9 @@ def balance_wrap(s: str, threshold: int = _BIG_TITLE_WRAP_THRESHOLD) -> str:
 
 
 class PublishBlock(BaseModel):
-    kind: str  # "text" | "image" | "video" | "divider" | "quote" | "sticker" | "place" | "link"
+    kind: str  # "text" | "image" | "video" | "divider" | "quote" | "sticker" | "place" | "link" | "table"
     text: str = ""
+    table_rows: list[list[str]] = Field(default_factory=list)  # kind="table": 표의 행×셀
     link_url: str = ""  # 링크 카드(oglink) URL — 쿠팡파트너스 등
     keep_url_text: bool = False  # 협찬 링크: 카드 밑 'URL 텍스트 줄'을 지우지 말고 남김(크롤러 인식용)
     emphases: list[StyledSpan] = Field(default_factory=list)
@@ -397,6 +418,7 @@ def build_publish_plan(
     blocks: list[PublishBlock] = []
     text_buf: list[str] = []
     quote_buf: list[str] = []
+    table_buf: list[str] = []
     in_quote = False
     quote_variant = 1
     used = [False] * len(photos)  # 사진별 사용 여부(순서 아닌 라벨로 매칭)
@@ -429,6 +451,18 @@ def build_publish_plan(
         if text:
             spans = [e for e in draft.emphases if e.text and e.text in text]
             blocks.append(PublishBlock(kind="text", text=text, emphases=spans, align="center"))
+
+    def flush_table():
+        buf = table_buf[:]
+        table_buf.clear()
+        if not buf:
+            return
+        rows = parse_md_table(buf)
+        if rows:  # 유효 표 → 표 블록. 실행기가 합성 paste로 네이티브 SE 표로 변환
+            flush_text()  # 표 직전 텍스트를 별도 문단으로 끊고
+            blocks.append(PublishBlock(kind="table", table_rows=rows))
+        else:  # 구분행 없는 가짜 표 → 그냥 본문 텍스트로 되돌림(내용 소실 방지)
+            text_buf.extend(buf)
 
     def classify_role(s: str) -> str | None:
         """구조별 서식이 켜져 있을 때, 이 줄이 어떤 구조 요소인지 판정(없으면 None)."""
@@ -505,6 +539,13 @@ def build_publish_plan(
             else:
                 quote_buf.append(line)
             continue
+        # 마크다운 표 행 누적 — 연속된 `| … |` 줄을 모아 표 블록으로. 표가 아닌 줄이 오면 flush.
+        if _TABLE_ROW_RE.match(s):
+            table_buf.append(s)
+            first_body_seen = True
+            continue
+        if table_buf:
+            flush_table()
         div_m = _DIVIDER_RE.match(s)
         quote_m = _QUOTE_OPEN_RE.match(s)
         sticker_m = _STICKER_RE.match(s)
@@ -580,6 +621,7 @@ def build_publish_plan(
                 text_buf.append(line)
             if s:
                 first_body_seen = True
+    flush_table()
     flush_text()
     if in_quote and quote_buf:  # 닫힘 누락 방어
         blocks.append(

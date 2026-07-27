@@ -402,6 +402,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .doc .q-quote{text-align:center;padding:4px 0}
  .doc .q-quote::before{content:'\201C';display:block;font-size:30px;color:#c4c9d0;line-height:.7}
  .doc .q-quote::after{content:'\201D';display:block;font-size:30px;color:#c4c9d0;line-height:.2;margin-top:8px}
+ .doc .doctbl{border-collapse:collapse;width:100%;margin:14px 0;font-size:14px}
+ .doc .doctbl th,.doc .doctbl td{border:1px solid #d3d7dd;padding:7px 10px;text-align:center}
+ .doc .doctbl th{background:#f5f6f8;font-weight:700}
  .doc .q-line{border-left:3px solid #333;padding:2px 0 2px 18px;text-align:left}
  .doc .q-bubble{border:1px solid #d3d7dd;border-radius:5px;padding:18px 20px;text-align:center;position:relative;margin-bottom:28px}
  .doc .q-bubble::after{content:'';position:absolute;left:40px;bottom:-9px;width:15px;height:15px;background:#fff;border:1px solid #d3d7dd;border-top:0;border-left:0;transform:rotate(45deg)}
@@ -2274,8 +2277,14 @@ function renderPreview(d){
     else if(b.kind==='video')h+=`<div class=ph>🎬 동영상 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
     else if(b.kind==='link')h+=`<div class=ph>🔗 링크 카드 <small>${esc(b.link_url)}</small></div>`;
     else if(b.kind==='place')h+=`<div class=ph>📍 지도(장소) <small>${esc(b.text)}</small></div>`;
+    else if(b.kind==='table')h+=tableHTML(b);
   }
   const p=$('#preview'); p.classList.remove('empty'); p.innerHTML=h;
+}
+function tableHTML(b){
+  const rows=b.table_rows||[]; if(!rows.length)return '';
+  const tr=rows.map((r,i)=>'<tr>'+r.map(c=>`<${i?'td':'th'}>${esc(c)}</${i?'td':'th'}>`).join('')+'</tr>').join('');
+  return `<table class=doctbl>${tr}</table>`;
 }
 function showLog(dbg){
   const raw=dbg.raw||'';
@@ -3948,6 +3957,8 @@ def _make_handler(state: dict):
                     blk["image_label"] = b.image_label
                 elif b.kind == "link":
                     blk["link_url"] = b.link_url
+                elif b.kind == "table":
+                    blk["table_rows"] = b.table_rows
                 elif b.kind == "text":
                     blk["emphases"] = [
                         {"text": e.text, "text_color": e.style.text_color,

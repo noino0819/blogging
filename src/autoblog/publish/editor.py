@@ -290,6 +290,11 @@ class BlogPublisher:
                     )
             elif block.kind == "link" and block.link_url:
                 self._insert_link(block.link_url, keep_url_text=block.keep_url_text)
+            elif block.kind == "table" and block.table_rows:
+                if not self._insert_table(block.table_rows):
+                    warnings.append(
+                        "표 자동 삽입 실패 — 에디터에서 직접 ‘표’를 추가해 주세요."
+                    )
         # 본문 입력을 모두 마친 뒤 강조 서식 적용(커서 간섭 방지)
         for span in emphases:
             try:
@@ -1012,7 +1017,7 @@ class BlogPublisher:
         for block in plan.blocks:
             if block.kind == "video":
                 segments.append([])
-            elif block.kind in ("image", "text", "divider", "quote", "sticker", "place", "link"):
+            elif block.kind in ("image", "text", "divider", "quote", "sticker", "place", "link", "table"):
                 segments[-1].append(block)
             else:
                 warnings.append(f"‘{block.kind}’ 블록은 자동 삽입을 건너뛰었어요(직접 추가 필요).")
@@ -1051,6 +1056,9 @@ class BlogPublisher:
                     )
             elif block.kind == "link" and block.link_url:
                 self._insert_link(block.link_url, keep_url_text=block.keep_url_text, at_anchor=True)
+            elif block.kind == "table" and block.table_rows:
+                if not self._insert_table(block.table_rows, at_anchor=True):
+                    warnings.append("표 자동 삽입 실패 — 에디터에서 직접 ‘표’를 추가해 주세요.")
 
         def _anchor_segment(seg_idx):
             # 구간 커서: 0=첫 미디어 앞, K>0=(K-1)번 물리 영상 바로 뒤(영상 부족하면 마지막 영상 뒤).
@@ -1516,6 +1524,46 @@ class BlogPublisher:
             page.keyboard.press("Backspace")  # 남은 빈 줄 제거
             page.wait_for_timeout(300)
         return True
+
+    def _insert_table(self, rows: list[list[str]], at_anchor: bool = False) -> bool:
+        """마크다운 표(행×셀) → 네이티브 SE 표. _insert_link과 같은 합성 paste(text/html) 기법.
+
+        네이버 에디터는 클립보드의 text/html에 <table>이 있으면 SE 표 컴포넌트로 변환한다.
+        시스템 클립보드 대신 DataTransfer로 paste 이벤트를 디스패치해 권한 팝업을 피한다.
+        라이브 세션에서만 실제 변환 확인 가능 — 표 컴포넌트가 안 생기면 False(사람이 직접 조치)."""
+        import html as _html
+
+        if not rows:
+            return False
+        page = self._page
+        tr = "".join(
+            "<tr>" + "".join(f"<td>{_html.escape(c)}</td>" for c in r) + "</tr>" for r in rows
+        )
+        table_html = f"<table><tbody>{tr}</tbody></table>"
+        if not at_anchor:
+            page.click(SMART_EDITOR["content_component"])
+            page.wait_for_timeout(300)
+            page.keyboard.press("End")
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(200)
+        before = page.evaluate("()=>document.querySelectorAll('.se-component').length")
+        page.evaluate(
+            """(html)=>{
+              const el=(document.activeElement&&document.activeElement.isContentEditable)
+                ? document.activeElement : document.querySelector('[contenteditable=true]');
+              if(!el) return; el.focus();
+              const dt=new DataTransfer(); dt.setData('text/html', html);
+              el.dispatchEvent(new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));
+            }""",
+            table_html,
+        )
+        for _ in range(10):  # 표 컴포넌트 생성 대기(~5초)
+            page.wait_for_timeout(500)
+            if page.evaluate("()=>document.querySelectorAll('.se-table,.se-component-table').length"):
+                return True
+            if page.evaluate("()=>document.querySelectorAll('.se-component').length") > before:
+                return True
+        return False
 
     # 시/도 풀네임 → 약칭(수집 주소는 '서울', SE 결과는 '서울특별시'라 통일)
     _SIDO = {
