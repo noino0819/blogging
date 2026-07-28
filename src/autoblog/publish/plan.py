@@ -200,8 +200,9 @@ def build_place_instruction(place_name: str | None = None) -> str:
 # 마커가 아니라 패턴 인식이라, 외부 챗봇에서 받아온 글에도 동일하게 먹는다.
 _STRUCTURE_STYLES_PATH = CONFIG_DIR / "structure_styles.yaml"
 
-# "1. 가게명 후기" 소제목 / 해시태그 줄 인식
-_SUBHEADING_RE = re.compile(r"^\d+\.\s+\S")
+# "1. 가게명 후기" 소제목 / 해시태그 줄 인식. 모델이 "1)" 형태로 쓰는 경우도 받는다.
+# 번호는 두 자리까지만 — 안 그러면 "2026. 7월에 방문했어요" 같은 본문 줄이 소제목으로 둔갑한다.
+_SUBHEADING_RE = re.compile(r"^\d{1,2}[.)]\s+\S")
 
 
 class RoleStyle(BaseModel):

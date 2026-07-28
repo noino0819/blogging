@@ -16,6 +16,10 @@ import re
 # 마크다운 헤더(# 뒤 공백 필수)만 제거. '#혜화맛집'처럼 # 뒤에 바로 글자가
 # 오는 해시태그는 건드리지 않는다(헤더의 태그 묶음 보존).
 _HEADER_RE = re.compile(r"^[ \t]*#{1,6}[ \t]+", re.MULTILINE)
+# 마크다운 강조(**볼드**·*이탤릭*) — 네이버 에디터는 마크다운을 모르니 별표가 그대로 게시된다.
+# 특히 소제목을 "**1. 매장 분위기**"로 감싸는 버릇이 흔한데, 별표가 남으면 소제목 패턴
+# 인식(plan._SUBHEADING_RE)까지 빗나가 큰 글씨·문단 분리가 통째로 날아간다.
+_MD_BOLD_RE = re.compile(r"\*{1,2}([^*\n]+)\*{1,2}")
 _BULLET_RE = re.compile(r"^[ \t]*[•*▶→✓✅][ \t]+", re.MULTILINE)
 # 상품 리뷰의 추천 체크리스트(✅)/체크(✓)는 의도된 나열이라 보존한다.
 _BULLET_RE_KEEP_CHECK = re.compile(r"^[ \t]*[•*▶→][ \t]+", re.MULTILINE)
@@ -262,6 +266,7 @@ def enforce_format(
     bullet_re = _BULLET_RE_KEEP_CHECK if allow_checklist else _BULLET_RE
     text = text.replace("\x00", "")  # NUL 제거 — 내부 센티널(\x00…)과의 충돌 차단
     text = _HEADER_RE.sub("", text)  # 마크다운 헤더 마커 제거
+    text = _MD_BOLD_RE.sub(r"\1", text)  # **볼드**/*이탤릭* 별표 제거(글머리 '* '는 아래에서)
     text = bullet_re.sub("", text)  # 글머리 기호 제거
     text = _DASH_BULLET_RE.sub("", text)  # 줄 앞 '- ' 제거
     text = fix_leading_hashtag(text)  # 헤더 태그줄 첫 태그의 빠진 # 복원

@@ -323,6 +323,22 @@ def test_structure_styles_header_and_subheading():
     assert sub.variant == QUOTE_META["quotation_underline"][0]
 
 
+def test_subheading_variants_and_year_line():
+    # 모델이 "1)"로 쓰거나 마크다운 볼드로 감싸도 소제목으로 잡히고("**"는 후처리가 제거),
+    # "2026. 7월에" 같은 연도 줄은 본문으로 남는다
+    from autoblog.draft.postprocess import enforce_format
+
+    text = enforce_format(
+        "제목 한 줄\n\n1. 첫 섹션 제목\n본문.\n\n**2. 둘째 섹션**\n본문.\n\n"
+        "3) 셋째 섹션\n본문.\n\n2026. 7월에 다녀왔어요\n"
+    )
+    assert "**" not in text
+    plan = build_publish_plan(DraftResult(text=text), structure_styles=_structure_styles())
+    subs = [b.text for b in plan.blocks if b.kind == "quote"]
+    assert subs == ["1. 첫 섹션 제목", "2. 둘째 섹션", "3) 셋째 섹션"]
+    assert any("2026. 7월에 다녀왔어요" in b.text for b in plan.blocks if b.kind == "text")
+
+
 def test_structure_styles_off_by_default():
     # structure_styles 미지정이면 기존 동작 그대로(대제목 서식 부여 안 함)
     draft = DraftResult(text="제목\n\n짧은 첫 줄\n다음 줄")
