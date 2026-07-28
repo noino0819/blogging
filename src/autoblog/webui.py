@@ -1457,15 +1457,16 @@ async function importDraft(idx, title, date){
     const paths=media.map(m=>m.path).filter(Boolean);  // 사진+영상 경로(순서 유지)
     const nImg=media.filter(m=>m.kind==='image').length;
     const nVid=media.filter(m=>m.kind==='video').length;
-    // 기존 사진·분류 상태를 모두 비우고 불러온 미디어로 교체
-    PHOTOS=paths.slice(); SELP=[]; PHOTOMETA={}; THUMB=null; AISET=new Set();
+    // 불러온 미디어를 기존 사진에 추가(중복 제외). 분류·메타는 유지.
+    const added=[]; paths.forEach(p=>{ if(!PHOTOS.includes(p)){ PHOTOS.push(p); added.push(p); } });
+    SELP=[]; THUMB=null; AISET=new Set();
     PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
     renderGrid(); renderPmeta(); updatePhotoSummary();
     // 글을 고르면 목록을 자동으로 접는다(캐시는 유지 — 📥로 다시 펼치면 재조회 없이 바로 뜸).
     setDraftListOpen(false);
     const vidNote = nVid? ` · 영상 ${nVid}개(▶ 타일에 무슨 영상인지 꼭 캡션하세요)` : '';
     stat.textContent = paths.length? `사진 ${nImg}장${vidNote} 불러옴 (${sec}초) — 아래에서 분류하세요` : '가져올 미디어가 없는 글이에요';
-    if(paths.length) toast(nVid? `사진 ${nImg}장·영상 ${nVid}개 불러왔어요 — 영상 캡션 잊지 마세요`:`${nImg}장 불러왔어요 (기존 사진 교체됨)`,'ok');
+    if(paths.length) toast(nVid? `사진 ${nImg}장·영상 ${nVid}개 불러왔어요 — 영상 캡션 잊지 마세요`:`${nImg}장 추가됐어요 — PC에서 더 올릴 수도 있어요`,'ok');
     // 사진 불러오기 성공 + 불러온 글에 제목이 있으면 → 그 제목을 필수 키워드에 자동으로 넣어줌
     if(paths.length) applyDraftTitleKeyword(title);
     // 이 원본 글을 저장 완료 후 삭제 대상으로 기억(제목+저장일시로 식별).
