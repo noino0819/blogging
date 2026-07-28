@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from autoblog.collect.place_detail import (
     extract_apollo_state,
     parse_place_detail,
@@ -92,3 +94,19 @@ def test_visitor_reviews_parsing():
 
 def test_extract_empty_when_absent():
     assert extract_apollo_state("<html><body>no state</body></html>") == {}
+
+
+def test_name_address_from_url_without_browser(monkeypatch):
+    """[지도:URL] 해석은 requests SSR만으로 끝나야 한다(브라우저 렌더 호출 금지).
+
+    브라우저 경로는 14초 걸리고 과도접근 차단에 잘 걸려, 조용히 실패하면 지도가
+    빠지고 URL이 그대로 검색어로 남았다."""
+    import autoblog.collect.place_detail as pd
+
+    monkeypatch.setattr(pd, "resolve_place_id_via_redirect", lambda url: PLACE_ID)
+    monkeypatch.setattr(pd, "fetch_place_html_light", lambda url: FIXTURE.read_text(encoding="utf-8"))
+    monkeypatch.setattr(pd, "fetch_place_html", lambda *a, **k: pytest.fail("브라우저 폴백이 불려선 안 됨"))
+    assert pd.place_name_address_from_url("https://naver.me/GFB1f0ia") == (
+        "언제나, 초밥",
+        pd.parse_place_detail(extract_apollo_state(FIXTURE.read_text(encoding="utf-8")), PLACE_ID).road_address,
+    )

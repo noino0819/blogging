@@ -38,6 +38,12 @@ def resolve_place_id(url: str) -> str | None:
     return m.group(1) if m else None
 
 
+_MOBILE_UA = (
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1"
+)
+
+
 def resolve_place_id_via_redirect(url: str) -> str | None:
     """naver.me 단축링크 등을 requests 리다이렉트로 따라가 placeId 해석(브라우저 불필요)."""
     import requests
@@ -45,13 +51,29 @@ def resolve_place_id_via_redirect(url: str) -> str | None:
     try:
         resp = requests.get(
             url,
-            headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"},
+            headers={"User-Agent": _MOBILE_UA},
             timeout=10,
             allow_redirects=True,
         )
     except requests.RequestException:
         return None
     return resolve_place_id(resp.url)
+
+
+def fetch_place_html_light(url: str) -> str | None:
+    """requests만으로 플레이스 상세 HTML — 실패/차단이면 None.
+
+    이름·주소는 SSR된 __APOLLO_STATE__에 이미 박혀 있어 브라우저 렌더가 필요 없다
+    (메뉴 이미지·리뷰 등 graphql로 채워지는 항목은 여전히 fetch_place_html 필요).
+    0.3초 vs 14초 차이라, 지도 마커 해석처럼 이름만 필요한 경로는 이쪽을 쓴다."""
+    import requests
+
+    try:
+        resp = requests.get(url, headers={"User-Agent": _MOBILE_UA}, timeout=10)
+    except requests.RequestException:
+        return None
+    resp.encoding = "utf-8"
+    return None if is_rate_limited(resp.text) else resp.text
 
 
 def place_name_address_from_url(url: str) -> tuple[str, str | None] | None:
@@ -62,10 +84,12 @@ def place_name_address_from_url(url: str) -> tuple[str, str | None] | None:
     place_id = resolve_place_id(url) or resolve_place_id_via_redirect(url)
     if not place_id:
         return None
-    try:
-        _, html = fetch_place_html(menu_tab_url(place_id))
-    except Exception:  # noqa: BLE001 - 해석 실패 시 호출부가 폴백
-        return None
+    html = fetch_place_html_light(menu_tab_url(place_id))
+    if html is None:  # 차단·네트워크 실패 때만 브라우저 렌더로 폴백
+        try:
+            _, html = fetch_place_html(menu_tab_url(place_id))
+        except Exception:  # noqa: BLE001 - 해석 실패 시 호출부가 폴백
+            return None
     facts = parse_place_detail(extract_apollo_state(html), place_id)
     if not facts or not facts.name:
         return None
