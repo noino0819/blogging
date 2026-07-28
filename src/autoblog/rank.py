@@ -227,6 +227,37 @@ def search_volumes(keywords: list[str]) -> dict[str, dict]:
     return out
 
 
+def _searchad_related(keyword: str, limit: int) -> list[dict]:
+    """keywordstool이 힌트 외에 얹어 주는 연관 키워드 — 검색량이 이미 붙어 온다.
+
+    자동완성과 달리 광고 시장 기준 연관어라 엉뚱한 지역·주제가 섞인다. 원 키워드
+    토큰을 전부 포함하는 세부 롱테일만 남기고, 검색량순 상위 limit개만 쓴다.
+    """
+    tokens = [t.lower() for t in keyword.split()]
+    try:
+        resp = requests.get(
+            _SEARCHAD_URL + "/keywordstool",
+            params={"hintKeywords": keyword.replace(" ", ""), "showDetail": 1},
+            headers=_searchad_headers("GET", "/keywordstool"),
+            timeout=10,
+        )
+        resp.raise_for_status()
+        rows = resp.json().get("keywordList", []) or []
+    except Exception:  # noqa: BLE001 — 부가 후보라 실패해도 자동완성만으로 동작
+        return []
+    out = [
+        {
+            "keyword": t,
+            "volume": _qc(row.get("monthlyPcQcCnt")) + _qc(row.get("monthlyMobileQcCnt")),
+        }
+        for row in rows
+        if (t := (row.get("relKeyword") or "").strip())
+        and all(tok in t.replace(" ", "").lower() for tok in tokens)
+    ]
+    out.sort(key=lambda x: x["volume"], reverse=True)
+    return out[:limit]
+
+
 def _related_terms(keyword: str) -> list[str]:
     """네이버 자동완성(=연관검색어) — 검색창에 뜨는 추천어. 공개 엔드포인트라 키 불필요."""
     resp = requests.get(
@@ -272,18 +303,32 @@ def keyword_suggest(keyword: str, limit: int = 8) -> dict:
     kw = (keyword or "").strip()
     if not kw:
         raise ValueError("키워드가 비어 있어요")
-    seen = kw.lower()
-    terms = [t for t in _related_terms(kw) if t.lower() != seen][:limit]
+    seen = {kw.replace(" ", "").lower()}
+
+    def _fresh(t: str) -> bool:
+        n = t.replace(" ", "").lower()
+        if n in seen:
+            return False
+        seen.add(n)
+        return True
+
+    terms = [t for t in _related_terms(kw) if _fresh(t)][:limit]
+    # 검색광고 연관 키워드로 후보 풀 확장 — 검색량이 응답에 이미 있어 추가 조회 불필요
+    known_vol = {}
+    for r in _searchad_related(kw, limit) if load_env().has_searchad else []:
+        if _fresh(r["keyword"]):
+            terms.append(r["keyword"])
+            known_vol[r["keyword"]] = r["volume"]
     scored = []
     for t in terms:
         try:
             scored.append({"keyword": t, "total": _total(t)})
         except Exception:  # noqa: BLE001 — 개별 실패는 건너뛰고 나머지로 추천
             continue
-    vols = search_volumes([s["keyword"] for s in scored])
+    vols = search_volumes([s["keyword"] for s in scored if s["keyword"] not in known_vol])
     for s in scored:
         v = vols.get(s["keyword"]) or {}
-        s["volume"] = v.get("volume")
+        s["volume"] = known_vol.get(s["keyword"], v.get("volume"))
     has_volume = any(s["volume"] is not None for s in scored)
     if has_volume:
         # 많이 검색되는데 문서(경쟁)는 적은 키워드가 위로 오게 검색량/문서수 비로 정렬
