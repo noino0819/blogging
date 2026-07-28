@@ -155,6 +155,11 @@ def _clean_title_line(line: str) -> str:
 # 상품 리뷰의 나열 박스 표식으로 시작하는 줄은 한 항목이라 쪼개지 않는다.
 # 키캡 숫자(1️⃣…)는 변이 선택자(U+FE0F) 유무가 입력마다 달라 정규식으로 너그럽게 매칭한다.
 _LIST_LINE_RE = re.compile(r"^[ \t]*(?:[0-9]️?⃣|🔟|✅|✓|👉|🌟)")
+# 마커만 있는 줄([사진:라벨]·[지도:가게명]·[인용구]…)은 아무리 길어도 쪼개지 않는다.
+# 쪼개지면 마커가 두 줄로 깨져 plan의 마커 정규식(^\[…\]$)에 안 걸린다 →
+# 대괄호가 본문에 그대로 남고, 그 사진은 소비되지 않아 '남은 사진 분산'으로 넘어가
+# 배치가 통째로 틀어진다(라벨/캡션이 길수록 자주 발생).
+_MARKER_LINE_RE = re.compile(r"^\[[^\[\]\n]*\]$")
 # 상품 리뷰에서 구조 표식으로 쓰는 🌟은 금지 이모지 제거에서 예외로 둔다.
 _PRODUCT_KEEP_EMOJI = "🌟"
 # 핵심 요약 박스(키캡 줄)의 "소제목: 설명" 콜론을 em-dash로 바꾼다 — 콜론이 어색하다는 피드백.
@@ -178,6 +183,8 @@ def wrap_long_lines(text: str, max_len: int = 30, *, keep_list_lines: bool = Fal
             title_seen = True
         elif sum(1 for t in line.split() if t.startswith("#")) >= 2:
             out.append(line)  # 해시태그 줄(2개 이상)은 쪼개지 않는다 — 헤더 태그 묶음
+        elif _MARKER_LINE_RE.match(line.strip()):
+            out.append(line)  # 마커 한 줄은 원형 유지 — 쪼개지면 마커가 깨진다
         elif keep_list_lines and _LIST_LINE_RE.match(line):
             out.append(line)  # 나열 박스 한 줄(키캡/✅/👉/🌟)은 쪼개지 않는다
         else:

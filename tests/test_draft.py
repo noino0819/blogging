@@ -266,6 +266,20 @@ def test_bracket_segments_protected_from_substitution():
     assert out2.split("\n", 1)[0] == "[잇쇼우!] 라멘 후기"
 
 
+def test_long_marker_line_not_wrapped():
+    # 30자 넘는 마커 줄이 줄바꿈으로 쪼개지면 마커가 깨져 본문에 대괄호가 남고,
+    # 그 사진이 소비되지 않아 '남은 사진 분산'으로 넘어가 배치가 통째로 틀어진다.
+    from autoblog.draft.postprocess import enforce_format
+    from autoblog.publish.plan import _PHOTO_RE
+
+    marker = "[사진:겉은 아주 바삭하고 속은 정말 촉촉한 등심돈까스 클로즈업 사진]"
+    out = enforce_format(f"제목\n\n{marker}\n[사진:매장 외관, 간판이 잘 보이는 사진과 주변 골목까지]\n본문")
+    for line in out.split("\n"):
+        if line.startswith("[사진"):
+            assert _PHOTO_RE.match(line), line  # 한 줄 그대로 = plan이 마커로 인식
+    assert marker in out
+
+
 def test_title_detection_skips_blank_first_lines():
     # 첫 줄이 공백뿐이어도 실제 제목이 보호된다(wrap_long_lines 판정과 동일 기준).
     from autoblog.draft.postprocess import enforce_format
