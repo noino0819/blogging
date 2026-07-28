@@ -653,7 +653,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=muted>이 사진에 대해 글에 녹일 설명을 적어주세요. 초안 생성 때 이 내용이 그대로 반영돼요. (분류: <b id=caplabel></b>)</div>
   <div style="margin-top:10px;text-align:center"><img id=capimg style="max-width:160px;max-height:160px;border-radius:9px;border:1px solid #e5e7eb;object-fit:cover"></div>
   <textarea id=capinput placeholder="예: 가장 인상 깊었던 메뉴. 겉은 바삭하고 속은 촉촉했어요." style="min-height:110px;margin-top:10px;font-family:inherit;font-size:14px;line-height:1.5;background:#fff;border:1px solid #cdd3da;border-radius:9px;padding:10px 12px;width:100%;resize:vertical"></textarea>
-  <div class=muted style="margin-top:6px;font-size:11.5px">⌘/Ctrl+Enter 로 저장 · 비우고 저장하면 설명이 삭제돼요</div>
+  <div class=muted style="margin-top:6px;font-size:11.5px">Enter 로 저장 · Shift+Enter 줄바꿈 · 비우고 저장하면 설명이 삭제돼요</div>
   <div class=modalft><button class=btn id=capok style="flex:1">저장</button><button class="btn ghost" id=capcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
 <div id=npmodal class=modal style="display:none"><div class=modalbox style="width:min(420px,92vw)">
@@ -3254,7 +3254,7 @@ $('#catok').onclick=catSubmit; $('#catx').onclick=closeCatModal; $('#catcancel')
 $('#catinput').onkeydown=e=>{ if(e.key==='Enter'&&!e.isComposing&&e.keyCode!==229)catSubmit(); };  // Esc는 아래 공통 핸들러가 처리(이중 닫힘 방지)
 $('#catmodal').onclick=e=>{ if(e.target===$('#catmodal'))closeCatModal(); };
 $('#capok').onclick=capSubmit; $('#capx').onclick=closeCapModal; $('#capcancel').onclick=closeCapModal;
-$('#capinput').onkeydown=e=>{ if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)&&!e.isComposing&&e.keyCode!==229)capSubmit(); };
+$('#capinput').onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){e.preventDefault();capSubmit();} };  // Enter 저장 · Shift+Enter 줄바꿈
 $('#capmodal').onclick=e=>{ if(e.target===$('#capmodal'))closeCapModal(); };
 // Esc로 열린 모달 닫기 — 스택 위(사진 모달 위에 뜨는 작은 모달)부터, 배경 클릭과 같은 닫기 함수로
 const MODAL_ESC=[['aimodal',closeAI],['capmodal',closeCapModal],['catmodal',closeCatModal],['cfmodal',closeCF],['tgmodal',closeTG],['npmodal',closeNP],['imodal',closeIM],['pmodal',closePM],['phmodal',closePhotoModal]];
