@@ -1471,8 +1471,19 @@ class BlogPublisher:
         page.evaluate(
             "()=>{const b=document.querySelector('button.se-popup-button-confirm');if(b)b.click();}"
         )
-        page.wait_for_timeout(1500)
-        if page.evaluate("()=>document.querySelectorAll('.se-component').length") <= n_before:
+        # 지도 카드는 타일/좌표 로드가 있어 렌더링이 느릴 수 있음 — _insert_link와 같은
+        # 폴링 재시도(최대 ~7초)로 판정한다(고정 1회 대기는 오탐의 원인이었음).
+        created = False
+        for _ in range(14):
+            page.wait_for_timeout(500)
+            confirm = page.query_selector("button.se-popup-button-confirm")
+            if confirm:
+                confirm.click()
+                page.wait_for_timeout(600)
+            if page.evaluate("()=>document.querySelectorAll('.se-component').length") > n_before:
+                created = True
+                break
+        if not created:
             page.keyboard.press("Escape")  # 팝업이 남아 있으면 닫아 다음 삽입 보호
             return False
         return True
