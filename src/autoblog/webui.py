@@ -1494,14 +1494,15 @@ function classifyKw(d){
 function fmtVol(v){ v=v||0; return v>=10000 ? ((v/10000).toFixed(v%10000?1:0))+'만' : v.toLocaleString(); }
 async function judgeKeyword(kw){
   const key=kw.toLowerCase();
-  if(KWJUDGE[key]) return;                       // 캐시 — 재조회 안 함
+  if(KWJUDGE[key]&&!KWJUDGE[key].fail) return;   // 캐시 — 재조회 안 함(실패는 다음 기회에 다시)
   KWJUDGE[key]={cls:'jwait',badge:'⏳',tip:'노출 가능성 확인 중…'}; kwRender();
+  // 실패도 ⚠️로 보이게 — 빈 칩이면 '판정을 아예 안 해준다'로 보인다
+  const bad=m=>({cls:'jwait',badge:'⚠️',tip:'노출 판정 실패 — '+m,fail:true});
   try{
     const r=await fetch('/api/keyword-check?q='+encodeURIComponent(kw));
     const d=await r.json();
-    KWJUDGE[key]= r.ok ? classifyKw(d)
-                       : {cls:'',badge:'',tip:d.error||'확인 실패(키 설정 확인)'};
-  }catch(e){ KWJUDGE[key]={cls:'',badge:'',tip:'확인 실패'}; }
+    KWJUDGE[key]= r.ok ? classifyKw(d) : bad(d.error||'키 설정 확인');
+  }catch(e){ KWJUDGE[key]=bad(e.message||'네트워크'); }
   kwRender();
 }
 function kwHas(t){ return KW.some(k=>k.toLowerCase()===t.toLowerCase()); }

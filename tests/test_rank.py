@@ -32,3 +32,13 @@ def test_add_dedupe_check_history(tmp_path, monkeypatch):
 
     assert rank.remove_entry("성수동 맛집", "https://blog.naver.com/me/100")
     assert rank.list_entries() == []
+
+
+def test_keyword_competition_survives_volume_failure(monkeypatch):
+    """검색량(부가) 조회가 터져도 경쟁 판정은 나와야 한다 — 아니면 칩에 판정이 안 뜬다."""
+    monkeypatch.setattr(rank, "_search_blog_full", lambda kw: {"total": 42, "items": []})
+    monkeypatch.setattr(
+        rank, "search_volumes", lambda kws: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+    d = rank.keyword_competition("강남맛집")
+    assert d["total"] == 42 and d["volume"] is None

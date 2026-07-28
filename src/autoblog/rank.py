@@ -151,7 +151,11 @@ def keyword_competition(keyword: str) -> dict:
         }
         for it in items[:5]
     ]
-    vol = search_volumes([keyword]).get(keyword) or {}
+    # 검색량은 부가 정보 — 여기서 터지면 멀쩡한 경쟁 판정까지 통째로 날아간다(→ 칩에 판정 안 뜸)
+    try:
+        vol = search_volumes([keyword]).get(keyword) or {}
+    except Exception:  # noqa: BLE001
+        vol = {}
     return {
         "keyword": keyword, "total": data.get("total", 0), "mine": mine, "top": top,
         "volume": vol.get("volume"),  # 월간 검색수(PC+모바일) — 검색광고 키 없으면 None
