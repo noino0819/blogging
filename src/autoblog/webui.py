@@ -3270,7 +3270,9 @@ $('#capmodal').onclick=e=>{ if(e.target===$('#capmodal'))closeCapModal(); };
 // Esc로 열린 모달 닫기 — 스택 위(사진 모달 위에 뜨는 작은 모달)부터, 배경 클릭과 같은 닫기 함수로
 const MODAL_ESC=[['aimodal',closeAI],['capmodal',closeCapModal],['catmodal',closeCatModal],['cfmodal',closeCF],['tgmodal',closeTG],['npmodal',closeNP],['imodal',closeIM],['pmodal',closePM],['phmodal',closePhotoModal]];
 document.addEventListener('keydown',e=>{
-  if(e.key!=='Escape'||document.querySelector('.alertbg,.okbg'))return;  // 알림 카드는 자체 Esc 처리
+  if(e.key!=='Escape')return;
+  if(GENABORT){ GENABORT.abort(); return; }  // 생성 중 빠른 취소
+  if(document.querySelector('.alertbg,.okbg'))return;  // 알림 카드는 자체 Esc 처리
   for(const [id,fn] of MODAL_ESC){ const m=document.getElementById(id); if(m&&m.style.display!=='none'){fn();return;} }
 });
 // 메모를 치는 대로 현재 탭 제목이 갱신되게(초안 생성 전에도 어느 탭인지 알아보게).
