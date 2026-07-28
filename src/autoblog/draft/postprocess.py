@@ -20,6 +20,16 @@ _HEADER_RE = re.compile(r"^[ \t]*#{1,6}[ \t]+", re.MULTILINE)
 # 특히 소제목을 "**1. 매장 분위기**"로 감싸는 버릇이 흔한데, 별표가 남으면 소제목 패턴
 # 인식(plan._SUBHEADING_RE)까지 빗나가 큰 글씨·문단 분리가 통째로 날아간다.
 _MD_BOLD_RE = re.compile(r"\*{1,2}([^*\n]+)\*{1,2}")
+# 챗봇 응답의 마크다운 부스러기 — 코드 펜스 줄(```…)은 삭제, 수평선(---·***·___)은
+# 구분선 마커로 바꾼다(모델이 구분선 의도로 쓴 것 — 지우면 의도 소실, 두면 "---"가 게시됨).
+_CODE_FENCE_RE = re.compile(r"^[ \t]*```.*$\n?", re.MULTILINE)
+_HR_RE = re.compile(r"^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$", re.MULTILINE)
+# 마커 줄의 느슨한 표기("[ 사진 : 음식 ]"·"[스티커: 신남]") 정규화 — plan의 마커 정규식은
+# 공백 없는 정확 표기만 받아서, 콜론 옆 공백 하나로 마커가 본문 텍스트로 눌러앉는다.
+_MARKER_NORM_RE = re.compile(
+    r"^[ \t]*\[\s*(사진|영상|스티커|지도|구분선|인용구|/인용구)\s*(?::\s*(.*?)\s*)?\][ \t]*$",
+    re.MULTILINE,
+)
 _BULLET_RE = re.compile(r"^[ \t]*[•*▶→✓✅][ \t]+", re.MULTILINE)
 # 상품 리뷰의 추천 체크리스트(✅)/체크(✓)는 의도된 나열이라 보존한다.
 _BULLET_RE_KEEP_CHECK = re.compile(r"^[ \t]*[•*▶→][ \t]+", re.MULTILINE)
@@ -148,6 +158,7 @@ def _clean_title_line(line: str) -> str:
         segs.append(m.group(0))
         return f"\x00B{len(segs) - 1}\x00"
 
+    line = re.sub(r"^제목\s*[:：]\s*", "", line)  # 챗봇 습관 "제목: …" 라벨 제거
     line = _BRACKET_SEG_RE.sub(_stash, line)
     line = line.replace(".ᐟ", "").replace("ᐟ", "").replace("!", "")
     line = re.sub("〰️?", "", line)
@@ -265,10 +276,16 @@ def enforce_format(
     """
     bullet_re = _BULLET_RE_KEEP_CHECK if allow_checklist else _BULLET_RE
     text = text.replace("\x00", "")  # NUL 제거 — 내부 센티널(\x00…)과의 충돌 차단
+    text = _CODE_FENCE_RE.sub("", text)  # 챗봇 응답의 ``` 펜스 줄 삭제
+    text = _HR_RE.sub("[구분선]", text)  # 마크다운 수평선 → 구분선 마커
     text = _HEADER_RE.sub("", text)  # 마크다운 헤더 마커 제거
     text = _MD_BOLD_RE.sub(r"\1", text)  # **볼드**/*이탤릭* 별표 제거(글머리 '* '는 아래에서)
     text = bullet_re.sub("", text)  # 글머리 기호 제거
     text = _DASH_BULLET_RE.sub("", text)  # 줄 앞 '- ' 제거
+    # 마커 줄 정규화 — 볼드 별표를 벗긴 뒤에 돌려야 "**[ 사진 ]**" 같은 겹꾸밈도 잡힌다
+    text = _MARKER_NORM_RE.sub(
+        lambda m: f"[{m.group(1)}:{m.group(2)}]" if m.group(2) else f"[{m.group(1)}]", text
+    )
     text = fix_leading_hashtag(text)  # 헤더 태그줄 첫 태그의 빠진 # 복원
     if wrap:  # 전체 문서 모드 — 첫 줄(제목)은 장식 문자 제거, 본문만 치환
         # lstrip()으로 공백-only 선행 줄까지 걷어내야 실제 제목이 첫 줄로 잡힌다

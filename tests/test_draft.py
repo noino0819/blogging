@@ -515,6 +515,22 @@ def test_extract_final_draft_ignores_stub_final():
     assert extract_final_draft(resp) == "제목\n\n초안 본문이 제법 길게 이어진다."
 
 
+def test_enforce_format_strips_chatbot_markdown_debris():
+    # 코드 펜스 줄 삭제, 수평선 → [구분선], "제목:" 라벨 제거, 마커 콜론 공백 정규화
+    from autoblog.draft.postprocess import enforce_format
+
+    text = enforce_format(
+        "```\n제목: 혜화 맛집 후기\n\n인트로.\n\n---\n\n[사진 : 음식]\n\n[스티커: 신남]\n\n**[ 지도 : 메종아카이 ]**\n```"
+    )
+    lines = text.split("\n")
+    assert lines[0] == "혜화 맛집 후기"
+    assert "```" not in text and "---" not in text
+    assert "[구분선]" in lines
+    assert "[사진:음식]" in lines
+    assert "[스티커:신남]" in lines
+    assert "[지도:메종아카이]" in lines
+
+
 def test_extract_final_draft_passthrough_without_marker():
     from autoblog.draft.postprocess import extract_final_draft
 
