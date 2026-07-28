@@ -1366,6 +1366,13 @@ async function handleFiles(files){
   renderGrid();
   persistWS();  // 업로드 직후 저장 — 다시 올리기 아까운 작업이라 바로 남긴다
 }
+async function handleFilesForBucket(files, bucketKey){
+  await handleFiles(files);
+  // 업로드된 파일들을 자동으로 해당 칸에 담기
+  const newly=PHOTOS.slice(-[...files].filter(f=>f.type.startsWith('image/')||f.type.startsWith('video/')||isVid(f.name)).length);
+  newly.forEach(p=>{ if(!SELP.includes(p)){ SELP.push(p); pmAssign(p,bucketKey); } });
+  renderPmeta();
+}
 
 // 네이버 임시저장 글에서 사진 불러오기: 목록 조회 → 글 선택 → 본문 사진 다운로드 → PHOTOS에 추가
 // DRAFTS=한 번 조회한 목록 캐시. 📥 버튼은 이 캐시를 펼침/접음만(재조회 X), 🔄로만 네이버 재조회.
@@ -1840,7 +1847,10 @@ function renderPmeta(){
     l.onclick=()=>laneClick(l.dataset.key);
     l.ondragover=e=>{e.preventDefault(); e.dataTransfer.dropEffect='move'; l.classList.add('over');};
     l.ondragleave=()=>l.classList.remove('over');
-    l.ondrop=e=>{e.preventDefault(); l.classList.remove('over');
+    l.ondrop=async e=>{e.preventDefault(); l.classList.remove('over');
+      // 파일 드롭 처리
+      if(e.dataTransfer.files.length){ await handleFilesForBucket(e.dataTransfer.files, l.dataset.key); return; }
+      // 사진 이동 처리
       const set=(PMDRAG&&PMDRAG.length)?PMDRAG:[]; PMDRAG=null;
       if(!set.length)return;
       set.forEach(p=>{ if(!SELP.includes(p))SELP.push(p); pmAssign(p,l.dataset.key); }); PMSEL=new Set(); PMANCHOR=null;
