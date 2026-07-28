@@ -125,8 +125,8 @@ def check_exposure(draft: str) -> list[CheckItem]:
     results = [
         CheckItem(
             item="제목 길이(검색 노출)",
-            ok=20 <= n <= 60,
-            detail=f"현재 {n}자 — 권장 50자 내외(정보+훅 자연 융합, 최대 60자)",
+            ok=20 <= n <= 55,
+            detail=f"현재 {n}자 — 권장 40~50자(정보+훅 자연 융합, 최대 55자)",
         )
     ]
     n_tags = 0
