@@ -193,22 +193,34 @@ def wrap_long_lines(text: str, max_len: int = 30, *, keep_list_lines: bool = Fal
 
 
 # 외부 챗봇 응답의 최종본 구분 마커 — 내보내기 프롬프트가 '초안 → 자가 점검 → =====최종본====='
-# 순서로 출력하게 지시한다(한 응답 안에서 검수가 실제로 이뤄지게). 모델이 굵게(**)나
-# 제목(#)으로 꾸며 내보내는 변형도 함께 인식한다.
-_FINAL_CUT_RE = re.compile(r"^[ \t#*]*={3,}\s*최종본\s*={3,}[ \t*#]*$", re.MULTILINE)
+# 순서로 출력하게 지시한다(한 응답 안에서 검수가 실제로 이뤄지게). 모델은 이 마커를 자주
+# 제 식대로 꾸민다("## 최종본", "**최종본**", "--- 최종본 ---", "최종본:"). ===== 형태만
+# 인식하면 그 변형에서 추출이 통째로 실패해 자가 점검 목록까지 본문으로 딸려 들어간다.
+# 그래서 '꾸밈 문자 + 최종본(+ 꾸밈 문자/콜론)' 만으로 이뤄진 줄이면 전부 마커로 본다.
+_FINAL_CUT_RE = re.compile(r"^[ \t#*\-=~_]*최종본[ \t#*\-=~_:]*$", re.MULTILINE)
+# 자가 점검 단계의 제목 줄 — 최종본 마커가 없을 때 여기서부터 잘라 초안만 남긴다.
+_SELFCHECK_HEAD_RE = re.compile(r"^[ \t#*\-=~_]*자가\s*점검[ \t#*\-=~_:]*.*$", re.MULTILINE)
 
 
 def extract_final_draft(text: str) -> str:
-    """외부 챗봇 응답에서 '=====최종본=====' 마커 아래 완성본만 추출.
+    """외부 챗봇 응답에서 최종본만 추출.
 
     내보내기 프롬프트의 출력 프로토콜(초안→자가 점검→최종본)을 따른 응답 전체를
-    붙여넣어도 마지막 최종본만 쓴다. 마커가 없으면(프로토콜 무시·구버전 프롬프트·
-    직접 쓴 글) 원문을 그대로 돌려준다.
+    붙여넣어도 마지막 최종본만 쓴다. 모델이 3단계를 빠뜨리고 '초안 + 자가 점검'까지만
+    내보내는 경우도 흔해서, 최종본 마커가 없으면 자가 점검 제목 앞까지(=초안)를 쓴다.
+    최종본이 "위와 동일" 같은 한 줄로 오면 그것도 초안으로 되돌린다.
+    마커도 점검 제목도 없으면(직접 쓴 글) 원문 그대로.
     """
     matches = list(_FINAL_CUT_RE.finditer(text))
+    checks = list(_SELFCHECK_HEAD_RE.finditer(text))
+    # 1단계 초안 = 자가 점검(없으면 최종본 마커) 앞까지
+    cut = checks[0].start() if checks else (matches[-1].start() if matches else len(text))
+    head = text[:cut].strip()
     if not matches:
-        return text
-    return text[matches[-1].end():].strip()
+        return head
+    final = text[matches[-1].end() :].strip()
+    # 재출력 대신 "고칠 것 없음 / 위와 동일" 한 줄만 온 경우 — 초안이 곧 최종본
+    return head if len(final) < len(head) * 0.5 else final
 
 
 def fix_leading_hashtag(text: str) -> str:

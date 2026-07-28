@@ -490,6 +490,31 @@ def test_extract_final_draft_tolerates_decorated_marker():
     assert extract_final_draft(resp) == "최종 글."
 
 
+def test_extract_final_draft_tolerates_marker_variants():
+    # 모델이 ===== 대신 제목/굵게/대시로 꾸며도 최종본만 남는다
+    from autoblog.draft.postprocess import extract_final_draft
+
+    for marker in ("## 최종본", "**최종본**", "--- 최종본 ---", "최종본:", "=====최종본====="):
+        resp = f"초안 본문.\n\n## 자가 점검\n1. 통과\n\n{marker}\n제목\n\n최종 글 본문이다."
+        assert extract_final_draft(resp) == "제목\n\n최종 글 본문이다.", marker
+
+
+def test_extract_final_draft_drops_selfcheck_without_final_marker():
+    # 3단계를 빠뜨리고 초안+자가 점검만 온 응답 — 점검 목록이 본문에 섞이면 안 된다
+    from autoblog.draft.postprocess import extract_final_draft
+
+    resp = "제목\n\n초안 본문이다.\n\n## 자가 점검\n1. 줄 길이 — 통과\n2. 느낌표 — 통과"
+    assert extract_final_draft(resp) == "제목\n\n초안 본문이다."
+
+
+def test_extract_final_draft_ignores_stub_final():
+    # "위와 동일"처럼 재출력을 생략한 최종본은 초안으로 되돌린다
+    from autoblog.draft.postprocess import extract_final_draft
+
+    resp = "제목\n\n초안 본문이 제법 길게 이어진다.\n\n## 자가 점검\n통과\n\n=====최종본=====\n위와 동일"
+    assert extract_final_draft(resp) == "제목\n\n초안 본문이 제법 길게 이어진다."
+
+
 def test_extract_final_draft_passthrough_without_marker():
     from autoblog.draft.postprocess import extract_final_draft
 
