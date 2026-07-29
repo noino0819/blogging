@@ -3450,11 +3450,13 @@ def _make_handler(state: dict):
         def log_message(self, *a):
             pass
 
-        def _send(self, code, body: bytes, ctype="application/json"):
+        def _send(self, code, body: bytes, ctype="application/json", cache: bool = False):
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
+            # 사진 타일은 캐시 허용 — 분류판이 재렌더될 때마다(칸 순서 드래그 등) 전 장을
+            # 재다운로드하며 흰 타일로 깜빡이던 문제 방지. 파일 경로가 키라 내용이 바뀌면 경로도 바뀜.
+            self.send_header("Cache-Control", "public, max-age=3600" if cache else "no-store")
             self.end_headers()
             self.wfile.write(body)
 
@@ -3521,12 +3523,12 @@ def _make_handler(state: dict):
                     import mimetypes
 
                     mime = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
-                    self._send(200, p.read_bytes(), mime)
+                    self._send(200, p.read_bytes(), mime, cache=True)
                     return
                 img = _thumb(p, state["thumbs"]) if p else None
                 if not img:  # 타일이 '깨진 아이콘'으로만 보이면 원인을 못 찾는다 — 경로를 로그에 남긴다
                     print(f"[webui] /photo 404: {q.get('path', [''])[0]!r}", flush=True)
-                self._send(200, img, "image/jpeg") if img else self._send(404, b"x", "text/plain")
+                self._send(200, img, "image/jpeg", cache=True) if img else self._send(404, b"x", "text/plain")
             elif u.path == "/img":
                 img = _sticker_image(q.get("ref", [""])[0])
                 self._send(200, img.read_bytes(), "image/png") if (img and img.exists()) else self._send(404, b"x", "text/plain")
