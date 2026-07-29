@@ -1432,21 +1432,41 @@ class BlogPublisher:
         if pos < len(text):
             self._page.keyboard.type(text[pos:], delay=4)
 
-    def _insert_place(self, query: str, address: str | None = None) -> str:
-        """SE 네이티브 '장소' 카드 삽입: 가게명 검색 → 수집 주소와 가장 잘 맞는 결과 '추가' → '확인'.
+    # 지도(장소) 카드 개수 — 총 컴포넌트 수 증가로는 못 잡는다. SE는 커서가 빈 문단에 있으면
+    # 그 문단을 지도 카드로 '치환'해서 총 개수가 그대로일 때가 있고(→ 성공인데 실패로 경고했음),
+    # 사진 로드 등 다른 이유로 총 개수가 늘 수도 있다. 지도 카드만 세는 게 정확하다.
+    # 지도 카드 표식: 컴포넌트 클래스의 placesMap/se-map 또는 내부 지도 이미지(img.se-map-image).
+    _MAP_COUNT_JS = (
+        "()=>[...document.querySelectorAll('.se-component')].filter(c=>"
+        "/placesMap|se-map/.test(c.className||'')||"
+        "c.querySelector('.se-map-image,[class*=\"placesMap\"]')).length"
+    )
 
-        반환값은 실패 사유(성공이면 ""). 예전엔 bool이라 호출부가 실패를 전부
-        '검색 결과 없음'으로 안내했는데, 실제로는 검색 0건·카드 미생성이 섞여 있어
-        사람이 원인을 못 봤다.
+    def _insert_place(self, query: str, address: str | None = None) -> str:
+        """SE 네이티브 '장소' 카드 삽입 — 실패 사유를 돌려준다(성공이면 "").
+
+        어떤 경로로 실패했든 '지도 카드가 실제로 늘었는지'를 마지막에 다시 확인해서,
+        카드는 잘 들어갔는데 클릭·대기 사정으로 실패처럼 보인 경우엔 경고하지 않는다
+        (헛경고가 실제 실패보다 잦았다)."""
+        page = self._page
+        maps_before = page.evaluate(self._MAP_COUNT_JS)
+        try:
+            why = self._place_flow(query, address)
+        except Exception as exc:  # noqa: BLE001 - 실패해도 아래에서 카드 생성 여부로 재판정
+            page.keyboard.press("Escape")
+            why = f"에디터 오류({type(exc).__name__}: {exc})."
+        if why and page.evaluate(self._MAP_COUNT_JS) > maps_before:
+            return ""  # 실패처럼 보였지만 카드는 들어감
+        return why
+
+    def _place_flow(self, query: str, address: str | None) -> str:
+        """가게명 검색 → 수집 주소와 가장 잘 맞는 결과 '추가' → '확인'. 실패 사유 반환.
 
         address(수집된 도로명 주소)를 주면 동명 가게가 여럿일 때 주소 유사도로 정확한
         결과를 고른다. 없거나 매칭이 약하면 첫 결과로 폴백. 결과가 아예 없으면 팝업만
-        닫고 실패(본문 유지). 커서 위치에 지도 카드가 삽입된다.
-
-        성공 판정은 '카드가 실제로 생겼는지'(컴포넌트 수 증가) — 추가·확인 클릭이
-        DOM 사정으로 무음 no-op이면 예전엔 성공을 돌려줘 경고 없이 지도가 빠졌다."""
+        닫고 실패(본문 유지). 커서 위치에 지도 카드가 삽입된다."""
         page = self._page
-        n_before = page.evaluate("()=>document.querySelectorAll('.se-component').length")
+        n_before = page.evaluate(self._MAP_COUNT_JS)
         page.click("button.se-map-toolbar-button")
         page.wait_for_timeout(1500)
         items: list[dict] = []
@@ -1485,9 +1505,12 @@ class BlogPublisher:
             page.wait_for_timeout(500)
             confirm = page.query_selector("button.se-popup-button-confirm")
             if confirm:
-                confirm.click()
+                try:  # 팝업이 막 닫히는 중이면 핸들이 떨어져 예외 — 삽입 자체는 성공일 수 있다
+                    confirm.click()
+                except Exception:  # noqa: BLE001
+                    pass
                 page.wait_for_timeout(600)
-            if page.evaluate("()=>document.querySelectorAll('.se-component').length") > n_before:
+            if page.evaluate(self._MAP_COUNT_JS) > n_before:
                 created = True
                 break
         if not created:
