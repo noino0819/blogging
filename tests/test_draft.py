@@ -89,6 +89,21 @@ def test_photo_prompt_advises_spreading():
     assert "고루" in user and "몰아" in user
 
 
+def test_photo_labels_follow_board_order():
+    # 라벨 나열 = 사진이 들어온 순서(=분류함 칸 순서). 알파벳/가나다 정렬로 뒤집히면 안 된다.
+    from autoblog.collect.fact_card import PhotoItem
+
+    card = _place_card()
+    card.photos = [
+        PhotoItem(path="1.jpg", label="음식"),
+        PhotoItem(path="2.jpg", label="음식"),
+        PhotoItem(path="3.jpg", label="외관"),
+    ]
+    user = build_user_prompt(card, "맛있게 먹었다")
+    assert "분류명: 음식, 외관" in user
+    assert "이 순서대로" in user
+
+
 def test_variation_block_deterministic():
     from autoblog.draft.variation import build_variation_block
 

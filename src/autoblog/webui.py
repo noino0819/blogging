@@ -274,7 +274,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pmlane{border:1px solid #e5e7eb;border-radius:8px;padding:5px 6px;background:#fafbfc;cursor:pointer;transition:background .12s,border-color .12s}
  .pmlane.over{border-color:var(--green);background:#eafaf0;box-shadow:0 0 0 2px rgba(46,160,67,.18) inset}
  .pmlane.active{border-color:var(--green);background:#eafaf0}
+ .pmlane.lmove{box-shadow:0 -3px 0 -1px var(--green)}
  .pmlanehd{font-size:11px;color:#6b7280;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:5px}
+ .pmgrip{cursor:grab;color:#c2c8d0;letter-spacing:-2px}
  .pmlane.sub{margin-left:18px;border-style:dashed;background:#fff}
  .pmtarget{margin-left:auto;background:var(--green);color:#fff;border-radius:9px;padding:0 7px;font-size:10px;font-weight:600}
  .pmsubbtn{margin-left:auto;border:0;background:#eef0f2;color:#4b5563;border-radius:7px;padding:1px 7px;font-size:10px;cursor:pointer}
@@ -1715,8 +1717,28 @@ function openPhotoModal(){
 function closePhotoModal(){ const m=$('#phmodal'); if(m)m.style.display='none'; updatePhotoSummary(); }
 // PMACTIVE: 활성 칸(undefined=초기→첫칸 외관, 문자열=활성, null=해제). PMSEL=보이는 선택(더미·보드 공통). SUBCATS=세션 세부분류.
 let PMDRAG=null, PMSEL=new Set(), PMANCHOR=null, PMACTIVE=undefined, SUBCATS={}, XCATS=[], CATCB=null;
+let LANEDRAG=null, CATORDER=[];  // LANEDRAG=끌고 있는 칸, CATORDER=드래그로 정한 칸 순서(비면 프리셋 순서)
 // 프리셋(config) + 이 글에만 추가한 분류(XCATS). '기타' 앞에 끼워 넣어 기타를 맨 뒤로 유지.
-function baseCats(){ const c=curCats().slice(), i=c.indexOf('기타'); c.splice(i<0?c.length:i, 0, ...XCATS.filter(x=>!c.includes(x))); return c; }
+// CATORDER가 있으면 그 순서로 재배열(목록에 없는 분류는 원래 자리 뒤에 남는다).
+function baseCats(){ const c=curCats().slice(), i=c.indexOf('기타'); c.splice(i<0?c.length:i, 0, ...XCATS.filter(x=>!c.includes(x)));
+  if(!CATORDER.length) return c;
+  return c.map((n,idx)=>{const k=CATORDER.indexOf(n); return {n, k:k<0?1e6+idx:k};}).sort((a,b)=>a.k-b.k).map(o=>o.n); }
+// 칸 순서 바꾸기 — src를 dst 자리로(아래로 끌면 dst 뒤, 위로 끌면 dst 앞).
+function laneMove(src,dst){
+  if(!src||!dst||src===dst) return;
+  const c=baseCats(), i=c.indexOf(src), d=c.indexOf(dst);
+  if(i<0||d<0) return;
+  const down=i<d; c.splice(i,1);
+  const j=c.indexOf(dst); c.splice(down?j+1:j, 0, src);
+  CATORDER=c; renderPmeta();
+}
+// 초안에 보낼 사진 순서 = 칸 순서(= 글의 사진 배치 순서). 같은 칸 안에서는 담은 순서 유지.
+// 영상은 불러온 글에서 위치를 못 바꾸므로 원래 순서 그대로 뒤에 붙인다(백엔드가 따로 다룸).
+function orderedSel(){
+  const ord=pmBuckets().map(b=>b.key), k=p=>{const i=ord.indexOf(pmBucketOf(p)); return i<0?999:i;};
+  const imgs=SELP.filter(p=>!isVid(p)), vids=SELP.filter(isVid);
+  return imgs.map((p,i)=>[p,k(p),i]).sort((a,b)=>a[1]-b[1]||a[2]-b[2]).map(a=>a[0]).concat(vids);
+}
 function allCats(){ const o=[]; baseCats().forEach(c=>{ o.push(c); (SUBCATS[c]||[]).forEach(s=>{ if(!o.includes(s))o.push(s); }); }); return o; }
 function pmBuckets(){ const o=[]; baseCats().forEach(c=>{ o.push({key:c,name:c,sub:false}); (SUBCATS[c]||[]).forEach(s=>o.push({key:s,name:s,sub:true,parent:c})); }); return o; }
 function pmBucketOf(path){ const cats=allCats(), lb=(PHOTOMETA[path]||{}).label||''; return cats.includes(lb)?lb:(baseCats()[0]||''); }
@@ -1838,9 +1860,9 @@ function renderPmeta(){
     const badge=`<span class=pmcount>${items.length}</span>${act?'<span class=pmtarget>담는 중</span>':''}`;
     const hd = b.sub
       ? `<div class=pmlanehd>↳ ${esc(b.name)} ${badge}<button type=button class=pmsubdel data-parent="${esc(b.parent)}" data-sub="${esc(b.name)}" title="세부분류 삭제">×</button></div>`
-      : `<div class=pmlanehd>${esc(b.name)} ${badge}<button type=button class=pmsubbtn data-cat="${esc(b.key)}" title="세부분류 추가(이 글에만)">+세부</button>`
+      : `<div class=pmlanehd draggable=true title="끌어서 글쓰기 순서 바꾸기"><span class=pmgrip>⠿</span>${esc(b.name)} ${badge}<button type=button class=pmsubbtn data-cat="${esc(b.key)}" title="세부분류 추가(이 글에만)">+세부</button>`
         + (XCATS.includes(b.key)?`<button type=button class=pmcatdel data-cat="${esc(b.key)}" title="이 글에서 추가한 분류 삭제">×</button>`:'') + `</div>`;
-    return `<div class="pmlane${b.sub?' sub':''}${act}" data-key="${esc(b.key)}">${hd}<div class=pmdrop>${inner}</div></div>`;
+    return `<div class="pmlane${b.sub?' sub':''}${act}" data-key="${esc(b.key)}"${b.sub?` data-parent="${esc(b.parent)}"`:''}>${hd}<div class=pmdrop>${inner}</div></div>`;
   }).join('')
    + '<button type=button class=pmadd id=pmadd>+ 새 분류 추가</button>'
    + '</div>';
@@ -1850,11 +1872,20 @@ function renderPmeta(){
   $$('#pmeta .pmsubbtn').forEach(btn=>{ btn.onclick=e=>{ e.stopPropagation(); addSub(btn.dataset.cat); }; });
   $$('#pmeta .pmsubdel').forEach(btn=>{ btn.onclick=e=>{ e.stopPropagation(); removeSub(btn.dataset.parent,btn.dataset.sub); }; });
   $$('#pmeta .pmcatdel').forEach(btn=>{ btn.onclick=e=>{ e.stopPropagation(); removeCat(btn.dataset.cat); }; });
+  $$('#pmeta .pmlane:not(.sub) > .pmlanehd').forEach(hd=>{  // 칸 머리 = 순서 바꾸기 손잡이
+    const key=hd.parentElement.dataset.key;
+    hd.ondragstart=e=>{ e.stopPropagation(); LANEDRAG=key; e.dataTransfer.effectAllowed='move';
+      try{e.dataTransfer.setData('text/plain','lane:'+key);}catch(_){}};
+    hd.ondragend=()=>{ LANEDRAG=null; $$('#pmeta .pmlane').forEach(l=>l.classList.remove('lmove')); };
+  });
   $$('#pmeta .pmlane[data-key]').forEach(l=>{
+    const top=()=>l.dataset.parent||l.dataset.key;  // 세부칸에 떨어뜨리면 그 부모 자리로
     l.onclick=()=>laneClick(l.dataset.key);
-    l.ondragover=e=>{e.preventDefault(); e.dataTransfer.dropEffect='move'; l.classList.add('over');};
-    l.ondragleave=()=>l.classList.remove('over');
-    l.ondrop=async e=>{e.preventDefault(); l.classList.remove('over');
+    l.ondragover=e=>{e.preventDefault(); e.dataTransfer.dropEffect='move';
+      l.classList.add(LANEDRAG?'lmove':'over');};
+    l.ondragleave=()=>l.classList.remove('over','lmove');
+    l.ondrop=async e=>{e.preventDefault(); l.classList.remove('over','lmove');
+      if(LANEDRAG){ laneMove(LANEDRAG, top()); LANEDRAG=null; return; }  // 칸 순서 바꾸기
       // 파일 드롭 처리
       if(e.dataTransfer.files.length){ await handleFilesForBucket(e.dataTransfer.files, l.dataset.key); return; }
       // 사진 이동 처리
@@ -1908,7 +1939,7 @@ function captureWS(){
   return {
     PHOTOS:PHOTOS.slice(), SELP:SELP.slice(), PLAN,
     PHOTOMETA:JSON.parse(JSON.stringify(PHOTOMETA||{})), THUMB, AISET:new Set(AISET||[]),
-    PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})), XCATS:XCATS.slice(),
+    PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})), XCATS:XCATS.slice(), CATORDER:CATORDER.slice(),
     SRCKIND, KINDMANUAL, IMPORTED_DRAFT,
     memo:$('#memo').value, srcval:$('#srcval').value, keywords:kwGet(), itext:$('#itext').value,
     kwnote:$('#kwnote')?$('#kwnote').textContent:'', kwnoteShow:$('#kwnote')?$('#kwnote').style.display:'none',
@@ -1919,7 +1950,7 @@ function captureWS(){
 }
 // 빈 상태(새 글 탭).
 function blankWS(){
-  return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,AISET:new Set(),PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},XCATS:[],
+  return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,AISET:new Set(),PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},XCATS:[],CATORDER:[],
     SRCKIND:'place',KINDMANUAL:false,IMPORTED_DRAFT:null,
     memo:'',srcval:'',keywords:'',itext:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
     previewHTML:EMPTY_DOC,previewClass:'doc empty',saveDisabled:true};
@@ -1928,7 +1959,7 @@ function blankWS(){
 function applyWS(s){
   PHOTOS=(s.PHOTOS||[]).slice(); SELP=(s.SELP||[]).slice(); PLAN=s.PLAN||null;
   PHOTOMETA=JSON.parse(JSON.stringify(s.PHOTOMETA||{})); THUMB=s.THUMB||null; AISET=new Set(s.AISET||[]);
-  PMACTIVE=s.PMACTIVE; PMSEL=new Set(s.PMSEL||[]); PMANCHOR=s.PMANCHOR||null; SUBCATS=JSON.parse(JSON.stringify(s.SUBCATS||{})); XCATS=(s.XCATS||[]).slice(); PMDRAG=null;
+  PMACTIVE=s.PMACTIVE; PMSEL=new Set(s.PMSEL||[]); PMANCHOR=s.PMANCHOR||null; SUBCATS=JSON.parse(JSON.stringify(s.SUBCATS||{})); XCATS=(s.XCATS||[]).slice(); CATORDER=(s.CATORDER||[]).slice(); PMDRAG=null; LANEDRAG=null;
   IMPORTED_DRAFT=s.IMPORTED_DRAFT||null;
   $('#memo').value=s.memo||''; $('#srcval').value=s.srcval||''; kwSet(s.keywords||''); $('#itext').value=s.itext||'';
   if($('#kwnote')){ $('#kwnote').textContent=s.kwnote||''; $('#kwnote').style.display=s.kwnoteShow||'none'; }
@@ -2242,7 +2273,7 @@ $('#gen').onclick=async()=>{
   GENABORT=new AbortController(); $('#gen').textContent='✕ 취소';
   $('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES,
       draftId:CURWS,  // 이 탭의 글로 서버에 보관(게시 때 이 id로 '그 탭 글'을 정확히 저장)
       restyle:$('#restyleMode').checked,  // 켜면 외부 초안에 내 문체만 재적용(맛집/상품 구조 강제 안 함)
@@ -2284,7 +2315,7 @@ $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
   $('#export').disabled=true; expLoading(true);
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES,
       restyle:$('#restyleMode').checked,  // 켜면 export도 restyle.md 사용(원문 표·나열 보존)
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 [영상] 순서 고정 지시를 프롬프트에 포함
@@ -2319,7 +2350,7 @@ $('#iapply').onclick=async()=>{
   if(!text){toast('붙여넣은 글이 비어 있어요.','info');return;}
   $('#iapply').disabled=true;
   try{
-    const body={text,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS()};
+    const body={text,srcval:$('#srcval').value,kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS()};
     const r=await fetch('/api/import-draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){toast('가져오기 실패: '+(d.error||''),'err');return;}

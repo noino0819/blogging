@@ -123,7 +123,8 @@ def build_user_prompt(
 
         imgs = [p for p in card.photos if p.media_kind != "video"]
         vids = [p for p in card.photos if p.media_kind == "video"]
-        labels = sorted({p.label for p in imgs})
+        # 라벨 순서 = 분류함 칸 순서(유저가 드래그로 정한 순서). 정렬하지 않고 그대로 쓴다.
+        labels = list(dict.fromkeys(p.label for p in imgs))
         n = len(imgs)
         if imgs:
             parts.append(
@@ -145,6 +146,8 @@ def build_user_prompt(
                 "사진을 먼저 보여주고 그 아래에서 설명하는 순서로 쓰세요. "
                 "[사진:라벨] 을 한 줄로 먼저 넣고, 그 다음 문단에서 방금 보여준 사진을 설명하세요"
                 f"(라벨은 보유 사진의 분류명: {', '.join(labels)}).\n"
+                "이 분류명 나열 순서가 내가 원하는 등장 순서입니다 — 글 흐름상 어색하지 않다면 "
+                "이 순서대로 사진(과 그 사진을 다루는 섹션)을 배치하세요.\n"
                 "예: [사진:음식] 을 넣고 그 아래 문단에서 음식을 묘사, [사진:외관] 을 넣고 그 아래에서 가게 첫인상을 묘사. "
                 "라벨을 모르겠으면 그냥 [사진] 으로 두면 됩니다. 같은 라벨 사진이 여러 장이면 그만큼 마커를 반복하세요."
             )
