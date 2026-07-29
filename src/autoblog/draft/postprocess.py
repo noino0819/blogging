@@ -135,7 +135,9 @@ def _sub_special_chars(text: str) -> str:
         return f"\x00B{len(segs) - 1}\x00"
 
     text = _BRACKET_SEG_RE.sub(_stash, text)
+    text = re.sub(r"!{3,}", "!!!", text)  # 겹느낌표는 흥분 단계 — 최대 3개까지만
     text = text.replace("!", ".ᐟ")
+    text = re.sub(r"(?:\.ᐟ){4,}", ".ᐟ.ᐟ.ᐟ", text)  # 모델이 직접 쓴 .ᐟ 연타도 동일 상한
     text = text.replace(_TILDE_EMOJI, _TILDE_SENTINEL)  # 허용 이모지 보호
     text = re.sub(r"~+", "-", text)
     text = text.replace(_TILDE_SENTINEL, _TILDE_EMOJI)

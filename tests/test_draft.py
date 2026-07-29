@@ -257,6 +257,16 @@ def test_enforce_format():
     assert enforce_format("맛 (๑´~ˋ๑) 좋아").count("(๑´~ˋ๑)") == 1
 
 
+def test_multi_exclamation_scaled_and_capped():
+    # 겹느낌표는 흥분 단계별 .ᐟ 연타로 — 최대 3개 상한(모델이 직접 쓴 .ᐟ 연타 포함)
+    from autoblog.draft.postprocess import enforce_format
+
+    out = enforce_format("제목\n\n맛있어요!! 진짜!!!!! 최고" + ".ᐟ" * 5)
+    assert ".ᐟ.ᐟ 진짜" in out
+    assert ".ᐟ.ᐟ.ᐟ.ᐟ" not in out
+    assert ".ᐟ.ᐟ.ᐟ 최고.ᐟ.ᐟ.ᐟ" in out
+
+
 def test_title_line_decor_stripped():
     # 제목(첫 줄)은 검색 결과에 노출되므로 장식 문자를 치환하지 않고 제거한다.
     from autoblog.draft.postprocess import enforce_format
