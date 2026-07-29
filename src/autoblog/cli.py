@@ -108,9 +108,6 @@ def draft(
     memo: str = typer.Argument(..., help="경험 메모(글의 중심/주연)"),
     place_url: str = typer.Option(None, "--place-url", help="맛집: 플레이스 URL로 사실 카드"),
     product: str = typer.Option(None, "--product", help="상품: 검색어로 사실 카드"),
-    facts: str = typer.Option(
-        None, "--facts", help="검색으로 확인한 추가 사실(칼로리·영양정보·가격 등)"
-    ),
     photo: list[str] = typer.Option(None, "--photo", "-p", help="입력 사진(분류 후 배치 안내)"),
     tone: str = typer.Option(None, "--tone", help="문체 톤 지시 (예: '친근한 반말로')"),
     style_file: str = typer.Option(
@@ -159,7 +156,6 @@ def draft(
     req = DraftRequest(
         fact_card=card,
         experience_memo=memo,
-        search_facts=facts,
         base_prompt=load_base_prompt(prompt_file) if prompt_file else None,
         style=StyleProfile(
             tone=tone,

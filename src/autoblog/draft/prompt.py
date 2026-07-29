@@ -101,7 +101,6 @@ def build_user_prompt(
     experience_memo: str,
     template_text: str | None = None,
     inplace: bool = False,
-    search_facts: str | None = None,
 ) -> str:
     """재료(경험 메모=주연, 사실 카드=조연) → 사용자 프롬프트.
 
@@ -110,13 +109,6 @@ def build_user_prompt(
     순서 그대로 넣도록 못박는다(재업로드 불가 → 순서 고정).
     """
     facts = render_fact_card(card)
-    if search_facts and search_facts.strip():
-        # 수집 API가 못 주는 값(칼로리·영양정보 등)을 검색으로 확인해 넣은 것 — 여기 있으면
-        # '지어낸 사실'이 아니므로 그대로 쓰게 한다.
-        facts += (
-            "\n\n[검색으로 확인한 추가 정보 — 교차 확인된 사실이니 그대로 활용]\n"
-            + search_facts.strip()
-        )
     parts = [
         "다음은 글을 쓰기 위한 재료입니다. 이 재료의 머리말·항목 이름(예: '나의 경험', "
         "'참고 정보', '방문자 키워드' 등)을 본문에 절대 언급하거나 인용하지 마세요. "

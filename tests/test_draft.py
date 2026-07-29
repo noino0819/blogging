@@ -79,18 +79,6 @@ def test_user_prompt_experience_is_lead():
     assert "언급하거나 인용하지 마세요" in user  # 라벨 누수 방지 지시
 
 
-def test_search_facts_join_reference_block():
-    # 검색으로 확인한 사실(칼로리 등)은 '참고 정보'에 붙어야 '지어내지 마라'에 안 걸린다
-    card = _place_card()
-    user = build_user_prompt(card, "맛있게 먹었다", search_facts="칼로리 320kcal, 당류 28g")
-    assert "칼로리 320kcal" in user
-    assert user.index("참고 정보") < user.index("칼로리 320kcal")  # 경험이 아니라 사실 쪽
-    # 안 주거나 공백만이면 기존과 완전히 동일(빈 섹션 누수 없음)
-    base = build_user_prompt(card, "맛있게 먹었다")
-    assert "교차 확인" not in base
-    assert build_user_prompt(card, "맛있게 먹었다", search_facts="   ") == base
-
-
 def test_photo_prompt_advises_spreading():
     # 사진 배치 안내에 '고루 분산 / 앞에 몰지 말라'가 들어간다(근본 처방)
     from autoblog.collect.fact_card import PhotoItem
