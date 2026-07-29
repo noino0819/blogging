@@ -37,6 +37,8 @@ def render_fact_card(card: FactCard) -> str:
             lines.append(f"메뉴: {menu_str}")
         if p.conveniences:
             lines.append(f"편의시설: {', '.join(p.conveniences)}")
+        if p.payment_info:
+            lines.append(f"결제수단: {', '.join(p.payment_info)}")
         if p.review_keywords:
             kw = ", ".join(f"{k.name}({k.count})" for k in p.review_keywords[:8])
             lines.append(f"방문자 키워드: {kw}")

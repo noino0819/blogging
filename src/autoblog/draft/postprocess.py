@@ -200,6 +200,8 @@ def wrap_long_lines(text: str, max_len: int = 30, *, keep_list_lines: bool = Fal
             out.append(line)  # 해시태그 줄(2개 이상)은 쪼개지 않는다 — 헤더 태그 묶음
         elif _MARKER_LINE_RE.match(line.strip()):
             out.append(line)  # 마커 한 줄은 원형 유지 — 쪼개지면 마커가 깨진다
+        elif line.lstrip().startswith("|"):
+            out.append(line)  # 표 행은 원형 유지 — 쪼개지면 plan이 표로 못 읽는다
         elif keep_list_lines and _LIST_LINE_RE.match(line):
             out.append(line)  # 나열 박스 한 줄(키캡/✅/👉/🌟)은 쪼개지 않는다
         else:

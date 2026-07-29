@@ -36,3 +36,17 @@ def test_fake_table_stays_text():
     draft = DraftResult(text="제목\n\n본문이에요.\n\n| 이건 | 표가아님 |\n\n끝.")
     plan = build_publish_plan(draft, photos=[])
     assert all(b.kind != "table" for b in plan.blocks)
+
+
+def test_enforce_format_keeps_table_rows():
+    # 30자 줄바꿈이 표 행을 쪼개면 plan이 표로 못 읽는다 → 파이프 줄은 원형 유지
+    from autoblog.draft.postprocess import enforce_format
+
+    out = enforce_format(
+        "제목입니다\n\n본문이에요.\n\n| 정보 | 내용 |\n|---|---|\n"
+        "| 영업시간 | 목~화 10:30~21:00 (L.O. 20:30) |\n| 휴무일 | 매주 수요일 |\n\n끝."
+    )
+    assert "| 영업시간 | 목-화 10:30-21:00 (L.O. 20:30) |" in out  # ~→- 치환은 본문 규칙
+    plan = build_publish_plan(DraftResult(text=out), photos=[])
+    tbl = next(b for b in plan.blocks if b.kind == "table")
+    assert ["휴무일", "매주 수요일"] in tbl.table_rows
