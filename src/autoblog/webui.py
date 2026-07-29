@@ -739,6 +739,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <button data-k=product><span class=em>🛍️</span>상품</button>
           </div>
           <div class=muted id=srchint style="margin-top:6px">링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
+          <label class=f>참고정보 <span class=hint data-tip="칼로리·영양정보·가격처럼 검색으로 확인한 사실을 적어주세요. 수집으로는 못 가져오는 값이라, 여기 적으면 '지어낸 사실'로 걸러지지 않고 본문에 반영됩니다. 비우면 안 씁니다.">i</span></label>
+          <textarea id=searchfacts placeholder="예: 칼로리 320kcal, 당류 28g (공식+블로그 후기 교차 확인)"></textarea>
           <label class=f>사진 <span class=muted id=psel></span></label>
           <button type=button class="btn ghost" id=photobtn style="width:100%;justify-content:center;gap:8px">📷 사진 추가·분류 <span class=muted id=photosum>사진 없음</span></button>
         </div>
@@ -1903,7 +1905,7 @@ function captureWS(){
     PHOTOMETA:JSON.parse(JSON.stringify(PHOTOMETA||{})), THUMB, AISET:new Set(AISET||[]),
     PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})),
     SRCKIND, KINDMANUAL, IMPORTED_DRAFT,
-    memo:$('#memo').value, srcval:$('#srcval').value, keywords:kwGet(), itext:$('#itext').value,
+    memo:$('#memo').value, srcval:$('#srcval').value, searchfacts:$('#searchfacts').value, keywords:kwGet(), itext:$('#itext').value,
     kwnote:$('#kwnote')?$('#kwnote').textContent:'', kwnoteShow:$('#kwnote')?$('#kwnote').style.display:'none',
     links:$('#links')?$('#links').value:'', prod:$$('#prodlinks .plink').map(i=>i.value),
     previewHTML:$('#preview').innerHTML, previewClass:$('#preview').className,
@@ -1914,7 +1916,7 @@ function captureWS(){
 function blankWS(){
   return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,AISET:new Set(),PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},
     SRCKIND:'place',KINDMANUAL:false,IMPORTED_DRAFT:null,
-    memo:'',srcval:'',keywords:'',itext:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
+    memo:'',srcval:'',searchfacts:'',keywords:'',itext:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
     previewHTML:EMPTY_DOC,previewClass:'doc empty',saveDisabled:true};
 }
 // 캡처된 상태를 화면·전역으로 되돌린다(+재렌더).
@@ -1923,7 +1925,7 @@ function applyWS(s){
   PHOTOMETA=JSON.parse(JSON.stringify(s.PHOTOMETA||{})); THUMB=s.THUMB||null; AISET=new Set(s.AISET||[]);
   PMACTIVE=s.PMACTIVE; PMSEL=new Set(s.PMSEL||[]); PMANCHOR=s.PMANCHOR||null; SUBCATS=JSON.parse(JSON.stringify(s.SUBCATS||{})); PMDRAG=null;
   IMPORTED_DRAFT=s.IMPORTED_DRAFT||null;
-  $('#memo').value=s.memo||''; $('#srcval').value=s.srcval||''; kwSet(s.keywords||''); $('#itext').value=s.itext||'';
+  $('#memo').value=s.memo||''; $('#srcval').value=s.srcval||''; $('#searchfacts').value=s.searchfacts||''; kwSet(s.keywords||''); $('#itext').value=s.itext||'';
   if($('#kwnote')){ $('#kwnote').textContent=s.kwnote||''; $('#kwnote').style.display=s.kwnoteShow||'none'; }
   if($('#links')) $('#links').value=s.links||'';
   $('#prodlinks').innerHTML=''; ((s.prod&&s.prod.length)?s.prod:['']).forEach(v=>addProdLink(v));
@@ -2235,7 +2237,7 @@ $('#gen').onclick=async()=>{
   GENABORT=new AbortController(); $('#gen').textContent='✕ 취소';
   $('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,searchFacts:$('#searchfacts').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES,
       draftId:CURWS,  // 이 탭의 글로 서버에 보관(게시 때 이 id로 '그 탭 글'을 정확히 저장)
       restyle:$('#restyleMode').checked,  // 켜면 외부 초안에 내 문체만 재적용(맛집/상품 구조 강제 안 함)
@@ -2277,7 +2279,7 @@ $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
   $('#export').disabled=true; expLoading(true);
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:$('#srcval').value,searchFacts:$('#searchfacts').value,kind:SRCKIND,photos:SELP,photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES,
       restyle:$('#restyleMode').checked,  // 켜면 export도 restyle.md 사용(원문 표·나열 보존)
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 [영상] 순서 고정 지시를 프롬프트에 포함
@@ -3774,6 +3776,7 @@ def _make_handler(state: dict):
             try:
                 text = build_export_prompt(
                     body.get("memo", ""),
+                    search_facts=(body.get("searchFacts") or "").strip() or None,
                     place_url=None if restyle else (srcval if src == "place" else None),
                     product=None if restyle else (srcval if src == "product" else None),
                     card_kind="place" if restyle else src,
@@ -4005,6 +4008,7 @@ def _make_handler(state: dict):
             dkeys, qkeys = _enabled_variant_keys()  # 프롬프트에 안내할 고른 종류 전체
             result = run_pipeline(
                 body["memo"],
+                search_facts=(body.get("searchFacts") or "").strip() or None,
                 place_url=None if restyle else (srcval if src == "place" else None),
                 product=None if restyle else (srcval if src == "product" else None),
                 card_kind="place" if restyle else src,

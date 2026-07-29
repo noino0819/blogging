@@ -209,6 +209,7 @@ def build_export_prompt(
     memo: str,
     *,
     card: FactCard | None = None,
+    search_facts: str | None = None,
     place_url: str | None = None,
     product: str | None = None,
     card_kind: str | None = None,
@@ -262,6 +263,7 @@ def build_export_prompt(
     req = DraftRequest(
         fact_card=card,
         experience_memo=memo,
+        search_facts=search_facts,
         base_prompt=base_prompt,
         style=style,
         rules=rules,
@@ -383,6 +385,7 @@ def run_pipeline(
     memo: str,
     *,
     card: FactCard | None = None,
+    search_facts: str | None = None,
     place_url: str | None = None,
     product: str | None = None,
     card_kind: str | None = None,
@@ -444,6 +447,7 @@ def run_pipeline(
     req = DraftRequest(
         fact_card=card,
         experience_memo=memo,
+        search_facts=search_facts,
         base_prompt=base_prompt,
         template_text=template_text,
         style=style,

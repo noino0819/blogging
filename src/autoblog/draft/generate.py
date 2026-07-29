@@ -28,6 +28,9 @@ from autoblog.publish.emphasis import (
 class DraftRequest(BaseModel):
     fact_card: FactCard
     experience_memo: str
+    # 검색으로 교차 확인한 사실(칼로리·영양정보·가격 등) — 수집 API로는 못 얻는 값을
+    # '참고 정보'로 흘려보내는 통로. 없으면 기존과 동일(지어내지 않고 생략).
+    search_facts: str | None = None
     base_prompt: str | None = None  # None이면 config/prompts/default.md 사용
     rules: CommonRules | None = None  # 선택적 추가 규칙
     style: StyleProfile | None = None
@@ -138,7 +141,8 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
     # 자가 점검은 항상 맨 끝에(모델이 마지막으로 읽는 최종 게이트) — 맛집·상품 공통.
     system = f"{system}\n\n{_selfcheck_for(req)}"
     user = build_user_prompt(
-        req.fact_card, req.experience_memo, req.template_text, inplace=req.inplace
+        req.fact_card, req.experience_memo, req.template_text, inplace=req.inplace,
+        search_facts=req.search_facts,
     )
     return system, user
 
