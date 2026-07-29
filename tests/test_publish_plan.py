@@ -366,6 +366,34 @@ def test_drip_line_styled_without_tag_line():
     assert not any(sp.style.font_size == "11" for sp in body.emphases)
 
 
+def test_rep_photo_pulled_under_drip_line():
+    # 대표사진(★ 지정, 없으면 첫 비협찬 이미지)은 드립 한 줄 바로 아래로 올라온다
+    text = (
+        "제목 한 줄\n"
+        "요즘 스킨 쓸 맛 나는 이유\n\n"
+        "통만 바뀌면 완벽한데 말이야\n\n"
+        "인트로 문단이에요\n\n[사진:음식]\n\n음식 설명 문단\n\n[사진:외관]"
+    )
+    photos = [PhotoItem(path="a.jpg", label="음식"), PhotoItem(path="b.jpg", label="외관", thumbnail=True)]
+    plan = build_publish_plan(DraftResult(text=text), photos, structure_styles=_structure_styles())
+    drip_i = next(i for i, b in enumerate(plan.blocks) if b.text == "통만 바뀌면 완벽한데 말이야")
+    assert plan.blocks[drip_i + 1].kind == "image" and plan.blocks[drip_i + 1].image_path == "b.jpg"
+    assert plan.rep_image_path == "b.jpg"
+
+    # ★ 없으면 첫 비협찬 이미지가 히어로로 올라온다 (태그줄 있는 기존 헤더에서도 동일)
+    text2 = (
+        "제목 한 줄\n"
+        "요즘 스킨 쓸 맛 나는 이유\n"
+        "통만 바뀌면 완벽한데 말이야\n"
+        "#태그하나 #태그둘\n\n"
+        "인트로 문단이에요\n\n[사진:음식]\n\n음식 설명 문단\n\n[사진:외관]"
+    )
+    photos2 = [PhotoItem(path="a.jpg", label="음식"), PhotoItem(path="b.jpg", label="외관")]
+    plan2 = build_publish_plan(DraftResult(text=text2), photos2, structure_styles=_structure_styles())
+    drip_i2 = next(i for i, b in enumerate(plan2.blocks) if b.text == "통만 바뀌면 완벽한데 말이야")
+    assert plan2.blocks[drip_i2 + 1].kind == "image" and plan2.blocks[drip_i2 + 1].image_path == "a.jpg"
+
+
 def test_subheading_variants_and_year_line():
     # 모델이 "1)"로 쓰거나 마크다운 볼드로 감싸도 소제목으로 잡히고("**"는 후처리가 제거),
     # "2026. 7월에" 같은 연도 줄은 본문으로 남는다

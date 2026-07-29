@@ -463,6 +463,7 @@ def build_publish_plan(
     used = [False] * len(photos)  # 사진별 사용 여부(순서 아닌 라벨로 매칭)
     first_body_seen = False  # 대제목은 본문 첫 줄에만 부여
     header_ids: set[int] = set()  # 헤더(대제목·드립 줄) 텍스트 블록 — 남은 미디어·링크 분산에서 제외
+    drip_ids: set[int] = set()  # 드립 한 줄 블록 — 대표사진을 그 바로 아래로 끌어올리는 앵커
     tags: list[str] = []  # 헤더 태그줄에서 수집한 발행 태그(네이버 태그칸 입력용)
 
     def take_photo(label: str | None, media_kind: str = "image") -> PhotoItem | None:
@@ -547,6 +548,7 @@ def build_publish_plan(
                 StyledSpan(text=ln, preset_id=None, style=st.to_style())
                 for ln in drip.text.split("\n") if ln.strip()
             ]
+            drip_ids.add(id(drip))
         prev_is_divider = bool(blocks) and blocks[-1].kind == "divider"
         div = structure_styles.hashtags.divider
         if div and div in DIVIDER_META and not prev_is_divider:
@@ -564,6 +566,7 @@ def build_publish_plan(
             )
         )
         header_ids.add(id(blocks[-1]))
+        drip_ids.add(id(blocks[-1]))
         div = st.divider
         if div and div in DIVIDER_META:
             blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0], align="center"))
@@ -841,12 +844,18 @@ def build_publish_plan(
 
     # 대표 썸네일 — 지정 사진을 본문 '첫 이미지'로 끌어올린다(네이버 대표 사진=글의 첫 이미지).
     # 마커가 어디에 박히든 썸네일이 가장 먼저 등장하게 하되, 협찬 고지 사진보다는 뒤에 둔다.
+    # 헤더에 드립 한 줄이 있으면 대표사진(★ 지정, 없으면 첫 비협찬 이미지)을 드립 바로 아래로
+    # 올린다(헤더 직후 히어로 컷 — 유저 선호). 드립이 없는 글은 기존 '첫 이미지' 자리 유지.
     thumb_path = next((ph.path for ph in photos if ph.thumbnail and ph.path not in spon_paths), None)
-    if thumb_path and not inplace:  # inplace는 사진 위치를 실행기가 정함(썸네일 끌어올림 X)
+    if not inplace:  # inplace는 사진 위치를 실행기가 정함(썸네일 끌어올림 X)
         img_idx = [i for i, b in enumerate(blocks) if b.kind == "image" and b.image_path not in spon_paths]
         first = img_idx[0] if img_idx else None
         cur = next((i for i in img_idx if blocks[i].image_path == thumb_path), None)
-        if first is not None and cur is not None and cur != first:
+        drip_i = next((i for i, b in enumerate(blocks) if id(b) in drip_ids), None)
+        if drip_i is not None and (cur is not None or first is not None):
+            hero = cur if cur is not None else first  # ★ 없으면 첫 비협찬 이미지가 대표
+            blocks.insert(drip_i + 1, blocks.pop(hero))
+        elif thumb_path and first is not None and cur is not None and cur != first:
             blocks.insert(first, blocks.pop(cur))
     # inplace에서 ★ 썸네일이 마커로 소비되지 않은 경우(초안 작성 뒤 'AI 사진 대체'·AI 썸네일로
     # 새로 추가된 이미지가 대표적) — 남은 미디어 분산을 건너뛰는 inplace 특성상 여기서 블록을
