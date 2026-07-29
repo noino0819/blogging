@@ -285,6 +285,7 @@ def parse_place_detail(state: dict, place_id: str) -> PlaceFacts | None:
         rating=rating,
         description=_shop_description(state),
         micro_reviews=_str_list(base.get("microReviews")),
+        directions=(base.get("road") or "").strip() or None,
         conveniences=_str_list(base.get("conveniences")),
         payment_info=_str_list(base.get("paymentInfo")),
         menus=menus,

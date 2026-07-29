@@ -65,6 +65,7 @@ class PlaceFacts(BaseModel):
     # 정보 탭 (홈 탭 state에 함께 실림)
     description: str | None = None  # 사장님 소개글
     micro_reviews: list[str] = Field(default_factory=list)  # 대표 한줄평
+    directions: str | None = None  # 찾아오시는 길(사장님 작성) — 주차 위치 안내가 주로 여기 실림
     conveniences: list[str] = Field(default_factory=list)  # 편의시설
     payment_info: list[str] = Field(default_factory=list)  # 결제수단
     # 방문자 리뷰(경험 재료) — 리뷰 탭에서 수집

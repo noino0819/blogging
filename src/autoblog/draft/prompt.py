@@ -35,6 +35,8 @@ def render_fact_card(card: FactCard) -> str:
                 f"{m.name}({m.price})" if m.price else m.name for m in p.menus[:12]
             )
             lines.append(f"메뉴: {menu_str}")
+        if p.directions:
+            lines.append(f"찾아가는 길·주차 안내: {p.directions}")
         if p.conveniences:
             lines.append(f"편의시설: {', '.join(p.conveniences)}")
         if p.payment_info:

@@ -28,6 +28,7 @@ def test_menu_descriptions_parsing():
     with_desc = [m for m in facts.menus if m.description]
     assert len(with_desc) >= 10  # 메뉴 탭에는 설명글이 실림
     assert any("버터" in m.name for m in facts.menus)
+    assert facts.directions is None  # road가 빈 문자열이면 None
     assert all(m.image for m in facts.menus)  # 메뉴별 대표 이미지
     assert any(m.recommend for m in facts.menus)
 
@@ -48,6 +49,7 @@ def test_extract_and_parse_fixture():
     # 가격 포맷 + 추천 메뉴 존재
     names = {m.name: m.price for m in facts.menus}
     assert names["오늘의초밥(11p)"] == "15,900원"
+    assert facts.directions == "건물 뒷편에 주차장이 있습니다."  # 찾아오시는 길(주차 안내)
 
 
 def test_business_hours_parsing():
