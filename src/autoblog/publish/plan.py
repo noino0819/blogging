@@ -267,27 +267,38 @@ def _is_hashtag_line(s: str) -> bool:
     return sum(1 for t in s.split() if t.startswith("#")) >= 2
 
 
-def _find_drip_line(lines: list[str]) -> int | None:
-    """대제목(첫 비어있지 않은 줄) 바로 아래의 '한 줄짜리 문단' 인덱스 = 드립 한 줄.
+def _find_drip_lines(lines: list[str]) -> list[int]:
+    """대제목(첫 비어있지 않은 줄) 바로 아래의 '짧은 문단'(1~2줄) 인덱스들 = 드립 한 줄.
 
     태그줄이 없는 초안(리스타일 등)에서도 드립 줄에 해시태그 서식을 입히기 위해
     미리 찾아둔다. 드립 뒤에 태그줄이 바로 붙는 기존 헤더는 여기서 못 잡아도
     consume_tag_line 경로가 그대로 처리한다.
+
+    모델이 '한 줄 한 절' 습관으로 드립을 두 줄로 쪼개 쓰는 경우가 실제로 있어
+    (리스타일 실측) 2줄짜리 문단까지 드립으로 본다. 3줄 이상은 본문 인트로.
     """
     idx = [i for i, ln in enumerate(lines) if ln.strip()]
     if len(idx) < 2:
-        return None
-    big_s, drip = lines[idx[0]].strip(), idx[1]
-    drip_s = lines[drip].strip()
-    if not (0 < len(big_s) <= 40 and 0 < len(drip_s) <= 40):
-        return None
-    # 마커·표·태그줄은 드립이 아니다 (ponytail: 짧은 한 줄 문단 휴리스틱 — 대제목 아래
-    # 한 줄 인트로를 쓰는 특이 초안은 드립으로 오인될 수 있음)
-    if big_s.startswith(("[", "|")) or drip_s.startswith(("[", "|")) or _is_hashtag_line(drip_s):
-        return None
-    if drip + 1 < len(lines) and lines[drip + 1].strip():
-        return None  # 바로 다음 줄에 글이 이어지면 문단 시작(드립 아님)
-    return drip
+        return []
+    big_s = lines[idx[0]].strip()
+    if not (0 < len(big_s) <= 40) or big_s.startswith(("[", "|")):
+        return []
+    # 대제목 다음 문단 = 연속된 비어있지 않은 줄 묶음
+    para = [idx[1]]
+    while para[-1] + 1 < len(lines) and lines[para[-1] + 1].strip():
+        para.append(para[-1] + 1)
+    if len(para) > 2:
+        return []  # 3줄 이상 문단은 인트로(드립 아님)
+    # 2줄 드립은 뒤에 본문이 더 있을 때만 — 그 문단이 글의 전부면 인트로/본문이다
+    if len(para) == 2 and not any(ln.strip() for ln in lines[para[-1] + 1 :]):
+        return []
+    # 마커·표·태그줄은 드립이 아니다 (ponytail: 짧은 문단 휴리스틱 — 대제목 아래
+    # 짧은 인트로를 쓰는 특이 초안은 드립으로 오인될 수 있음)
+    for i in para:
+        s = lines[i].strip()
+        if not (0 < len(s) <= 40) or s.startswith(("[", "|")) or _is_hashtag_line(s):
+            return []
+    return para
 
 
 # 대제목(콘셉트 한 줄)은 본문보다 큰 글씨라, 길면 모바일에서 화면 끝에서 제멋대로 접혀
@@ -559,10 +570,15 @@ def build_publish_plan(
         가운데)과 헤더 구분선을 입힌다(리스타일 등). 뒤에 태그줄이 오면 consume_tag_line은
         직전 블록이 구분선이라 스타일·구분선을 중복 적용하지 않는다."""
         st = structure_styles.hashtags
+        # 두 줄짜리 드립도 줄마다 span을 나눈다 — \n을 넘는 span은 실행기의 드래그
+        # 선택이 문단 경계에서 실패한다(consume_tag_line 경로와 동일한 처리).
         blocks.append(
             PublishBlock(
                 kind="text", text=s, align=st.align or "center",
-                emphases=[StyledSpan(text=s, preset_id=None, style=st.to_style())],
+                emphases=[
+                    StyledSpan(text=ln, preset_id=None, style=st.to_style())
+                    for ln in s.split("\n") if ln.strip()
+                ],
             )
         )
         header_ids.add(id(blocks[-1]))
@@ -609,8 +625,9 @@ def build_publish_plan(
         )
         header_ids.add(id(blocks[-1]))
 
-    # 드립 한 줄 위치(대제목 아래 한 줄 문단) — 태그줄 없는 초안(리스타일)에서도 서식 적용
-    drip_idx = _find_drip_line(body_lines) if structure_styles is not None else None
+    # 드립 한 줄 위치(대제목 아래 1~2줄 문단) — 태그줄 없는 초안(리스타일)에서도 서식 적용
+    drip_idxs = _find_drip_lines(body_lines) if structure_styles is not None else []
+    drip_emitted = False
 
     for li, line in enumerate(body_lines):
         s = line.strip()
@@ -711,10 +728,15 @@ def build_publish_plan(
             if _is_hashtag_line(s) and all(t.startswith("#") for t in toks[1:]):
                 flush_text()
                 consume_tag_line(s)
-            elif li == drip_idx and blocks and id(blocks[-1]) in header_ids:
+            elif (
+                drip_idxs and li == drip_idxs[0] and blocks and id(blocks[-1]) in header_ids
+            ):
                 # 직전 블록이 대제목(헤더)일 때만 — 대제목이 서식으로 안 잡힌 초안에선 본문 취급
                 flush_text()
-                emit_drip_block(s)
+                emit_drip_block("\n".join(body_lines[i].strip() for i in drip_idxs))
+                drip_emitted = True
+            elif drip_emitted and li in drip_idxs[1:]:
+                pass  # 드립 둘째 줄 — 위에서 드립 블록에 이미 포함(미발동 시엔 본문으로)
             else:
                 role = classify_role(s)
                 if role:

@@ -1935,7 +1935,9 @@ class BlogPublisher:
         y = rect["y"] + rect["h"] / 2
         page.mouse.move(rect["x"] + 1, y)
         page.mouse.down()
-        page.mouse.move(rect["x"] + rect["w"] - 1, y, steps=6)
+        # 끝점은 range 경계(x+w) 정확히 — w-1은 마지막 글자 안쪽에 떨어져 좁은 글자('.')가
+        # 선택에서 빠지는 off-by-one이 실측됨. 경계 지점이라 다음 글자를 넘겨 잡지도 않는다.
+        page.mouse.move(rect["x"] + rect["w"], y, steps=6)
         page.mouse.up()
         # SE 선택은 iframe 안에 있어 top-frame window.getSelection()으로 관측되지 않는다
         # (프로브 확인됨). 폴링 신호가 없어 고정 settle 대기를 유지한다.
