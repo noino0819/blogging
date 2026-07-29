@@ -418,6 +418,7 @@ def test_selfcheck_photo_and_sticker_items_conditional():
 
     plain = build_selfcheck_instruction()
     assert "사진 분산" not in plain and "[스티커:상황]" not in plain
+    assert "해시태그 — " in plain  # 해시태그 점검은 사진 유무와 무관하게 항상
     both = build_selfcheck_instruction(has_photos=True, has_stickers=True)
     assert "사진 분산" in both and "[스티커:상황]" in both
 
