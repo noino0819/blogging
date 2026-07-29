@@ -267,6 +267,29 @@ def _is_hashtag_line(s: str) -> bool:
     return sum(1 for t in s.split() if t.startswith("#")) >= 2
 
 
+def _find_drip_line(lines: list[str]) -> int | None:
+    """대제목(첫 비어있지 않은 줄) 바로 아래의 '한 줄짜리 문단' 인덱스 = 드립 한 줄.
+
+    태그줄이 없는 초안(리스타일 등)에서도 드립 줄에 해시태그 서식을 입히기 위해
+    미리 찾아둔다. 드립 뒤에 태그줄이 바로 붙는 기존 헤더는 여기서 못 잡아도
+    consume_tag_line 경로가 그대로 처리한다.
+    """
+    idx = [i for i, ln in enumerate(lines) if ln.strip()]
+    if len(idx) < 2:
+        return None
+    big_s, drip = lines[idx[0]].strip(), idx[1]
+    drip_s = lines[drip].strip()
+    if not (0 < len(big_s) <= 40 and 0 < len(drip_s) <= 40):
+        return None
+    # 마커·표·태그줄은 드립이 아니다 (ponytail: 짧은 한 줄 문단 휴리스틱 — 대제목 아래
+    # 한 줄 인트로를 쓰는 특이 초안은 드립으로 오인될 수 있음)
+    if big_s.startswith(("[", "|")) or drip_s.startswith(("[", "|")) or _is_hashtag_line(drip_s):
+        return None
+    if drip + 1 < len(lines) and lines[drip + 1].strip():
+        return None  # 바로 다음 줄에 글이 이어지면 문단 시작(드립 아님)
+    return drip
+
+
 # 대제목(콘셉트 한 줄)은 본문보다 큰 글씨라, 길면 모바일에서 화면 끝에서 제멋대로 접혀
 # 위아래 비율이 어긋난다. 그래서 공백 제외 이 길이를 넘으면 어절 경계에서 미리 한 번
 # 줄바꿈해 두 줄로 만든다(모바일 큰 글씨 기준 ~13자에서 접힘 → 10자 초과부터 선제 분할).
@@ -529,6 +552,22 @@ def build_publish_plan(
         if div and div in DIVIDER_META and not prev_is_divider:
             blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0], align="center"))
 
+    def emit_drip_block(s: str):
+        """드립 한 줄(대제목 아래) — 태그줄이 없어도 예전 해시태그 줄 서식(작은 파란 글씨·
+        가운데)과 헤더 구분선을 입힌다(리스타일 등). 뒤에 태그줄이 오면 consume_tag_line은
+        직전 블록이 구분선이라 스타일·구분선을 중복 적용하지 않는다."""
+        st = structure_styles.hashtags
+        blocks.append(
+            PublishBlock(
+                kind="text", text=s, align=st.align or "center",
+                emphases=[StyledSpan(text=s, preset_id=None, style=st.to_style())],
+            )
+        )
+        header_ids.add(id(blocks[-1]))
+        div = st.divider
+        if div and div in DIVIDER_META:
+            blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0], align="center"))
+
     def classify_role(s: str) -> str | None:
         """구조별 서식이 켜져 있을 때, 이 줄이 어떤 구조 요소인지 판정(없으면 None)."""
         if structure_styles is None:
@@ -567,7 +606,10 @@ def build_publish_plan(
         )
         header_ids.add(id(blocks[-1]))
 
-    for line in body_lines:
+    # 드립 한 줄 위치(대제목 아래 한 줄 문단) — 태그줄 없는 초안(리스타일)에서도 서식 적용
+    drip_idx = _find_drip_line(body_lines) if structure_styles is not None else None
+
+    for li, line in enumerate(body_lines):
         s = line.strip()
         if in_quote:
             if s == QUOTE_CLOSE:
@@ -666,6 +708,10 @@ def build_publish_plan(
             if _is_hashtag_line(s) and all(t.startswith("#") for t in toks[1:]):
                 flush_text()
                 consume_tag_line(s)
+            elif li == drip_idx and blocks and id(blocks[-1]) in header_ids:
+                # 직전 블록이 대제목(헤더)일 때만 — 대제목이 서식으로 안 잡힌 초안에선 본문 취급
+                flush_text()
+                emit_drip_block(s)
             else:
                 role = classify_role(s)
                 if role:

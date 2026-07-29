@@ -332,6 +332,40 @@ def test_structure_styles_header_and_subheading():
     assert sub.variant == QUOTE_META["quotation_underline"][0]
 
 
+def test_drip_line_styled_without_tag_line():
+    # 리스타일 초안(태그줄 없음)도 대제목 아래 한 줄 문단(드립)에 해시태그 서식+헤더 구분선
+    draft = DraftResult(
+        text=(
+            "다이소 공병 펌프 스프레이 차이 후기\n"
+            "요즘 스킨 쓸 맛 나는 이유\n\n"
+            "통만 바뀌면 완벽한데 말이야\n\n"
+            "인트로 첫 줄이에요\n이어지는 둘째 줄이에요"
+        )
+    )
+    plan = build_publish_plan(draft, structure_styles=_structure_styles())
+
+    drip = next(b for b in plan.blocks if b.text == "통만 바뀌면 완벽한데 말이야")
+    assert drip.align == "center"
+    assert len(drip.emphases) == 1
+    assert drip.emphases[0].style.font_size == "11"
+    assert drip.emphases[0].style.text_color == "#4383BF"
+    idx = plan.blocks.index(drip)
+    assert plan.blocks[idx + 1].kind == "divider" and plan.blocks[idx + 1].variant == 4
+    assert plan.tags == []
+
+    # 대제목 아래에 바로 문단이 이어지면(드립 없음) 본문으로 남는다 — 서식 오적용 방지
+    no_drip = DraftResult(
+        text=(
+            "다이소 공병 펌프 스프레이 차이 후기\n"
+            "요즘 스킨 쓸 맛 나는 이유\n\n"
+            "이 스킨.. 통만 바뀌면\n완벽할 것 같지 않나요?"
+        )
+    )
+    plan2 = build_publish_plan(no_drip, structure_styles=_structure_styles())
+    body = next(b for b in plan2.blocks if "이 스킨" in b.text)
+    assert not any(sp.style.font_size == "11" for sp in body.emphases)
+
+
 def test_subheading_variants_and_year_line():
     # 모델이 "1)"로 쓰거나 마크다운 볼드로 감싸도 소제목으로 잡히고("**"는 후처리가 제거),
     # "2026. 7월에" 같은 연도 줄은 본문으로 남는다

@@ -53,6 +53,8 @@ class DraftRequest(BaseModel):
     # 불러온 글 in-place 편집 — 동영상은 위치를 못 바꾸므로 [영상] 마커를 문서 순서 그대로
     # 넣게 재료에 못박는다(재업로드 불가 → 순서 고정).
     inplace: bool = False
+    # 리스타일 모드(외부 초안에 문체만 재적용) — 태그줄을 안 쓰므로 자가 점검의 해시태그 항목 제외
+    restyle: bool = False
     template_text: str | None = None
     emphasis_config: EmphasisConfig | None = None  # None이면 config/emphasis.yaml
     power_shortcuts: dict[int, EmphasisStyle] | None = None  # None이면 내장 기본 스타일
@@ -151,6 +153,7 @@ def _selfcheck_for(req: DraftRequest) -> str:
         ornaments=effective_style(req).ornaments,
         has_photos=bool(imgs),
         has_stickers=bool(req.sticker_labels),
+        hashtags=not req.restyle,
     )
 
 

@@ -227,6 +227,7 @@ def build_export_prompt(
     photo_meta: dict[str, dict] | None = None,
     use_cache: bool = False,
     inplace: bool = False,
+    restyle: bool = False,
     progress: Callable[[str], None] | None = None,
 ) -> str:
     """수집(선택)→프롬프트 조립까지만 하고, 다른 챗봇에 붙여넣을 단일 텍스트로 반환.
@@ -273,6 +274,7 @@ def build_export_prompt(
         sticker_labels=labels,
         place=_place_info(card)[0],
         inplace=inplace,
+        restyle=restyle,
     )
     system, user = build_prompt(req)
     # 출력 프로토콜: 자가 점검은 속으로만, 본문은 한 번만 출력. (예전 '초안→점검→최종본'
@@ -404,6 +406,7 @@ def run_pipeline(
     photo_meta: dict[str, dict] | None = None,
     use_cache: bool = False,
     inplace: bool = False,
+    restyle: bool = False,
     progress: Callable[[str], None] | None = None,
 ) -> PipelineResult:
     """수집→초안(강조/구조/스티커 마커 자동)→게시 플랜까지 한 번에 조립.
@@ -450,6 +453,7 @@ def run_pipeline(
         sticker_labels=labels,
         place=place_on,
         inplace=inplace,
+        restyle=restyle,
     )
     draft = generate_draft(req, model=model)
 

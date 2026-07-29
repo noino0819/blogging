@@ -436,6 +436,19 @@ def test_selfcheck_photo_and_sticker_items_conditional():
     assert "사진 분산" in both and "[스티커:상황]" in both
 
 
+def test_selfcheck_hashtag_item_off_for_restyle():
+    # 리스타일(태그줄 없는 초안)은 해시태그 항목 제외 — 검수 패스가 태그줄을 지어내지 않게.
+    # 드립 한 줄 항목은 리스타일에도 유지된다(restyle.md가 드립 한 줄을 지시).
+    from autoblog.draft.generate import DraftRequest, _selfcheck_for
+    from autoblog.draft.prompts import build_selfcheck_instruction
+
+    off = build_selfcheck_instruction(hashtags=False)
+    assert "해시태그 — " not in off and "드립 한 줄 — " in off
+
+    req = DraftRequest(fact_card=_place_card(), experience_memo="메모", restyle=True)
+    assert "해시태그 — " not in _selfcheck_for(req)
+
+
 def test_selfreview_second_pass_applied(monkeypatch):
     # 생성 후 2차 자가검수 호출이 돌고, 검수 결과가 초안 텍스트로 쓰인다
     from autoblog.draft import generate as gen

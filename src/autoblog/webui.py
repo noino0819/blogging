@@ -3829,6 +3829,7 @@ def _make_handler(state: dict):
                     quote_variants=qkeys,
                     use_cache=True,
                     inplace=bool(body.get("inplace")),  # 불러온 글: [영상] 순서 고정 지시 포함
+                    restyle=restyle,  # 자가 점검의 해시태그 항목 제외(태그줄 없는 초안)
                     progress=progress,
                 )
             except Exception as exc:  # noqa: BLE001 — 오류도 스트림으로 전달
@@ -4034,6 +4035,7 @@ def _make_handler(state: dict):
                 sponsor_sticker=(body.get("sponsorSticker") or "").strip(),
                 use_cache=True,  # 같은 URL 재수집 방지(export/캡션과 캐시 공유)
                 inplace=bool(body.get("inplace")),  # 불러온 글 in-place 편집(사진 재정렬 휴리스틱 끔)
+                restyle=restyle,  # 자가 점검의 해시태그 항목 제외(태그줄 없는 초안)
             )
             self._send_plan(result, draft_id=(body.get("draftId") or "").strip() or None)
 
