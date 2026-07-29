@@ -279,8 +279,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .pmtarget{margin-left:auto;background:var(--green);color:#fff;border-radius:9px;padding:0 7px;font-size:10px;font-weight:600}
  .pmsubbtn{margin-left:auto;border:0;background:#eef0f2;color:#4b5563;border-radius:7px;padding:1px 7px;font-size:10px;cursor:pointer}
  .pmsubbtn:hover{background:var(--green);color:#fff}
- .pmsubdel{border:0;background:transparent;color:#9ca3af;font-size:12px;cursor:pointer;padding:0 2px}
- .pmsubdel:hover{color:#d9534f}
+ .pmsubdel,.pmcatdel{border:0;background:transparent;color:#9ca3af;font-size:12px;cursor:pointer;padding:0 2px}
+ .pmsubdel:hover,.pmcatdel:hover{color:#d9534f}
  .pmcount{background:#e5e7eb;color:#374151;border-radius:9px;padding:0 6px;font-size:10px}
  .pmdrop{display:flex;flex-wrap:wrap;gap:6px;min-height:44px;align-items:flex-start}
  .pmtile{position:relative;width:54px;height:54px;border-radius:6px;cursor:pointer}
@@ -1469,7 +1469,7 @@ async function importDraft(idx, title, date){
     // 불러온 미디어를 기존 사진에 추가(중복 제외). 분류·메타는 유지.
     const added=[]; paths.forEach(p=>{ if(!PHOTOS.includes(p)){ PHOTOS.push(p); added.push(p); } });
     SELP=[]; THUMB=null; AISET=new Set();
-    PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; PMDRAG=null;
+    PMACTIVE=undefined; PMSEL=new Set(); PMANCHOR=null; SUBCATS={}; XCATS=[]; PMDRAG=null;
     renderGrid(); renderPmeta(); updatePhotoSummary();
     // 글을 고르면 목록을 자동으로 접는다(캐시는 유지 — 📥로 다시 펼치면 재조회 없이 바로 뜸).
     setDraftListOpen(false);
@@ -1642,7 +1642,7 @@ function applyDraftTitleKeyword(title){
 function fillStateFromMedia(s, media, title, date){
   const paths=media.map(m=>m.path).filter(Boolean);
   s.PHOTOS=paths.slice(); s.SELP=[]; s.PHOTOMETA={}; s.THUMB=null; s.AISET=new Set();
-  s.PMACTIVE=undefined; s.PMSEL=new Set(); s.PMANCHOR=null; s.SUBCATS={};
+  s.PMACTIVE=undefined; s.PMSEL=new Set(); s.PMANCHOR=null; s.SUBCATS={}; s.XCATS=[];
   if(paths.length){
     s.IMPORTED_DRAFT={title:(title||''), date:(date||'')};  // 저장 후 원본 삭제 식별용
     const t=(title||'').trim();
@@ -1716,8 +1716,9 @@ function openPhotoModal(){
 }
 function closePhotoModal(){ const m=$('#phmodal'); if(m)m.style.display='none'; updatePhotoSummary(); }
 // PMACTIVE: 활성 칸(undefined=초기→첫칸 외관, 문자열=활성, null=해제). PMSEL=보이는 선택(더미·보드 공통). SUBCATS=세션 세부분류.
-let PMDRAG=null, PMSEL=new Set(), PMANCHOR=null, PMACTIVE=undefined, SUBCATS={}, CATCB=null;
-function baseCats(){ return curCats(); }  // 영구 분류(config)
+let PMDRAG=null, PMSEL=new Set(), PMANCHOR=null, PMACTIVE=undefined, SUBCATS={}, XCATS=[], CATCB=null;
+// 프리셋(config) + 이 글에만 추가한 분류(XCATS). '기타' 앞에 끼워 넣어 기타를 맨 뒤로 유지.
+function baseCats(){ const c=curCats().slice(), i=c.indexOf('기타'); c.splice(i<0?c.length:i, 0, ...XCATS.filter(x=>!c.includes(x))); return c; }
 function allCats(){ const o=[]; baseCats().forEach(c=>{ o.push(c); (SUBCATS[c]||[]).forEach(s=>{ if(!o.includes(s))o.push(s); }); }); return o; }
 function pmBuckets(){ const o=[]; baseCats().forEach(c=>{ o.push({key:c,name:c,sub:false}); (SUBCATS[c]||[]).forEach(s=>o.push({key:s,name:s,sub:true,parent:c})); }); return o; }
 function pmBucketOf(path){ const cats=allCats(), lb=(PHOTOMETA[path]||{}).label||''; return cats.includes(lb)?lb:(baseCats()[0]||''); }
@@ -1775,15 +1776,19 @@ function capSubmit(){
   closeCapModal(); renderGrid(); renderPmeta();
   toast('세부 설명을 저장했어요.','ok');
 }
-function addCategory(){  // 영구 분류 추가(파일 저장)
-  openCatModal('새 분류 추가','이 리뷰 타입에 계속 쓸 분류예요(저장됨).', async name=>{
+function addCategory(){  // 분류 추가(이 글에만 — 다른 글·다음 글엔 안 번짐)
+  openCatModal('새 분류 추가','이번 글에만 쓰는 분류예요(다른 글엔 안 생겨요). 계속 쓸 분류는 config/photo_categories.yaml에 적어두세요.', name=>{
     if(allCats().includes(name)){ toast('이미 있는 분류예요.','info'); return; }
-    try{ const r=await fetch('/api/photo_categories',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({reviewType:SRCKIND,category:name})});
-      const d=await r.json(); if(!r.ok){ toast('분류 추가 실패: '+(d.error||''),'err'); return; }
-      PHOTO_CATS=d; renderPmeta(); toast('"'+name+'" 분류를 추가했어요.','ok');
-    }catch(e){ toast('분류 추가 오류: '+e,'err'); }
+    XCATS.push(name); PMACTIVE=name; renderPmeta(); toast('"'+name+'" 분류 추가(이 글에만)','ok');
   });
+}
+function removeCat(name){
+  XCATS=XCATS.filter(c=>c!==name);
+  (SUBCATS[name]||[]).forEach(s=>removeSub(name,s));  // 딸린 세부분류 먼저 접기
+  delete SUBCATS[name];
+  const def=baseCats()[0]||'';
+  SELP.forEach(p=>{ if((PHOTOMETA[p]||{}).label===name) pmAssign(p,def); });
+  if(PMACTIVE===name)PMACTIVE=def; renderPmeta();
 }
 function addSub(parent){  // 세부분류 추가(이 글에만, 저장 안 함)
   openCatModal('세부분류 추가', "'"+parent+"' 아래 세부분류 — 이번 글에만(새 글 시작하면 사라짐)", name=>{
@@ -1835,7 +1840,8 @@ function renderPmeta(){
     const badge=`<span class=pmcount>${items.length}</span>${act?'<span class=pmtarget>담는 중</span>':''}`;
     const hd = b.sub
       ? `<div class=pmlanehd>↳ ${esc(b.name)} ${badge}<button type=button class=pmsubdel data-parent="${esc(b.parent)}" data-sub="${esc(b.name)}" title="세부분류 삭제">×</button></div>`
-      : `<div class=pmlanehd>${esc(b.name)} ${badge}<button type=button class=pmsubbtn data-cat="${esc(b.key)}" title="세부분류 추가(이 글에만)">+세부</button></div>`;
+      : `<div class=pmlanehd>${esc(b.name)} ${badge}<button type=button class=pmsubbtn data-cat="${esc(b.key)}" title="세부분류 추가(이 글에만)">+세부</button>`
+        + (XCATS.includes(b.key)?`<button type=button class=pmcatdel data-cat="${esc(b.key)}" title="이 글에서 추가한 분류 삭제">×</button>`:'') + `</div>`;
     return `<div class="pmlane${b.sub?' sub':''}${act}" data-key="${esc(b.key)}">${hd}<div class=pmdrop>${inner}</div></div>`;
   }).join('')
    + '<button type=button class=pmadd id=pmadd>+ 새 분류 추가</button>'
@@ -1845,6 +1851,7 @@ function renderPmeta(){
   $('#pmadd').onclick=addCategory;
   $$('#pmeta .pmsubbtn').forEach(btn=>{ btn.onclick=e=>{ e.stopPropagation(); addSub(btn.dataset.cat); }; });
   $$('#pmeta .pmsubdel').forEach(btn=>{ btn.onclick=e=>{ e.stopPropagation(); removeSub(btn.dataset.parent,btn.dataset.sub); }; });
+  $$('#pmeta .pmcatdel').forEach(btn=>{ btn.onclick=e=>{ e.stopPropagation(); removeCat(btn.dataset.cat); }; });
   $$('#pmeta .pmlane[data-key]').forEach(l=>{
     l.onclick=()=>laneClick(l.dataset.key);
     l.ondragover=e=>{e.preventDefault(); e.dataTransfer.dropEffect='move'; l.classList.add('over');};
@@ -1903,7 +1910,7 @@ function captureWS(){
   return {
     PHOTOS:PHOTOS.slice(), SELP:SELP.slice(), PLAN,
     PHOTOMETA:JSON.parse(JSON.stringify(PHOTOMETA||{})), THUMB, AISET:new Set(AISET||[]),
-    PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})),
+    PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})), XCATS:XCATS.slice(),
     SRCKIND, KINDMANUAL, IMPORTED_DRAFT,
     memo:$('#memo').value, srcval:$('#srcval').value, searchfacts:$('#searchfacts').value, keywords:kwGet(), itext:$('#itext').value,
     kwnote:$('#kwnote')?$('#kwnote').textContent:'', kwnoteShow:$('#kwnote')?$('#kwnote').style.display:'none',
@@ -1914,7 +1921,7 @@ function captureWS(){
 }
 // 빈 상태(새 글 탭).
 function blankWS(){
-  return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,AISET:new Set(),PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},
+  return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,AISET:new Set(),PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},XCATS:[],
     SRCKIND:'place',KINDMANUAL:false,IMPORTED_DRAFT:null,
     memo:'',srcval:'',searchfacts:'',keywords:'',itext:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
     previewHTML:EMPTY_DOC,previewClass:'doc empty',saveDisabled:true};
@@ -1923,7 +1930,7 @@ function blankWS(){
 function applyWS(s){
   PHOTOS=(s.PHOTOS||[]).slice(); SELP=(s.SELP||[]).slice(); PLAN=s.PLAN||null;
   PHOTOMETA=JSON.parse(JSON.stringify(s.PHOTOMETA||{})); THUMB=s.THUMB||null; AISET=new Set(s.AISET||[]);
-  PMACTIVE=s.PMACTIVE; PMSEL=new Set(s.PMSEL||[]); PMANCHOR=s.PMANCHOR||null; SUBCATS=JSON.parse(JSON.stringify(s.SUBCATS||{})); PMDRAG=null;
+  PMACTIVE=s.PMACTIVE; PMSEL=new Set(s.PMSEL||[]); PMANCHOR=s.PMANCHOR||null; SUBCATS=JSON.parse(JSON.stringify(s.SUBCATS||{})); XCATS=(s.XCATS||[]).slice(); PMDRAG=null;
   IMPORTED_DRAFT=s.IMPORTED_DRAFT||null;
   $('#memo').value=s.memo||''; $('#srcval').value=s.srcval||''; $('#searchfacts').value=s.searchfacts||''; kwSet(s.keywords||''); $('#itext').value=s.itext||'';
   if($('#kwnote')){ $('#kwnote').textContent=s.kwnote||''; $('#kwnote').style.display=s.kwnoteShow||'none'; }
@@ -3607,8 +3614,6 @@ def _make_handler(state: dict):
                     self._caption_photos(self._json_body())
                 elif path == "/api/thumbnail":
                     self._gen_thumbnail(self._json_body())
-                elif path == "/api/photo_categories":
-                    self._add_photo_category(self._json_body())
                 elif path == "/api/categories":
                     with state["publish_lock"]:  # 다른 브라우저 작업과 직렬화(세션 충돌 방지)
                         cats = _fetch_categories()
@@ -3951,38 +3956,6 @@ def _make_handler(state: dict):
 
             delete_persona((body.get("id") or "").strip())
             self._send(200, b'{"ok":true}')
-
-        def _add_photo_category(self, body):
-            """사용자가 추가한 사진 분류를 config/photo_categories.yaml에 저장하고 전체 목록 반환."""
-            import yaml
-
-            from autoblog.config import CONFIG_DIR, load_photo_categories
-
-            rt = (body.get("reviewType") or "place").strip() or "place"
-            name = (body.get("category") or "").strip()
-            if not name:
-                self._send(400, json.dumps({"error": "분류 이름이 비었어요"}).encode())
-                return
-            path = CONFIG_DIR / "photo_categories.yaml"
-            try:
-                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-            except FileNotFoundError:
-                data = {}
-            if not isinstance(data, dict):
-                data = {}
-            lst = [str(x) for x in data.get(rt, []) if isinstance(data.get(rt), list)]
-            if name not in lst:
-                lst.insert(lst.index("기타"), name) if "기타" in lst else lst.append(name)
-            data[rt] = lst
-            header = (
-                "# 사진 카테고리 프리셋 — 리뷰 타입별 분류 목록. UI '+ 새 분류 추가' 또는 직접 편집.\n"
-                "# 첫 칸이 기본값(분류 안 한 사진이 들어갈 곳).\n\n"
-            )
-            path.write_text(
-                header + yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8"
-            )
-            load_photo_categories.cache_clear()
-            self._send(200, json.dumps(load_photo_categories()).encode())
 
         def _generate(self, body):
             from autoblog.draft.rules import CommonRules
