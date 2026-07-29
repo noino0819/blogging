@@ -2391,6 +2391,11 @@ function checklistHTML(cl){
 }
 function renderPreview(d){
   let h=checklistHTML(d.checklist)+`<h1>${esc(d.title)||'(제목 없음)'}</h1>`;
+  // 발행 태그는 본문이 아니라 네이버 발행 창의 태그칸으로 들어가 눈에 안 보인다 —
+  // 뭐가 들어가는지(또는 비었는지) 항상 맨 위에서 보이게 한다.
+  h+=(d.tags&&d.tags.length)
+    ?`<div class=ph>🏷 발행 태그(태그칸 자동 입력) <small>${d.tags.map(t=>'#'+esc(t)).join(' ')}</small></div>`
+    :`<div class=ph>🏷 발행 태그 없음 <small>태그칸에 아무것도 안 들어가요 — 글에 해시태그 줄이 없었어요</small></div>`;
   for(const b of d.blocks){
     if(b.kind==='text')h+=renderText(b);
     else if(b.kind==='divider')h+=dividerHTML(b);
@@ -2403,8 +2408,6 @@ function renderPreview(d){
     else if(b.kind==='place')h+=`<div class=ph>📍 지도(장소) <small>${esc(b.text)}</small></div>`;
     else if(b.kind==='table')h+=tableHTML(b);
   }
-  // 발행 태그 — 본문이 아니라 네이버 발행 창의 태그 입력칸으로 들어간다
-  if(d.tags&&d.tags.length)h+=`<div class=ph>🏷 발행 태그(태그칸 자동 입력) <small>${d.tags.map(t=>'#'+esc(t)).join(' ')}</small></div>`;
   const p=$('#preview'); p.classList.remove('empty'); p.innerHTML=h;
 }
 function tableHTML(b){
