@@ -153,6 +153,15 @@ def build_structure_instruction(
         )
         q_open = f"[인용구:{QUOTE_META[qkeys[0]][0]}]"
 
+    # 레시피는 서식 선택과 무관하게 포스트잇 고정 — 본문 흐름 밖 '메모' 성격이라 종류가 정해져 있다.
+    postit = QUOTE_META["quotation_postit"][0]
+    postit_marker = "[인용구]" if qkeys == ["quotation_postit"] else f"[인용구:{postit}]"
+    recipe_line = (
+        f"- 레시피·조리법·재료 분량처럼 단계나 계량을 알려주는 대목이 있으면 그 부분을 {postit_marker} 와 "
+        "[/인용구] 로 감싸 포스트잇 메모로 넣으세요(본문 흐름 밖 정보라 위 '최대 1번'과 별개, 레시피 하나당 하나). "
+        "재료와 순서는 각각 한 줄씩 끊어 적으세요.\n"
+    )
+
     return (
         "[구조 마커] — 아래 마커를 본문에 실제로 넣어 글을 읽기 좋게 나누세요(권장이 아니라 사용).\n"
         f"{divider_line}"
@@ -160,6 +169,7 @@ def build_structure_instruction(
         "소제목이 큰 글씨라 이미 구분 역할을 해서 중복입니다. 소제목 없이 같은 섹션 안에서 "
         "화제가 크게 바뀌는 지점에만 쓰세요.\n"
         f"{quote_line}"
+        f"{recipe_line}"
         "  인용구 안의 한마디도 한 줄에 짧은 절 하나씩 2~3줄로 끊어 쓰세요(본문 줄바꿈 규칙 동일).\n"
         "  음식·분위기를 묘사하는 짧은 카피성 문구(예: '겉은 바삭 속은 촉촉')는 인용구로 만들지 말고, "
         '강조하려면 본문 안에서 큰따옴표(" ")로 감싸 쓰세요.\n'

@@ -583,3 +583,14 @@ def test_rep_image_path_excludes_sponsor_fallback_first():
 def test_rep_image_path_none_without_photos():
     plan = build_publish_plan(DraftResult(text="제목\n\n본문뿐."), [])
     assert plan.rep_image_path is None
+
+
+def test_structure_instruction_pins_recipe_to_postit():
+    from autoblog.publish.plan import build_structure_instruction
+
+    # 포스트잇을 안 골랐어도 레시피 안내는 포스트잇 번호(5)로 고정
+    instr = build_structure_instruction(quote_keys=["default"])
+    assert "레시피" in instr and "[인용구:5]" in instr
+    # 포스트잇만 고른 경우엔 번호 없는 마커가 곧 포스트잇
+    only = build_structure_instruction(quote_keys=["quotation_postit"])
+    assert "레시피" in only and "[인용구:5]" not in only
