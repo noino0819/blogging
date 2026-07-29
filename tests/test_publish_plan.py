@@ -289,6 +289,7 @@ def test_structure_styles_header_and_subheading():
         text=(
             "혜화 치즈철판카츠 메종아카이\n"
             "친구랑 주말 대학로 데이트 코스\n"
+            "아니근데 진짜 맛있당께요\n"
             "혜화맛집 #대학로맛집 #혜화내돈내산 #메종아카이\n\n"
             "인트로 한 줄.\n\n"
             "1. 치즈철판카츠 후기\n"
@@ -308,10 +309,19 @@ def test_structure_styles_header_and_subheading():
     assert all(sp.style.text_color == "#395D73" for sp in big.emphases)
 
     # 태그줄은 본문에 렌더하지 않고 발행 태그칸용 plan.tags로 수집한다
-    # (첫 태그의 빠진 #("혜화맛집")도 그냥 태그로 인정). 그 자리에는 구분선만 남는다.
+    # (첫 태그의 빠진 #("혜화맛집")도 그냥 태그로 인정).
     assert plan.tags == ["혜화맛집", "대학로맛집", "혜화내돈내산", "메종아카이"]
     assert all("#대학로맛집" not in b.text for b in plan.blocks)
-    idx = plan.blocks.index(big)
+
+    # 드립 한 줄(예전 해시태그 자리)에는 해시태그 서식(system 11 파랑·가운데)이 입혀지고,
+    # 그 뒤에 가운데 꺾인 선(variant 4)이 온다
+    drip = next(b for b in plan.blocks if b.text == "아니근데 진짜 맛있당께요")
+    assert drip.align == "center"
+    assert len(drip.emphases) == 1
+    assert drip.emphases[0].style.font_family == "system"
+    assert drip.emphases[0].style.font_size == "11"
+    assert drip.emphases[0].style.text_color == "#4383BF"
+    idx = plan.blocks.index(drip)
     assert plan.blocks[idx + 1].kind == "divider" and plan.blocks[idx + 1].variant == 4
 
     # 소제목("1. ...")은 인용구 밑줄형 블록으로 렌더(텍스트 "1. " 자동 번호목록 누수 회피)

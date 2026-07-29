@@ -231,8 +231,8 @@ class RoleStyle(BaseModel):
 
 
 class HashtagStyle(RoleStyle):
-    # 태그가 본문 대신 네이버 발행 태그칸으로 들어가면서 divider만 쓰인다.
-    # (font/size/per_line 등은 예전 설정 파일 호환용으로 남겨둠)
+    # 태그가 본문 대신 네이버 발행 태그칸으로 들어가면서, 이 서식(font/size/color/align)은
+    # 그 자리를 대신하는 '드립 한 줄'에 입힌다. per_line은 예전 설정 파일 호환용.
     per_line: int = 2
     divider: str | None = None  # 태그줄 자리(헤더 끝)에 넣을 구분선 종류(DIVIDER_META 키)
 
@@ -513,6 +513,17 @@ def build_publish_plan(
             header_ids.add(id(blocks[-1]))
         if structure_styles is None:
             return
+        # 드립 한 줄(태그줄 바로 위, 대제목 바로 아래) — 예전 해시태그 줄의 서식(작은
+        # 파란 글씨·가운데)을 그대로 입힌다. 태그줄이 헤더 밖(본문 뒤)에 온 경우를
+        # 걸러내려고 '직전 블록이 대제목(헤더)'일 때만 적용한다.
+        drip = blocks[-1] if blocks and blocks[-1].kind == "text" else None
+        if drip is not None and len(blocks) >= 2 and id(blocks[-2]) in header_ids:
+            st = structure_styles.hashtags
+            drip.align = st.align or drip.align
+            drip.emphases = [
+                StyledSpan(text=ln, preset_id=None, style=st.to_style())
+                for ln in drip.text.split("\n") if ln.strip()
+            ]
         prev_is_divider = bool(blocks) and blocks[-1].kind == "divider"
         div = structure_styles.hashtags.divider
         if div and div in DIVIDER_META and not prev_is_divider:
