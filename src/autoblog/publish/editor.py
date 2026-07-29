@@ -285,14 +285,14 @@ class BlogPublisher:
                 self._insert_sticker(block.sticker_pack, block.sticker_index or 0)
             elif block.kind == "place" and block.text:
                 try:
-                    ok = self._insert_place(block.text, address=block.place_address)
+                    why = self._insert_place(block.text, address=block.place_address)
                 except Exception as exc:  # noqa: BLE001 - 지도는 보조, 실패해도 본문 유지
                     self._page.keyboard.press("Escape")
-                    ok, _ = False, exc
-                if not ok:
+                    why = f"에디터 오류({type(exc).__name__}: {exc})."
+                if why:
                     warnings.append(
-                        f"지도(장소) 자동 삽입 실패: ‘{block.text}’ — 네이버 장소 검색 결과가 없어 "
-                        "건너뛰었어요. 에디터에서 직접 ‘장소’를 추가해 주세요."
+                        f"지도(장소) 자동 삽입 실패: ‘{block.text}’ — {why} "
+                        "에디터에서 직접 ‘장소’를 추가해 주세요."
                     )
             elif block.kind == "link" and block.link_url:
                 self._insert_link(block.link_url, keep_url_text=block.keep_url_text)
@@ -1068,15 +1068,15 @@ class BlogPublisher:
             elif block.kind == "sticker":
                 self._insert_sticker(block.sticker_pack, block.sticker_index or 0, at_end=False)
             elif block.kind == "place" and block.text:
-                try:  # 지도(장소) 카드 — 커서 위치에 삽입. 검색 결과 없으면 False
-                    ok = self._insert_place(block.text, address=block.place_address)
-                except Exception:  # noqa: BLE001 - 지도는 보조, 실패해도 본문 유지
+                try:  # 지도(장소) 카드 — 커서 위치에 삽입. 실패하면 사유 문자열
+                    why = self._insert_place(block.text, address=block.place_address)
+                except Exception as exc:  # noqa: BLE001 - 지도는 보조, 실패해도 본문 유지
                     page.keyboard.press("Escape")
-                    ok = False
-                if not ok:
+                    why = f"에디터 오류({type(exc).__name__}: {exc})."
+                if why:
                     warnings.append(
-                        f"지도(장소) 자동 삽입 실패: ‘{block.text}’ — 네이버 장소 검색 결과가 없어 "
-                        "건너뛰었어요. 에디터에서 직접 ‘장소’를 추가해 주세요."
+                        f"지도(장소) 자동 삽입 실패: ‘{block.text}’ — {why} "
+                        "에디터에서 직접 ‘장소’를 추가해 주세요."
                     )
             elif block.kind == "link" and block.link_url:
                 self._insert_link(block.link_url, keep_url_text=block.keep_url_text, at_anchor=True)
@@ -1432,35 +1432,42 @@ class BlogPublisher:
         if pos < len(text):
             self._page.keyboard.type(text[pos:], delay=4)
 
-    def _insert_place(self, query: str, address: str | None = None) -> bool:
+    def _insert_place(self, query: str, address: str | None = None) -> str:
         """SE 네이티브 '장소' 카드 삽입: 가게명 검색 → 수집 주소와 가장 잘 맞는 결과 '추가' → '확인'.
+
+        반환값은 실패 사유(성공이면 ""). 예전엔 bool이라 호출부가 실패를 전부
+        '검색 결과 없음'으로 안내했는데, 실제로는 검색 0건·카드 미생성이 섞여 있어
+        사람이 원인을 못 봤다.
 
         address(수집된 도로명 주소)를 주면 동명 가게가 여럿일 때 주소 유사도로 정확한
         결과를 고른다. 없거나 매칭이 약하면 첫 결과로 폴백. 결과가 아예 없으면 팝업만
-        닫고 False(본문 유지). 커서 위치에 지도 카드가 삽입된다.
+        닫고 실패(본문 유지). 커서 위치에 지도 카드가 삽입된다.
 
-        반환값은 '카드가 실제로 생겼는지'(컴포넌트 수 증가)로 판정한다 — 추가·확인
-        클릭이 DOM 사정으로 무음 no-op이면 예전엔 True를 돌려줘 경고 없이 지도가 빠졌다."""
+        성공 판정은 '카드가 실제로 생겼는지'(컴포넌트 수 증가) — 추가·확인 클릭이
+        DOM 사정으로 무음 no-op이면 예전엔 성공을 돌려줘 경고 없이 지도가 빠졌다."""
         page = self._page
         n_before = page.evaluate("()=>document.querySelectorAll('.se-component').length")
         page.click("button.se-map-toolbar-button")
         page.wait_for_timeout(1500)
-        page.fill("input.react-autosuggest__input", query)
-        page.wait_for_timeout(400)
-        page.click("button.se-place-search-button")
-        page.wait_for_timeout(2800)
-        items = page.evaluate(
-            r"""()=>[...document.querySelectorAll('.se-place-map-search-result-item')].map(it=>({
-              title:(it.querySelector('.se-place-map-search-result-title')||{}).textContent||'',
-              address:(it.querySelector('.se-place-map-search-result-address')||{}).textContent||'',
-            }))"""
-        )
+        items: list[dict] = []
+        relaxed = False
+        for i, q in enumerate(self._place_query_variants(query)):
+            items = self._search_place(q)
+            if items:
+                relaxed = i > 0
+                break
         if not items:
             close = page.query_selector("button.se-popup-close-button")
             if close:
                 close.click()
-            return False
+            return "네이버 장소 검색 결과가 없어 건너뛰었어요."
         idx = self._best_place_index(items, query, address)
+        if relaxed and not self._addr_matches(items[idx].get("address", ""), address):
+            # 완화 질의(브랜드명만)는 엉뚱한 지점이 걸릴 수 있어 주소가 맞을 때만 쓴다
+            close = page.query_selector("button.se-popup-close-button")
+            if close:
+                close.click()
+            return "이름 그대로는 검색 결과가 없고, 완화 검색 결과는 수집 주소와 달라 건너뛰었어요."
         # 결과 리스트가 스크롤 영역이라 Playwright 가시성 검사에 안 걸릴 때가 있어 DOM .click()으로.
         page.evaluate(
             "(i)=>{const its=document.querySelectorAll('.se-place-map-search-result-item');"
@@ -1485,8 +1492,44 @@ class BlogPublisher:
                 break
         if not created:
             page.keyboard.press("Escape")  # 팝업이 남아 있으면 닫아 다음 삽입 보호
-            return False
-        return True
+            return "검색 결과는 있었지만 장소 카드가 만들어지지 않았어요."
+        return ""
+
+    def _search_place(self, q: str) -> list[dict]:
+        """열려 있는 장소 팝업에서 q로 검색 → 결과 항목 [{title, address}]."""
+        page = self._page
+        page.fill("input.react-autosuggest__input", "")
+        page.fill("input.react-autosuggest__input", q)
+        page.wait_for_timeout(400)
+        # 자동완성 드롭다운이 검색 버튼을 덮으면 Playwright click이 가시성 검사에서 막힌다 — DOM click으로 우회
+        page.evaluate(
+            "()=>{const b=document.querySelector('button.se-place-search-button');if(b)b.click();}"
+        )
+        page.wait_for_timeout(2800)
+        return page.evaluate(
+            r"""()=>[...document.querySelectorAll('.se-place-map-search-result-item')].map(it=>({
+              title:(it.querySelector('.se-place-map-search-result-title')||{}).textContent||'',
+              address:(it.querySelector('.se-place-map-search-result-address')||{}).textContent||'',
+            }))"""
+        )
+
+    @staticmethod
+    def _place_query_variants(name: str) -> list[str]:
+        """검색 0건일 때 순서대로 시도할 질의 — 원본 → 지점 접미사 제거.
+
+        '차지 강남플래그십점'처럼 지점명이 붙으면 SE 장소 검색이 0건으로 나오는 경우가 있어
+        브랜드명만으로 한 번 더 찾는다(대신 주소가 맞을 때만 채택)."""
+        out = [name]
+        base = re.sub(r"\s*\S*점$", "", name).strip()
+        if base and base != name:
+            out.append(base)
+        return out
+
+    @classmethod
+    def _addr_matches(cls, found: str, address: str | None) -> bool:
+        """검색 결과 주소가 수집 주소와 같은 곳인지(한쪽이 다른 쪽을 포함)."""
+        a1, a2 = cls._norm_addr(address), cls._norm_addr(found)
+        return bool(a1 and a2 and (a1 in a2 or a2 in a1))
 
     def _insert_link(self, url: str, keep_url_text: bool = False, at_anchor: bool = False) -> bool:
         """SE 링크 카드(oglink) 삽입 — 본문에 URL을 합성 paste 이벤트로 붙여넣어 카드 생성.
