@@ -72,6 +72,9 @@ SMART_EDITOR = {
     "publish_button": 'button[data-click-area="tpb.publish"]',  # 발행(설정 레이어 열기)
     "publish_confirm": 'button[data-click-area="tpb*i.publish"]',  # 레이어 내 최종 발행
     "category_button": 'button[data-click-area="tpb*i.category"]',  # 카테고리 선택 열기
+    # 발행 레이어의 태그 입력칸 — placeholder 부분일치(라이브 미검증 추정 셀렉터).
+    # 못 찾으면 태그 입력만 건너뛰고 경고한다(_fill_tags fail-open, 저장·발행은 진행).
+    "tag_input": 'input[placeholder*="태그"]',
     # 예약 발행(발행시점) — 라이브 캡처(2026-07-22, scripts/probe_reserve_ui.py).
     # 해시 클래스(input_date__XXX)는 배포 때 바뀔 수 있어 [class*=] 부분일치로 잡는다.
     # 예약 경로는 fail-closed: '예약' 라디오가 checked로 확인 안 되면 발행하지 않는다.

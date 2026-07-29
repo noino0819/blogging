@@ -16,13 +16,13 @@ subheading:                # 소제목 (예: "1. 치즈철판카츠 후기")
   size: 19
   color: "#EB7D7D"
 
-hashtags:                  # 해시태그 줄
-  font: system
+hashtags:                  # 태그줄 자리 — 태그 자체는 본문 대신 네이버 발행 태그칸으로 들어가고,
+  font: system             # 여기서는 divider(헤더 끝 구분선)만 쓰입니다. 나머지 값은 호환용.
   size: 11
   color: "#4383BF"
-  align: center            # 가운데 정렬
-  per_line: 2              # 한 줄에 태그 N개씩 보기 좋게 줄바꿈
-  divider: line3           # 해시태그 뒤 구분선 종류(line3=가운데 꺾인 선). 비우면 안 넣음
+  align: center
+  per_line: 2
+  divider: line3           # 태그줄 자리(헤더 끝) 구분선 종류(line3=가운데 꺾인 선). 비우면 안 넣음
 
 # 협찬 토글을 켜면 본문 맨 위에 고정으로 넣을 '쿠팡파트너스 고지 스티커'를 지정합니다.
 # 적는 법 두 가지 (둘 중 편한 쪽):

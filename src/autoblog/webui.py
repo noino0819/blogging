@@ -2403,6 +2403,8 @@ function renderPreview(d){
     else if(b.kind==='place')h+=`<div class=ph>📍 지도(장소) <small>${esc(b.text)}</small></div>`;
     else if(b.kind==='table')h+=tableHTML(b);
   }
+  // 발행 태그 — 본문이 아니라 네이버 발행 창의 태그 입력칸으로 들어간다
+  if(d.tags&&d.tags.length)h+=`<div class=ph>🏷 발행 태그(태그칸 자동 입력) <small>${d.tags.map(t=>'#'+esc(t)).join(' ')}</small></div>`;
   const p=$('#preview'); p.classList.remove('empty'); p.innerHTML=h;
 }
 function tableHTML(b){
@@ -4115,7 +4117,8 @@ def _make_handler(state: dict):
                     ]
                 blocks.append(blk)
             self._send(200, json.dumps(
-                {"title": result.plan.title, "blocks": blocks, "debug": result.draft.debug,
+                {"title": result.plan.title, "blocks": blocks, "tags": result.plan.tags,
+                 "debug": result.draft.debug,
                  "checklist": [
                      {"item": c.item, "ok": c.ok, "detail": c.detail}
                      for c in result.draft.checklist

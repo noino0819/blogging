@@ -140,6 +140,8 @@ def check_exposure(draft: str) -> list[CheckItem]:
             n_tags = len(toks) if (not toks[0].startswith("#") and all_tail_tags) else cnt
             break
     results.append(
-        CheckItem(item="해시태그 3~5개", ok=3 <= n_tags <= 5, detail=f"현재 {n_tags}개")
+        CheckItem(
+            item="해시태그 5~10개(발행 태그칸)", ok=5 <= n_tags <= 10, detail=f"현재 {n_tags}개"
+        )
     )
     return results

@@ -206,7 +206,8 @@ def build_place_instruction(place_name: str | None = None) -> str:
 
 
 # --- 구조별 서식 템플릿 (config/structure_styles.yaml) ---
-# 대제목·소제목·해시태그 줄을 패턴으로 인식해 서체/크기/색을 자동 배정한다.
+# 대제목·소제목 줄을 패턴으로 인식해 서체/크기/색을 자동 배정한다. 해시태그 줄은
+# 본문에 렌더하지 않고 발행 태그칸용 plan.tags로 수집한다(자리엔 구분선만 남김).
 # 마커가 아니라 패턴 인식이라, 외부 챗봇에서 받아온 글에도 동일하게 먹는다.
 _STRUCTURE_STYLES_PATH = CONFIG_DIR / "structure_styles.yaml"
 
@@ -230,8 +231,10 @@ class RoleStyle(BaseModel):
 
 
 class HashtagStyle(RoleStyle):
-    per_line: int = 2  # 한 줄에 태그 N개씩
-    divider: str | None = None  # 해시태그 뒤 구분선 종류(DIVIDER_META 키)
+    # 태그가 본문 대신 네이버 발행 태그칸으로 들어가면서 divider만 쓰인다.
+    # (font/size/per_line 등은 예전 설정 파일 호환용으로 남겨둠)
+    per_line: int = 2
+    divider: str | None = None  # 태그줄 자리(헤더 끝)에 넣을 구분선 종류(DIVIDER_META 키)
 
 
 class StructureStyles(BaseModel):
@@ -314,6 +317,8 @@ class PublishBlock(BaseModel):
 class PublishPlan(BaseModel):
     title: str
     blocks: list[PublishBlock] = Field(default_factory=list)
+    # 네이버 발행 레이어의 '태그 입력칸'에 넣을 태그(# 제외) — 본문에는 렌더하지 않는다.
+    tags: list[str] = Field(default_factory=list)
     # 대표(썸네일)로 지정할 사진 경로 — 실행기가 저장 직전 '대표' 배지를 클릭해 명시 지정한다.
     # (첫 이미지=대표라는 암묵 규칙은 in-place 삭제·재삽입, 협찬 사진 끌어올림에서 깨진다.)
     rep_image_path: str | None = None
@@ -434,7 +439,8 @@ def build_publish_plan(
     quote_variant = 1
     used = [False] * len(photos)  # 사진별 사용 여부(순서 아닌 라벨로 매칭)
     first_body_seen = False  # 대제목은 본문 첫 줄에만 부여
-    header_ids: set[int] = set()  # 헤더(대제목·해시태그) 텍스트 블록 — 남은 미디어·링크 분산에서 제외
+    header_ids: set[int] = set()  # 헤더(대제목·드립 줄) 텍스트 블록 — 남은 미디어·링크 분산에서 제외
+    tags: list[str] = []  # 헤더 태그줄에서 수집한 발행 태그(네이버 태그칸 입력용)
 
     def take_photo(label: str | None, media_kind: str = "image") -> PhotoItem | None:
         """media_kind(사진/영상)가 같은 것 중 라벨이 같은 안 쓴 것 우선 → 캡션 매칭 → 순서대로.
@@ -491,12 +497,31 @@ def build_publish_plan(
         else:  # 구분행 없는 가짜 표 → 그냥 본문 텍스트로 되돌림(내용 소실 방지)
             text_buf.extend(buf)
 
+    def consume_tag_line(s: str):
+        """헤더의 해시태그 줄 → 본문에 렌더하지 않고 발행 태그칸용 tags로 수집.
+
+        본문의 해시태그 자리는 프롬프트가 '드립 한 줄'로 대체했고, 태그는 네이버
+        발행 레이어의 태그 입력칸으로 들어간다. 태그줄 자리에는 기존처럼 헤더
+        구분선만 남긴다(structure_styles의 hashtags.divider)."""
+        for t in s.split():
+            t = t.lstrip("#").strip()
+            if t and t not in tags:
+                tags.append(t)
+        # 태그줄 직전 텍스트(대제목·드립 줄 등 헤더)는 남은 미디어·링크 분산 앵커에서
+        # 제외 — 안 그러면 첫 leftover가 헤더와 구분선 사이에 꽂힌다(과거 배치 사고).
+        if blocks and blocks[-1].kind == "text":
+            header_ids.add(id(blocks[-1]))
+        if structure_styles is None:
+            return
+        prev_is_divider = bool(blocks) and blocks[-1].kind == "divider"
+        div = structure_styles.hashtags.divider
+        if div and div in DIVIDER_META and not prev_is_divider:
+            blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0], align="center"))
+
     def classify_role(s: str) -> str | None:
         """구조별 서식이 켜져 있을 때, 이 줄이 어떤 구조 요소인지 판정(없으면 None)."""
         if structure_styles is None:
             return None
-        if _is_hashtag_line(s):
-            return "hashtags"
         if _SUBHEADING_RE.match(s):
             return "subheading"
         if not first_body_seen and 0 < len(s) <= 40:
@@ -504,30 +529,8 @@ def build_publish_plan(
         return None
 
     def emit_role_block(role: str, s: str):
-        """구조 요소 한 줄을 서식 span이 박힌 텍스트 블록(+해시태그 뒤 구분선)으로 추가."""
+        """구조 요소 한 줄을 서식 span이 박힌 텍스트 블록으로 추가."""
         ss = structure_styles
-        if role == "hashtags":
-            # 해시태그 바로 앞이 이미 구분선이면(모델이 [구분선]을 해시태그 앞에 붙인 흔한 경우)
-            # 자동 구분선을 또 넣지 않는다 — 안 그러면 구분선이 위·아래로 2개가 된다.
-            prev_is_divider = bool(blocks) and blocks[-1].kind == "divider"
-            toks = s.split()
-            # 첫 태그만 # 없는 줄("혜화맛집 #대학로맛집 …") 보정 — LLM 예시 습관/외부 챗봇 글.
-            # 나머지 토큰 전부가 #태그일 때만(본문 단어가 섞인 줄은 건드리지 않음).
-            if not toks[0].startswith("#") and all(t.startswith("#") for t in toks[1:]):
-                toks[0] = "#" + toks[0]
-            per = max(1, ss.hashtags.per_line)
-            rows = [" ".join(toks[i : i + per]) for i in range(0, len(toks), per)]
-            spans = [StyledSpan(text=r, preset_id=None, style=ss.hashtags.to_style()) for r in rows]
-            blocks.append(
-                PublishBlock(
-                    kind="text", text="\n".join(rows), emphases=spans, align=ss.hashtags.align
-                )
-            )
-            header_ids.add(id(blocks[-1]))
-            div = ss.hashtags.divider
-            if div and div in DIVIDER_META and not prev_is_divider:
-                blocks.append(PublishBlock(kind="divider", variant=DIVIDER_META[div][0], align="center"))
-            return
         if role == "subheading":
             # 소제목("1. ...")은 인용구 '밑줄형'으로 렌더한다. 텍스트로 "1. "을 본문에 치면
             # 에디터가 자동 번호목록을 켜서 뒤 문단까지 번호가 번지는데, 별도 인용구 블록으로
@@ -646,12 +649,19 @@ def build_publish_plan(
             if ph is not None:
                 blocks.append(media_block(ph))
         else:
-            role = classify_role(s)
-            if role:
+            toks = s.split()
+            # 태그줄: 토큰 전부가 #태그일 때만(첫 토큰의 # 누락 허용 — LLM 예시 습관).
+            # 본문 단어가 섞인 줄("오늘 #혜화 갔다가 #맛집 발견")은 본문으로 남긴다.
+            if _is_hashtag_line(s) and all(t.startswith("#") for t in toks[1:]):
                 flush_text()
-                emit_role_block(role, s)
+                consume_tag_line(s)
             else:
-                text_buf.append(line)
+                role = classify_role(s)
+                if role:
+                    flush_text()
+                    emit_role_block(role, s)
+                else:
+                    text_buf.append(line)
             if s:
                 first_body_seen = True
     flush_table()
@@ -682,8 +692,8 @@ def build_publish_plan(
     # 하지 않는다 — 마커 안 단 미디어는 원래 자리에 그대로 두고, 실행기가 텍스트만 끼운다.
     leftover = [ph for i, ph in enumerate(photos) if not used[i]]
     if leftover and not inplace:
-        # 헤더(대제목·해시태그) 블록은 앵커에서 제외 — 안 그러면 첫 leftover가
-        # 대제목과 해시태그 줄 사이에 꽂힌다(실제 발생했던 배치 사고).
+        # 헤더(대제목·드립 줄) 블록은 앵커에서 제외 — 안 그러면 첫 leftover가
+        # 헤더와 그 뒤 구분선 사이에 꽂힌다(실제 발생했던 배치 사고).
         text_pos = [
             i for i, b in enumerate(blocks) if b.kind == "text" and id(b) not in header_ids
         ]
@@ -805,4 +815,4 @@ def build_publish_plan(
         or (img_paths[0] if img_paths else None)
     )
 
-    return PublishPlan(title=title, blocks=blocks, rep_image_path=rep)
+    return PublishPlan(title=title, blocks=blocks, rep_image_path=rep, tags=tags)

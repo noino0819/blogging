@@ -100,8 +100,8 @@ def test_build_plan_leftover_photos_spread_across_body():
 
 
 def test_build_plan_leftover_photos_skip_header_blocks():
-    # 남은 사진 분산이 헤더(대제목·해시태그) 블록 뒤에 꽂히지 않는다 —
-    # 예전엔 첫 leftover가 대제목과 해시태그 줄 사이에 들어갔다.
+    # 태그줄은 본문 블록 대신 plan.tags(네이버 태그칸)로 빠지고,
+    # 남은 사진 분산이 헤더(대제목) 블록 뒤에 꽂히지 않는다.
     draft = DraftResult(
         text=(
             "제목 스물자 내외로 맞춘 예시\n"
@@ -113,11 +113,11 @@ def test_build_plan_leftover_photos_skip_header_blocks():
     )
     photos = [PhotoItem(path="a.jpg", label="음식"), PhotoItem(path="b.jpg", label="내부")]
     plan = build_publish_plan(draft, photos, structure_styles=_structure_styles())
+    assert plan.tags == ["태그1", "태그2", "태그3"]
+    assert all("#태그1" not in b.text for b in plan.blocks)  # 태그줄은 본문에 안 남는다
     big = next(i for i, b in enumerate(plan.blocks) if b.text == "대제목 한 줄")
-    tags = next(i for i, b in enumerate(plan.blocks) if "#태그1" in b.text)
-    # 헤더 블록(대제목·해시태그) 바로 뒤에는 사진이 없다
-    assert plan.blocks[big + 1].kind != "image"
-    assert plan.blocks[tags + 1].kind != "image"
+    # 헤더(대제목) 바로 뒤에는 사진이 없다 — 태그줄 자리 구분선이 온다
+    assert plan.blocks[big + 1].kind == "divider"
     # 사진은 전부 본문에 들어간다
     assert [b.image_path for b in plan.blocks if b.kind == "image"] == ["a.jpg", "b.jpg"]
 
@@ -307,12 +307,11 @@ def test_structure_styles_header_and_subheading():
     assert all(sp.style.font_size == "30" for sp in big.emphases)
     assert all(sp.style.text_color == "#395D73" for sp in big.emphases)
 
-    # 해시태그는 2개씩 줄바꿈 + 줄마다 span, 바로 뒤에 가운데 꺾인 선(variant 4)
-    # 첫 태그의 빠진 #("혜화맛집")은 플랜이 자동 복원한다("#혜화맛집")
-    tag_block = next(b for b in plan.blocks if "#대학로맛집" in b.text)
-    assert tag_block.text == "#혜화맛집 #대학로맛집\n#혜화내돈내산 #메종아카이"
-    assert len(tag_block.emphases) == 2
-    idx = plan.blocks.index(tag_block)
+    # 태그줄은 본문에 렌더하지 않고 발행 태그칸용 plan.tags로 수집한다
+    # (첫 태그의 빠진 #("혜화맛집")도 그냥 태그로 인정). 그 자리에는 구분선만 남는다.
+    assert plan.tags == ["혜화맛집", "대학로맛집", "혜화내돈내산", "메종아카이"]
+    assert all("#대학로맛집" not in b.text for b in plan.blocks)
+    idx = plan.blocks.index(big)
     assert plan.blocks[idx + 1].kind == "divider" and plan.blocks[idx + 1].variant == 4
 
     # 소제목("1. ...")은 인용구 밑줄형 블록으로 렌더(텍스트 "1. " 자동 번호목록 누수 회피)

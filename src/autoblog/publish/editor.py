@@ -318,13 +318,13 @@ class BlogPublisher:
         if reserve_at is not None:
             # 예약 발행 = 발행이므로 임시저장/정리 팝업(딤 레이어)을 만들지 않고 바로 예약 발행한다
             # — save_draft·prune의 목록 팝업이 발행 레이어 클릭을 가로채는 충돌을 피한다.
-            self._submit_reserved(reserve_at, category)
+            self._submit_reserved(reserve_at, category, tags=plan.tags, warnings=warnings)
             return warnings
         if save:
-            # 임시저장에도 카테고리가 반영되도록, 발행 레이어에서 카테고리만 고르고 레이어를 닫는다.
-            # (submit이면 아래 발행 분기에서 카테고리를 고르므로 중복 적용하지 않는다.)
-            if category and not submit:
-                self._apply_category_for_draft(category)
+            # 임시저장에도 카테고리·태그가 반영되도록, 발행 레이어에서 설정만 하고 레이어를 닫는다.
+            # (submit이면 아래 발행 분기에서 적용하므로 중복 적용하지 않는다.)
+            if (category or plan.tags) and not submit:
+                self._apply_category_for_draft(category, tags=plan.tags, warnings=warnings)
             self.save_draft()
             # 임시저장 직후: 같은 제목의 이전 임시저장 글 정리(최근 1건만 남김).
             # 정리는 보조 기능이라 실패해도 본문 저장은 그대로 둔다(warnings는 '빠진 항목'
@@ -345,25 +345,56 @@ class BlogPublisher:
                 except Exception:  # noqa: BLE001 - 정리 실패는 저장 결과에 영향 없음
                     pass
         if submit:
-            if category:
+            if category or plan.tags:
                 self._open_publish_layer()
-                self.select_category(category)
+                if category:
+                    self.select_category(category)
+                self._fill_tags(plan.tags, warnings)
             self._submit()
         return warnings
 
-    def _apply_category_for_draft(self, category: str):
-        """발행하지 않고 카테고리만 선택해 임시저장에 반영한다.
+    def _apply_category_for_draft(
+        self, category: str | None, tags: list[str] | None = None,
+        warnings: list[str] | None = None,
+    ):
+        """발행하지 않고 카테고리·태그만 설정해 임시저장에 반영한다.
 
-        발행 레이어를 열어 카테고리를 고른 뒤, Esc로 레이어만 닫는다(발행 X).
-        카테고리 적용에 실패해도 본문 임시저장은 그대로 진행한다(보조 기능).
+        발행 레이어를 열어 카테고리를 고르고 태그칸을 채운 뒤, Esc로 레이어만 닫는다(발행 X).
+        적용에 실패해도 본문 임시저장은 그대로 진행한다(보조 기능).
         """
         try:
             self._open_publish_layer()
-            self.select_category(category)
+            if category:
+                self.select_category(category)
+            self._fill_tags(tags, warnings)
             self._page.keyboard.press("Escape")  # 발행하지 않고 레이어만 닫기
             self._page.wait_for_timeout(500)
-        except Exception:  # noqa: BLE001 - 카테고리는 보조, 실패해도 저장 진행
+        except Exception:  # noqa: BLE001 - 카테고리·태그는 보조, 실패해도 저장 진행
             self._page.keyboard.press("Escape")
+
+    def _fill_tags(self, tags: list[str] | None, warnings: list[str] | None = None):
+        """발행 레이어의 태그 입력칸에 태그를 입력한다(레이어가 열려 있다고 가정).
+
+        태그는 본문이 아니라 네이버 태그칸으로 들어간다(검색 노출용, 네이버 최대 30개).
+        입력칸을 못 찾거나 실패하면 저장·발행은 그대로 진행하고 warnings로 알린다.
+        """
+        clean = [t.lstrip("#").replace(" ", "") for t in (tags or [])]
+        clean = [t for t in clean if t]
+        if not clean:
+            return
+        try:
+            inp = self._page.wait_for_selector(SMART_EDITOR["tag_input"], timeout=3000)
+            inp.click()
+            for t in clean:
+                inp.type(t)
+                self._page.keyboard.press("Enter")  # 엔터로 태그 칩 확정
+                self._page.wait_for_timeout(150)
+        except Exception:  # noqa: BLE001 - 태그는 보조, 실패해도 저장·발행 진행
+            if warnings is not None:
+                warnings.append(
+                    "태그 자동 입력 실패 — 발행 창의 태그 칸에 직접 넣어 주세요: "
+                    + " ".join("#" + t for t in clean)
+                )
 
     def save_draft(self):
         """임시저장."""
@@ -1116,8 +1147,8 @@ class BlogPublisher:
         # 아무 사진으로 옮겨놓기 때문에, 모든 사진 조작이 끝난 여기서 명시적으로 재지정한다.
         self._set_rep_photo(plan, warnings)
         if save:
-            if category:
-                self._apply_category_for_draft(category)
+            if category or plan.tags:
+                self._apply_category_for_draft(category, tags=plan.tags, warnings=warnings)
             self.save_draft()
         return warnings, infos
 
@@ -2491,7 +2522,10 @@ class BlogPublisher:
             return False
         return got_hour == want_hour and got_min == want_min and self._reserve_is_selected()
 
-    def _submit_reserved(self, when, category: str | None):
+    def _submit_reserved(
+        self, when, category: str | None,
+        tags: list[str] | None = None, warnings: list[str] | None = None,
+    ):
         """예약 발행 — 예약 모드 확인(fail-closed) 후에만 발행 버튼을 누른다.
 
         예약 확인에 실패하면 발행하지 않고 예외를 던진다 — 시각 설정 실패가 즉시 발행으로
@@ -2507,6 +2541,7 @@ class BlogPublisher:
         self._open_publish_layer()
         if category:
             self.select_category(category)
+        self._fill_tags(tags, warnings)
         if not self.set_reserve_time(when) or not self._reserve_is_selected():
             self._page.keyboard.press("Escape")
             raise RuntimeError(
