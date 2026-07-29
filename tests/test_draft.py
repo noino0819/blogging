@@ -577,12 +577,14 @@ def test_raw_override_extracts_final_section():
 
 
 def test_export_prompt_includes_review_protocol():
-    # 내보내기 프롬프트가 초안→자가 점검→최종본 3단계 출력 프로토콜을 지시한다
+    # 내보내기 프롬프트: 자가 점검은 속으로만, 본문은 한 번만 출력하도록 지시한다
     from autoblog.pipeline import build_export_prompt
 
     text = build_export_prompt("메모", card=_place_card())
-    assert "=====최종본=====" in text
-    assert "## 자가 점검" in text
+    assert "자가 점검" in text
+    assert "속으로만" in text
+    assert "딱 한 번만" in text
+    assert "=====최종본=====" not in text  # 본문 2회 출력 프로토콜 제거됨
 
 
 def test_wrap_long_lines():
