@@ -2392,10 +2392,11 @@ function checklistHTML(cl){
 function renderPreview(d){
   let h=checklistHTML(d.checklist)+`<h1>${esc(d.title)||'(제목 없음)'}</h1>`;
   // 발행 태그는 본문이 아니라 네이버 발행 창의 태그칸으로 들어가 눈에 안 보인다 —
-  // 뭐가 들어가는지(또는 비었는지) 항상 맨 위에서 보이게 한다.
-  h+=(d.tags&&d.tags.length)
-    ?`<div class=ph>🏷 발행 태그(태그칸 자동 입력) <small>${d.tags.map(t=>'#'+esc(t)).join(' ')}</small></div>`
-    :`<div class=ph>🏷 발행 태그 없음 <small>태그칸에 아무것도 안 들어가요 — 글에 해시태그 줄이 없었어요</small></div>`;
+  // 뭐가 들어가는지 항상 맨 위에서 보이게 하고, 비었거나 마음에 안 들면 여기서 직접 고친다.
+  h+=`<div class=ph>🏷 발행 태그(태그칸 자동 입력 — 직접 수정 가능)
+    <input id=tagedit value="${esc((d.tags||[]).map(t=>'#'+t).join(' ')).replace(/"/g,'&quot;')}"
+      placeholder="#태그 #띄어쓰기로 #구분 — 비우면 태그칸에 아무것도 안 넣어요" spellcheck=false
+      style="display:block;width:100%;margin-top:6px;padding:2px 0;border:none;border-bottom:1px dashed #9ec5ff;background:transparent;font:inherit;color:inherit;outline:none"></div>`;
   for(const b of d.blocks){
     if(b.kind==='text')h+=renderText(b);
     else if(b.kind==='divider')h+=dividerHTML(b);
@@ -2410,6 +2411,14 @@ function renderPreview(d){
   }
   const p=$('#preview'); p.classList.remove('empty'); p.innerHTML=h;
 }
+// 발행 태그 직접 수정: 입력값 → PLAN.tags(발행 요청에 실어 서버 플랜에 덮어씀).
+// setAttribute로 value '속성'도 갱신 — 탭 전환은 innerHTML 스냅샷이라 속성에 남아야 복원된다.
+function parseTags(v){const out=[];for(const t of v.split(/[#,\s]+/)){const c=t.trim();if(c&&!out.includes(c))out.push(c);}return out.slice(0,30);} // ponytail: 네이버 태그칸 상한 30개
+$('#preview').addEventListener('input',e=>{
+  if(e.target.id!=='tagedit')return;
+  e.target.setAttribute('value',e.target.value);
+  if(PLAN)PLAN.tags=parseTags(e.target.value);
+});
 function tableHTML(b){
   const rows=b.table_rows||[]; if(!rows.length)return '';
   const tr=rows.map((r,i)=>'<tr>'+r.map(c=>`<${i?'td':'th'}>${esc(c)}</${i?'td':'th'}>`).join('')+'</tr>').join('');
@@ -2572,7 +2581,8 @@ function fireSave(title, category){
   const r=SAVES[id]={id,title,el:makeSaveTab(id,title),timer:null,serverId:null,reserved:!!reserveAt,
     // draftId=지금 탭 → 서버가 '그 탭 글'을 저장. photoMeta=지금 시점 ★ 대표·AI 표시 —
     // 플랜 생성 뒤 AI 썸네일 적용·사진 대체를 해도 발행에 반영되게 서버가 플랜에 덧입힌다.
-    body:{category,inplace,inplaceDraft,draftId:CURWS,reserveAt,photoMeta:photoMetaForSel()}};
+    body:{category,inplace,inplaceDraft,draftId:CURWS,reserveAt,photoMeta:photoMetaForSel(),
+      tags:(PLAN&&PLAN.tags||[]).slice()}};  // 미리보기에서 고친 발행 태그(클릭 시점 값 고정)
   runSave(r, null);
 }
 $('#save').onclick=()=>{
@@ -4206,6 +4216,13 @@ def _make_handler(state: dict):
                     from autoblog.publish.plan import apply_photo_meta_overrides
 
                     apply_photo_meta_overrides(result.plan, photo_meta)
+                # 미리보기에서 직접 고친 발행 태그 — 굳은 플랜의 태그를 덮어쓴다
+                # (태그가 빈 초안도 유저가 채워 넣을 수 있게). 스냅샷 전이라 재시도에도 반영.
+                tags = body.get("tags")
+                if isinstance(tags, list):
+                    result.plan.tags = [
+                        c for c in (str(t).strip().lstrip("#").strip() for t in tags) if c
+                    ][:30]
                 # 이 글의 저장 옵션·플랜을 작업id로 스냅샷해 둔다 — 실패 시 재시도(retryJob)가 참조한다.
                 job_id = _uuid.uuid4().hex[:12]
                 jobs[job_id] = {
