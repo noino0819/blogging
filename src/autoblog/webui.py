@@ -1995,6 +1995,7 @@ function applyWS(s){
   if($('#links')) $('#links').value=s.links||'';
   $('#prodlinks').innerHTML=''; ((s.prod&&s.prod.length)?s.prod:['']).forEach(v=>addProdLink(v));
   $('#preview').innerHTML=s.previewHTML||''; $('#preview').className=s.previewClass||'doc empty';
+  if(PLAN)renderPreview(PLAN);  // 스냅샷 HTML은 당시 '사진 보기' 설정으로 그린 것 — 현재 설정으로 다시 그린다
   if($('#save')) $('#save').disabled=(s.saveDisabled!==false);
   setKind(s.SRCKIND||'place', s.KINDMANUAL);  // kind UI + 상품링크칸 표시 동기화
   renderGrid(); renderPmeta(); updatePhotoSummary();
@@ -2151,6 +2152,13 @@ function adoptThumb(path, src){
   AISET.add(path);  // AI 썸네일·외부 AI 대체 둘 다 여기로 온다 → 'AI 활용' 표시 대상
   THUMB=path;
   renderGrid(); renderPmeta();
+  // 미리보기도 발행 결과와 맞춘다 — 서버 apply_photo_meta_overrides(plan.py)와 같은 규칙:
+  // 플랜에 없는 새 이미지는 첫 이미지 자리에 삽입.
+  if(PLAN&&!PLAN.blocks.some(b=>b.kind==='image'&&b.image_path===path)){
+    const i=PLAN.blocks.findIndex(b=>b.kind==='image');
+    PLAN.blocks.splice(i<0?PLAN.blocks.length:i,0,{kind:'image',image_path:path,image_label:'★ 대표(AI)',ai_generated:true});
+    renderPreview(PLAN);
+  }
   toast('새 이미지를 ★ 대표로 지정했어요.','ok');
 }
 // 🔁 사진 대체 — 원본사진·프롬프트를 챙겨 외부 이미지 모델에서 만들고, 완성 파일로 ★ 대표를 교체
