@@ -384,6 +384,31 @@ def test_drip_line_styled_without_tag_line():
     assert not any(sp.style.font_size == "11" for sp in body.emphases)
 
 
+def test_drip_styled_with_sponsor_marker_in_header():
+    # 협찬 사진 마커가 헤더 위/사이에 껴도 드립 해시태그 서식은 유지된다 — 마커 줄 때문에
+    # 드립 감지가 통째로 꺼지고(맨 위), 직전 블록 체크에 걸려(사이) 서식이 사라지던 실측 버그.
+    photos = [PhotoItem(path="spon.jpg", label="협찬"), PhotoItem(path="food.jpg", label="음식")]
+    for marker_pos in ("top", "between"):
+        head = "다이소 공병 후기\n요즘 스킨 쓸 맛 나는 이유\n\n"
+        if marker_pos == "top":
+            text = "다이소 공병 후기\n[사진:협찬]\n\n요즘 스킨 쓸 맛 나는 이유\n\n"
+        else:
+            text = head + "[사진:협찬]\n\n"
+        text += "통만 바뀌면 완벽한데 말이야\n\n인트로 첫 줄이에요\n둘째 줄이에요"
+        for inplace in (False, True):
+            plan = build_publish_plan(
+                DraftResult(text=text), list(photos),
+                structure_styles=_structure_styles(), inplace=inplace,
+            )
+            drip = next(b for b in plan.blocks if b.text == "통만 바뀌면 완벽한데 말이야")
+            assert drip.emphases and drip.emphases[0].style.font_size == "11", (marker_pos, inplace)
+            big = next(b for b in plan.blocks if "요즘 스킨" in (b.text or ""))
+            assert big.emphases, (marker_pos, inplace)
+            # 협찬 고지 사진은 in-place 경로에서도 '작게'가 붙는다(안 붙어 크기·정렬이 안 되던 버그)
+            spon = next(b for b in plan.blocks if b.kind == "image" and b.image_path == "spon.jpg")
+            assert spon.image_size == "small", (marker_pos, inplace)
+
+
 def test_rep_photo_pulled_under_drip_line():
     # 대표사진(★ 지정, 없으면 첫 비협찬 이미지)은 드립 한 줄 바로 아래로 올라온다
     text = (

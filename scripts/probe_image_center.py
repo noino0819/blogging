@@ -1,6 +1,6 @@
 """협찬 사진 '작게' 후 가운데 정렬이 안 되는 원인 캡처용 1회성 프로브.
 
-_center_last_image 가 쓰는 셀렉터(li.se-toolbar-item-align button →
+_center_image 가 쓰는 셀렉터(li.se-toolbar-item-align button →
 button[data-name="align"][data-value="center"])가 '작게' 배치된 이미지 선택
 상태에서 실제로 존재/보이는지, 정렬 후 se-section-align-center 가 붙는지 라이브
 DOM에서 확인한다. 실패 시 화면에 보이는 정렬 후보 버튼을 전부 덤프한다.
@@ -99,10 +99,10 @@ def main() -> int:
         page.wait_for_timeout(500)
         dump(page, "'작게' 클릭 후")
 
-        print("[probe] _center_last_image() 실행…")
-        ok = pub._center_last_image()
-        print(f"[probe] _center_last_image → {ok}")
-        after = dump(page, "_center_last_image 후")
+        print("[probe] _center_image() 실행…")
+        ok = pub._center_image()
+        print(f"[probe] _center_image → {ok}")
+        after = dump(page, "_center_image 후")
 
         if not after["secClass"].count("se-section-align-center"):
             # 실패 — 정렬 드롭다운을 직접 열어 옵션 전체를 덤프

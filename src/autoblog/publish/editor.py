@@ -2269,7 +2269,13 @@ class BlogPublisher:
         크기·정렬 변경에 실패하면 사람이 읽을 경고 메시지를 반환한다(성공/해당없음=None).
         """
         page = self._page
-        before = len(page.query_selector_all(SMART_EDITOR["editor_image"]))
+        # in-place는 본문 '중간'에 끼워 넣으므로 imgs[-1]이 방금 사진이 아니다 —
+        # 업로드 전 src 목록과 대조해 '새로 생긴' 사진의 인덱스를 찾아 크기·정렬을 건다.
+        before_srcs = page.evaluate(
+            "(sel)=>[...document.querySelectorAll(sel)].map(i=>i.src)",
+            SMART_EDITOR["editor_image"],
+        )
+        before = len(before_srcs)
         with page.expect_file_chooser() as fc_info:
             page.click(SMART_EDITOR["image_upload_button"])
         fc_info.value.set_files(path)
@@ -2290,11 +2296,19 @@ class BlogPublisher:
                 f"사진 자동 삽입이 확인되지 않았어요: ‘{Path(path).name}’ — 파일 형식(webp 등)이나 "
                 "용량 문제일 수 있어요. 발행 전에 본문 사진과 대표사진을 확인해 주세요."
             )
-        if size == "small" and not self._resize_image_smallest():
-            return (
-                "협찬 사진 크기·정렬 자동 변경 실패 — 에디터에서 사진을 선택해 "
-                "‘작게’·가운데 정렬로 직접 바꿔 주세요."
+        if size == "small":
+            new_idx = page.evaluate(
+                "(a)=>{const c={};a.before.forEach(s=>c[s]=(c[s]||0)+1);"
+                "const im=[...document.querySelectorAll(a.sel)].map(i=>i.src);"
+                "for(let k=im.length-1;k>=0;k--){if(c[im[k]]>0)c[im[k]]--;else return k;}"
+                "return im.length-1;}",
+                {"before": before_srcs, "sel": SMART_EDITOR["editor_image"]},
             )
+            if not self._resize_image_smallest(new_idx):
+                return (
+                    "협찬 사진 크기·정렬 자동 변경 실패 — 에디터에서 사진을 선택해 "
+                    "‘작게’·가운데 정렬로 직접 바꿔 주세요."
+                )
         return None
 
     def _insert_video(self, path: str, title: str = "") -> bool:
@@ -2367,8 +2381,8 @@ class BlogPublisher:
         except Exception:
             pass
 
-    def _resize_image_smallest(self) -> bool:
-        """방금 삽입한 본문 사진을 '작게' + 가운데 정렬로 변경. 성공 여부를 반환.
+    def _resize_image_smallest(self, idx: int = -1) -> bool:
+        """idx번째(기본 마지막) 본문 사진을 '작게' + 가운데 정렬로 변경. 성공 여부를 반환.
 
         SE-ONE은 사진을 클릭하면 해당 컴포넌트가 선택(se-is-selected)되고 사진 전용 크기
         툴바가 뜬다. 거기서 '가장 작은' 크기 항목을 누른다. 정확한 셀렉터는 라이브에서
@@ -2384,7 +2398,9 @@ class BlogPublisher:
             imgs = page.query_selector_all(SMART_EDITOR["editor_image"])
             if not imgs:
                 return False
-            imgs[-1].click()  # 마지막(방금 삽입) 사진 선택 → 크기 툴바 노출
+            if not (0 <= idx < len(imgs)):
+                idx = len(imgs) - 1
+            imgs[idx].click()  # 방금 삽입한 사진 선택 → 크기 툴바 노출
             page.wait_for_timeout(300)
             menu_sel = SMART_EDITOR.get("image_size_menu")
             if menu_sel:  # 크기 메뉴를 먼저 펼쳐야 하는 경우
@@ -2392,7 +2408,7 @@ class BlogPublisher:
                 page.wait_for_timeout(200)
             page.click(size_sel, timeout=8000)
             page.wait_for_timeout(300)
-            ok = self._center_last_image()
+            ok = self._center_image(idx)
             # '작게' 버튼 클릭 뒤엔 포커스가 그 툴바 버튼에 남는다. 이 상태로 다음 블록을
             # 타이핑하면 글자가 본문이 아닌 허공으로 들어가 그 블록이 통째로 사라진다.
             # 사진 선택을 풀고 본문 끝에 새 문단을 만들어 커서를 본문으로 되돌린다.
@@ -2403,17 +2419,21 @@ class BlogPublisher:
             self._focus_body_end()
             return False
 
-    def _center_last_image(self) -> bool:
-        """마지막(방금 삽입) 사진 컴포넌트를 가운데 정렬하고 클래스로 검증.
+    def _center_image(self, idx: int = -1) -> bool:
+        """idx번째(기본 마지막) 사진 컴포넌트를 가운데 정렬하고 클래스로 검증.
 
         사진도 구분선·스티커처럼 텍스트 '문단'이 아닌 컴포넌트라 커서 정렬(_apply_align)이
         안 닿는다 — 컴포넌트를 선택해 data-name="align" 옵션을 누르고, 내부 .se-section의
         se-section-align-center 클래스로 실제 적용을 확인한다(_align_divider와 동일)."""
         page = self._page
-        comps = page.query_selector_all(".se-component.se-image")
-        if not comps:
+        imgs = page.query_selector_all(SMART_EDITOR["editor_image"])
+        if not imgs:
             return False
-        comp = comps[-1]
+        if not (0 <= idx < len(imgs)):
+            idx = len(imgs) - 1
+        comp = imgs[idx].evaluate_handle("el=>el.closest('.se-component')").as_element()
+        if comp is None:
+            return False
         for _ in range(3):
             sec = comp.query_selector("[class*='se-section-']")
             if sec and "se-section-align-center" in (sec.get_attribute("class") or ""):
