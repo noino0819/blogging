@@ -1111,8 +1111,6 @@ class BlogPublisher:
                 "어긋날 수 있어요 — 확인해 주세요."
             )
 
-        emphases: list = []
-
         def _insert_one(block):
             if block.kind == "image" and block.image_path:
                 warn = self._insert_image(block.image_path, size=block.image_size)
@@ -1120,7 +1118,6 @@ class BlogPublisher:
                     warnings.append(warn)
             elif block.kind == "text":
                 self._type_text_block(block)
-                emphases.extend(block.emphases)
             elif block.kind == "divider":
                 self._insert_divider(block.variant, align=block.align)
             elif block.kind == "quote":
@@ -1162,7 +1159,13 @@ class BlogPublisher:
             for block in reversed(blks):
                 _anchor_segment(seg_idx)
                 _insert_one(block)
-        # 본문 입력 후 강조 적용(커서 간섭 방지 — 기존 publish와 동일한 후처리 패스)
+        # 본문 입력 후 강조 적용(커서 간섭 방지 — 기존 publish와 동일한 후처리 패스).
+        # 반드시 '플랜(문서) 순서'로 — 삽입은 역순이지만 강조까지 역순(아래→위)으로 걸면,
+        # 직전 선택 위에 뜬 SE 플로팅 서식 툴바가 바로 윗줄(다음 대상)을 덮어 드래그 선택이
+        # 막히고, 서식이 여전히 선택돼 있는 아랫줄에 덮인다(대제목 서식이 드립 줄에 가던
+        # 실측 원인 — scripts/probe_inplace_header_style.py). 위→아래로 걸면 툴바는 항상
+        # 이미 처리한 윗줄만 덮는다.
+        emphases = [s for b in plan.blocks if b.kind == "text" for s in b.emphases]
         for span in emphases:
             try:
                 self._apply_emphasis(span.text, span.style)

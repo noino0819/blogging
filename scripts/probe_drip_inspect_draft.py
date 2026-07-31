@@ -3,7 +3,8 @@
 유저 보고(드립 줄 서식 미적용)의 실물 확인: 임시저장 목록 상위 몇 개를 열어
 본문 앞쪽 텍스트 문단들의 클래스(se-ff-*, se-fs*)와 색을 덤프한다.
 
-실행: .venv/bin/python scripts/probe_drip_inspect_draft.py [개수=2]
+실행: .venv/bin/python scripts/probe_drip_inspect_draft.py [개수=2 | 제목키워드...]
+(숫자면 최근 N개, 아니면 제목에 키워드가 포함된 글만 검사 — 예: 속초 보정동)
 """
 
 from __future__ import annotations
@@ -46,24 +47,34 @@ _HEAD_JS = r"""
 
 
 def main() -> int:
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 2
+    args = sys.argv[1:]
+    keywords = [a for a in args if not a.isdigit()]
+    n = int(args[0]) if args and args[0].isdigit() else 2
     pub = BlogPublisher().start()
     try:
         if not pub.is_logged_in():
             print("[probe] 로그인 세션 없음 — 중단.")
             return 1
         page = pub._page
-        for k in range(n):
-            pub.open_write_page()
-            pub._open_draft_list()
-            items = pub._read_draft_items()
-            if k == 0:
-                print("[probe] 임시저장 목록:")
-                for it in items[:8]:
-                    print("   ", it.get("idx"), (it.get("title") or "")[:40], it.get("date"))
-            if k >= len(items):
-                break
+        pub.open_write_page()
+        pub._open_draft_list()
+        items = pub._read_draft_items()
+        print("[probe] 임시저장 목록:")
+        for it in items[:10]:
+            print("   ", it.get("idx"), (it.get("title") or "")[:40], it.get("date"))
+        if keywords:  # 제목 키워드 일치 글만
+            targets = [i for i, it in enumerate(items)
+                       if any(kw in (it.get("title") or "") for kw in keywords)]
+        else:
+            targets = list(range(min(n, len(items))))
+        for j, k in enumerate(targets):
+            if j > 0:  # 첫 글은 이미 목록이 열려 있음
+                pub.open_write_page()
+                pub._open_draft_list()
+                items = pub._read_draft_items()
             buttons = page.query_selector_all(SMART_EDITOR["draft_item_button"])
+            if k >= len(buttons):
+                break
             buttons[k].click()
             page.wait_for_timeout(1500)
             conf = page.query_selector(SMART_EDITOR["draft_load_confirm"])
@@ -73,6 +84,7 @@ def main() -> int:
             print(f"\n===== 글 #{k}: {(items[k].get('title') or '')[:40]} =====")
             for row in page.evaluate(_HEAD_JS):
                 print("   ", row)
+            sys.stdout.flush()
         print("\n[probe] 읽기 전용 종료(저장 안 함).")
         return 0
     finally:
