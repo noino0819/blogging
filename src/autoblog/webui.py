@@ -423,6 +423,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .doc .q-corner::after{right:34px;bottom:0;border-left:0;border-top:0}
  .doc img.st{width:148px;height:148px;object-fit:contain;display:block;margin:10px auto}
  .doc .ph{background:#eef6ff;border:1px dashed #9ec5ff;border-radius:10px;padding:14px;color:#2f6fd6;font-size:13px;margin:10px 0}
+ .doc .pvph{margin:14px 0;text-align:center}
+ .doc .pvph img{max-width:100%;border-radius:10px;background:#f0f0f0;min-height:60px}
+ .doc .pvph figcaption{font-size:12px;color:var(--sub);margin-top:4px}
+ .pvimgtg{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--sub);cursor:pointer;white-space:nowrap}
  em.hl{font-style:normal;border-radius:3px;padding:1px 3px}
  /* sticker / settings */
  .stgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:12px;margin-bottom:8px}
@@ -803,6 +807,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
               <div class=muted id=catstat style="margin-top:6px"></div>
             </div>
           </div>
+          <label class=pvimgtg title="켜면 미리보기에 사진이 실제로 보여요"><input type=checkbox id=pvimg checked> 사진 보기</label>
           <select id=pubmode class=pubmode title="발행 방식 — 예약발행은 시간차를 둬 연속 도배를 막아요">
             <option value=draft selected>임시저장만</option>
             <option value=reserve>예약발행(시간차)</option>
@@ -2426,7 +2431,9 @@ function renderPreview(d){
     else if(b.kind==='quote'){const qc={1:'q-quote',2:'q-line',3:'q-bubble',4:'q-underline',5:'q-postit',6:'q-corner'}[b.variant]||'q-quote';
       h+=`<div class="q ${qc}" style="${alignStyle(b)}">${esc(b.text)}</div>`;}
     else if(b.kind==='sticker')h+=`<img class=st src="/img?ref=${encodeURIComponent(b.sticker_ref)}">`;
-    else if(b.kind==='image')h+=`<div class=ph>🖼 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
+    else if(b.kind==='image')h+=PVIMG
+      ?`<figure class=pvph><img loading=lazy src="/photo?path=${encodeURIComponent(b.image_path)}"><figcaption>🖼 ${esc(b.image_label)}</figcaption></figure>`
+      :`<div class=ph>🖼 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
     else if(b.kind==='video')h+=`<div class=ph>🎬 동영상 ${esc(b.image_label)} <small>${esc(b.image_path)}</small></div>`;
     else if(b.kind==='link')h+=`<div class=ph>🔗 링크 카드 <small>${esc(b.link_url)}</small></div>`;
     else if(b.kind==='place')h+=`<div class=ph>📍 지도(장소) <small>${esc(b.text)}</small></div>`;
@@ -2437,6 +2444,10 @@ function renderPreview(d){
 // 발행 태그 직접 수정: 입력값 → PLAN.tags(발행 요청에 실어 서버 플랜에 덮어씀).
 // setAttribute로 value '속성'도 갱신 — 탭 전환은 innerHTML 스냅샷이라 속성에 남아야 복원된다.
 function parseTags(v){const out=[];for(const t of v.split(/[#,\s]+/)){const c=t.trim();if(c&&!out.includes(c))out.push(c);}return out.slice(0,30);} // ponytail: 네이버 태그칸 상한 30개
+// 미리보기 사진 표시 온오프 — 기본 켬, 전 탭 공통(localStorage). 끄면 경로 플레이스홀더로.
+let PVIMG=localStorage.getItem('pvimg')!=='0';
+$('#pvimg').checked=PVIMG;
+$('#pvimg').onchange=e=>{PVIMG=e.target.checked;localStorage.setItem('pvimg',PVIMG?'1':'0');if(PLAN)renderPreview(PLAN);};
 $('#preview').addEventListener('input',e=>{
   if(e.target.id!=='tagedit')return;
   e.target.setAttribute('value',e.target.value);
