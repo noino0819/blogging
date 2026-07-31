@@ -898,32 +898,47 @@ class BlogPublisher:
         텍스트 편집 모드로 들어가 Delete가 글자만 지우고 객체는 남는다(2026-07 실측: 모서리
         클릭은 5종 전부 객체 선택→Delete 삭제 성공). 삭제가 실제로 됐는지 매번 개수로 검증하고,
         안 지워지는 컴포넌트는 건너뛰고 다음 것을 계속 지운다 — 첫 실패에서 멈추면 그 뒤 장식이
-        전부 살아남아 유령 중복이 된다(우이락 글 실측)."""
+        전부 살아남아 유령 중복이 된다(우이락 글 실측).
+
+        사진 많은 글은 이미지 lazy-load로 레이아웃이 밀리며 클릭이 빗나가 멀쩡한 컴포넌트도
+        건너뛰어질 수 있다(우이락 재저장 실측: 스티커·지도만 잔존). 시작 전에 이미지를 전부
+        강제 로드해 레이아웃을 안정시키고, 그래도 건너뛴 게 있으면 패스를 다시 돌아 재시도한다
+        (한 패스 동안 진전이 없으면 종료)."""
         page = self._page
+        try:  # 레이아웃 안정화 — 실패해도 삭제 자체는 진행
+            page.evaluate(self._FORCE_LOAD_IMGS_JS)
+        except Exception:  # noqa: BLE001
+            pass
         removed = 0
-        skipped = 0  # 삭제가 안 먹혀 문서에 남은 컴포넌트 수 — 다음 대상 탐색 시 건너뛴다
-        for _ in range(80):  # 안전 상한(무한루프 방지)
-            info = page.evaluate(self._REMOVABLE_COMP_JS, skipped)
-            count, idx = info["count"], info["idx"]
-            if idx < 0:
-                break  # 건너뛴 것 말고는 제거 대상 없음
-            comps = page.query_selector_all(".se-component")
-            if idx >= len(comps):
-                break
-            try:
-                comps[idx].scroll_into_view_if_needed()
-                comps[idx].click(position={"x": 4, "y": 4})  # 모서리 클릭 = 객체 선택
-                page.wait_for_timeout(200)
-                page.keyboard.press("Delete")
-                page.wait_for_timeout(300)
-            except Exception:  # noqa: BLE001 - 한 컴포넌트 삭제 실패가 전체를 막지 않게
-                page.keyboard.press("Escape")
-                skipped += 1
-                continue
-            if page.evaluate(self._REMOVABLE_COMP_JS, 0)["count"] < count:
-                removed += 1
-            else:
-                skipped += 1  # 이 컴포넌트는 이 방식으로 안 지워짐 — 다음 것으로
+        skipped = 0
+        for _pass in range(3):  # 건너뛴 컴포넌트 재시도 패스(레이아웃 이동으로 빗나간 클릭 회복)
+            skipped = 0  # 이번 패스에서 삭제가 안 먹혀 문서에 남은 컴포넌트 수(탐색 커서)
+            progressed = False
+            for _ in range(80):  # 안전 상한(무한루프 방지)
+                info = page.evaluate(self._REMOVABLE_COMP_JS, skipped)
+                count, idx = info["count"], info["idx"]
+                if idx < 0:
+                    break  # 건너뛴 것 말고는 제거 대상 없음
+                comps = page.query_selector_all(".se-component")
+                if idx >= len(comps):
+                    break
+                try:
+                    comps[idx].scroll_into_view_if_needed()
+                    comps[idx].click(position={"x": 4, "y": 4})  # 모서리 클릭 = 객체 선택
+                    page.wait_for_timeout(200)
+                    page.keyboard.press("Delete")
+                    page.wait_for_timeout(300)
+                except Exception:  # noqa: BLE001 - 한 컴포넌트 삭제 실패가 전체를 막지 않게
+                    page.keyboard.press("Escape")
+                    skipped += 1
+                    continue
+                if page.evaluate(self._REMOVABLE_COMP_JS, 0)["count"] < count:
+                    removed += 1
+                    progressed = True
+                else:
+                    skipped += 1  # 이 컴포넌트는 이번엔 안 지워짐 — 다음 것으로(다음 패스에서 재시도)
+            if skipped == 0 or not progressed:
+                break  # 다 지웠거나, 한 바퀴 내내 진전 없음(더 돌아도 소용없음)
         return removed, skipped
 
     # 아직 '내용이 있는' 첫 본문 텍스트 컴포넌트의 인덱스와, 내용 있는 텍스트 컴포넌트 총수를
