@@ -956,6 +956,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 </main>
 <script src="/asset?name=lottie.min.js"></script>
 <script>
+// 프런트 JS 에러를 서버 로그(ui.log)에 남긴다 — '하얗게 뜸' 같은 화면 깨짐이 재발했을 때
+// 유저 브라우저 콘솔을 못 보는 상태에서도 원인(스택)을 사후 추적할 수 있게.
+addEventListener('error',e=>{try{navigator.sendBeacon('/api/client-error',
+  (e.message||'')+' @'+(e.filename||'').split('/').pop()+':'+e.lineno+'\n'+(e.error&&e.error.stack||''));}catch(_){}});
+addEventListener('unhandledrejection',e=>{try{navigator.sendBeacon('/api/client-error',
+  'unhandled: '+(e.reason&&(e.reason.stack||e.reason.message)||e.reason));}catch(_){}});
 // fetch 래퍼: 네트워크 단절(서버 꺼짐/재시작)을 'TypeError: Failed to fetch' 대신 친절한 메시지로
 const _fetch=window.fetch.bind(window);
 window.fetch=async(...a)=>{try{return await _fetch(...a);}
@@ -3650,6 +3656,12 @@ def _make_handler(state: dict):
                     paths = self._json_body().get("paths") or []
                     missing = [p for p in paths if isinstance(p, str) and not _safe_photo(p)]
                     self._send(200, json.dumps({"missing": missing}).encode())
+                elif path == "/api/client-error":
+                    # 프런트 JS 에러 수신(sendBeacon, text/plain) → ui.log에 스택까지 남긴다.
+                    length = int(self.headers.get("Content-Length", 0))
+                    msg = self.rfile.read(length).decode("utf-8", "replace")[:4000]
+                    print(f"[webui] 프런트 에러: {msg}", flush=True)
+                    self._send(200, b"{}")
                 elif path == "/api/favorite":
                     body = self._json_body()
                     n = _toggle_favorite(body.get("ref", ""), bool(body.get("on")))
