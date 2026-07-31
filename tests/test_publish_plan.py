@@ -372,24 +372,23 @@ def test_drip_line_styled_without_tag_line():
     assert plan3.blocks[idx2 + 1].kind == "divider"
 
 
-def test_drip_after_tag_line_still_styled():
-    # 모델이 태그줄을 드립보다 먼저 쓴 이탈(와인따개 실측) — 태그줄을 빈 줄 취급해
-    # 그 아래 짧은 한 줄 문단도 드립으로 잡는다(본문으로 새지 않게).
+def test_short_intro_after_tag_line_stays_body():
+    # 드립 없이 '대제목→태그줄→짧은 인트로'로 쓴 초안(우이락 실측) — 태그줄을 빈 줄
+    # 취급하면 인트로 첫 줄이 가짜 드립(작은 파란 글씨)으로 잡히는 회귀가 났다.
+    # 태그줄은 헤더 경계: 그 뒤 짧은 문단은 본문으로 남아야 한다.
     draft = DraftResult(
         text=(
-            "한강 와인 신발 따개 후기\n"
-            "신발은 이제 제 와인따개입니다\n\n"
-            "#한강피크닉 #와인오프너 #생존스킬\n\n"
-            "한강에서 터득한 생존 스킬\n\n"
-            "인트로 첫 줄이에요\n이어지는 둘째 줄이에요"
+            "우이락 수지구청점 두부과자 후기\n"
+            "한 번 사면 순삭되는 그 과자\n\n"
+            "#우이락 #수지구청간식 #두부과자\n\n"
+            "지나가다 우연히 들렀는데요\n\n"
+            "본문 문단입니다 이어집니다"
         )
     )
     plan = build_publish_plan(draft, structure_styles=_structure_styles())
-    assert plan.tags == ["한강피크닉", "와인오프너", "생존스킬"]
-    drip = next(b for b in plan.blocks if b.text == "한강에서 터득한 생존 스킬")
-    assert len(drip.emphases) == 1
-    assert drip.emphases[0].style.font_size == "11"
-    assert drip.emphases[0].style.text_color == "#4383BF"
+    assert plan.tags == ["우이락", "수지구청간식", "두부과자"]
+    intro = next(b for b in plan.blocks if "지나가다 우연히" in b.text)
+    assert intro.emphases == []  # 드립 서식(11pt 파랑)이 붙으면 안 된다
 
     # 대제목 아래 2줄 문단이 글의 전부면(뒤에 본문 없음) 드립이 아니라 본문 — 오적용 방지
     no_drip = DraftResult(
