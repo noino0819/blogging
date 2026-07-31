@@ -390,6 +390,23 @@ def test_short_intro_after_tag_line_stays_body():
     intro = next(b for b in plan.blocks if "지나가다 우연히" in b.text)
     assert intro.emphases == []  # 드립 서식(11pt 파랑)이 붙으면 안 된다
 
+
+def test_tag_line_above_big_title_keeps_title_style():
+    # 모델이 태그줄을 대제목보다 위에 쓴 이탈 — 태그줄은 렌더되지 않으니 '본문 시작'이
+    # 아니고, 그 아래 첫 짧은 줄은 여전히 대제목 서식을 받아야 한다.
+    draft = DraftResult(
+        text=(
+            "우이락 수지구청점 두부과자 후기\n"
+            "#우이락 #수지구청간식 #두부과자\n\n"
+            "한 번 사면 순삭되는 그 과자\n\n"
+            "본문 문단입니다 이어집니다"
+        )
+    )
+    plan = build_publish_plan(draft, structure_styles=_structure_styles())
+    assert plan.tags == ["우이락", "수지구청간식", "두부과자"]
+    big = next(b for b in plan.blocks if "순삭되는" in b.text)
+    assert {sp.style.font_size for sp in big.emphases} == {"30"}
+
     # 대제목 아래 2줄 문단이 글의 전부면(뒤에 본문 없음) 드립이 아니라 본문 — 오적용 방지
     no_drip = DraftResult(
         text=(

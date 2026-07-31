@@ -770,6 +770,9 @@ def build_publish_plan(
             if _is_hashtag_line(s) and all(t.startswith("#") for t in toks[1:]):
                 flush_text()
                 consume_tag_line(s)
+                # 태그줄은 본문에 렌더되지 않으니 '본문 시작'으로 치지 않는다 — 모델이
+                # 태그줄을 대제목보다 위에 쓰면 대제목이 본문 크기로 새던 문제.
+                continue
             elif (
                 drip_idxs
                 and li == drip_idxs[0]
