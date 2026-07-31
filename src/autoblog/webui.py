@@ -2145,8 +2145,7 @@ function openSwapModal(){
   const dl=$('#tsdl'); dl.href='/photo?path='+encodeURIComponent(src)+'&full=1';
   dl.download=src.split(/[\\/]/).pop()||'원본사진';
   $('#tsmodal').style.display='flex';
-  thumbPrompt().then(p=>{ if(p)navigator.clipboard.writeText(p)
-    .then(()=>toast('프롬프트를 자동 복사했어요 — 외부 모델에 사진과 함께 붙여넣으세요.','ok')).catch(()=>{}); });
+  thumbPrompt();  // 캐시만 미리 채움 — 자동 복사하면 [사진 복사]와 클립보드가 충돌해서 제거
 }
 function closeTS(){ $('#tsmodal').style.display='none'; }
 function swapThumbFile(){
@@ -3298,15 +3297,16 @@ $('#tscopypr').onclick=async()=>{ const p=await thumbPrompt();
   if(!p){toast('프롬프트 템플릿(config/prompts/thumbnail_copy.md)을 못 읽었어요.','info');return;}
   try{await navigator.clipboard.writeText(p); toast('프롬프트를 복사했어요 — 사진과 함께 붙여넣으세요.','ok');}
   catch(e){ prompt('아래 프롬프트를 복사하세요 (Ctrl/Cmd+C):', p); } };
-$('#tscopyimg').onclick=async()=>{  // 원본을 PNG로 변환해 클립보드에 — 외부 모델 입력창에 바로 붙여넣기용
-  try{
-    const bm=await createImageBitmap(await (await fetch($('#tsdl').href)).blob());
+$('#tscopyimg').onclick=()=>{  // 원본을 PNG로 변환해 클립보드에 — 외부 모델 입력창에 바로 붙여넣기용
+  // ClipboardItem에 Promise를 동기로 넘겨야 함 — await 후 write하면 Safari가 클릭 제스처 소멸로 거부
+  const blobP=fetch($('#tsdl').href).then(r=>r.blob()).then(createImageBitmap).then(bm=>{
     const c=document.createElement('canvas'); c.width=bm.width; c.height=bm.height;
     c.getContext('2d').drawImage(bm,0,0);
-    const blob=await new Promise(r=>c.toBlob(r,'image/png'));
-    await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
-    toast('원본사진을 복사했어요 — 외부 모델 입력창에 붙여넣으세요.','ok');
-  }catch(e){toast('이 브라우저에선 사진 복사가 안 돼요 — ⬇ 사진 저장을 이용하세요.','info');} };
+    return new Promise(r=>c.toBlob(r,'image/png'));
+  });
+  navigator.clipboard.write([new ClipboardItem({'image/png':blobP})])
+    .then(()=>toast('원본사진을 복사했어요 — 외부 모델 입력창에 붙여넣으세요.','ok'))
+    .catch(e=>toast('사진 복사 실패('+(e&&e.name||e)+') — ⬇ 사진 저장을 이용하세요.','info')); };
 $('#tgmodal').onclick=e=>{ if(e.target===$('#tgmodal'))closeTG(); };
 $('#tgok').onclick=()=>{ const t=$('#tgtitle').value.trim(), ex=$('#tgextra').value.trim(); closeTG(); runThumbGen(t,ex); };
 $('#aix').onclick=closeAI; $('#aicancel').onclick=closeAI;
