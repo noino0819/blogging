@@ -354,7 +354,7 @@ def test_drip_line_styled_without_tag_line():
     assert plan.tags == []
 
     # 대제목 아래 짧은 2줄 문단도 드립 — 모델이 '한 줄 한 절' 습관으로 드립을 두 줄로
-    # 쪼개 쓴 실측 사례(리스타일). 줄마다 서식 span이 붙고 뒤에 헤더 구분선이 온다.
+    # 쪼개 쓴 실측 사례(리스타일). 작은 글씨라 줄 나눌 이유가 없어 한 줄로 합쳐진다.
     two_line = DraftResult(
         text=(
             "다이소 공병 펌프 스프레이 차이 후기\n"
@@ -365,11 +365,31 @@ def test_drip_line_styled_without_tag_line():
     )
     plan3 = build_publish_plan(two_line, structure_styles=_structure_styles())
     drip2 = next(b for b in plan3.blocks if "통만 바뀌면" in b.text)
-    assert drip2.text == "내가 쓰는 스킨.. 통만 바뀌면\n완벽할 것 같지 않을까 ..,?"
-    assert len(drip2.emphases) == 2  # 줄마다 span — \n 넘는 span은 드래그 선택 실패
-    assert all(sp.style.font_size == "11" for sp in drip2.emphases)
+    assert drip2.text == "내가 쓰는 스킨.. 통만 바뀌면 완벽할 것 같지 않을까 ..,?"
+    assert len(drip2.emphases) == 1
+    assert drip2.emphases[0].style.font_size == "11"
     idx2 = plan3.blocks.index(drip2)
     assert plan3.blocks[idx2 + 1].kind == "divider"
+
+
+def test_drip_after_tag_line_still_styled():
+    # 모델이 태그줄을 드립보다 먼저 쓴 이탈(와인따개 실측) — 태그줄을 빈 줄 취급해
+    # 그 아래 짧은 한 줄 문단도 드립으로 잡는다(본문으로 새지 않게).
+    draft = DraftResult(
+        text=(
+            "한강 와인 신발 따개 후기\n"
+            "신발은 이제 제 와인따개입니다\n\n"
+            "#한강피크닉 #와인오프너 #생존스킬\n\n"
+            "한강에서 터득한 생존 스킬\n\n"
+            "인트로 첫 줄이에요\n이어지는 둘째 줄이에요"
+        )
+    )
+    plan = build_publish_plan(draft, structure_styles=_structure_styles())
+    assert plan.tags == ["한강피크닉", "와인오프너", "생존스킬"]
+    drip = next(b for b in plan.blocks if b.text == "한강에서 터득한 생존 스킬")
+    assert len(drip.emphases) == 1
+    assert drip.emphases[0].style.font_size == "11"
+    assert drip.emphases[0].style.text_color == "#4383BF"
 
     # 대제목 아래 2줄 문단이 글의 전부면(뒤에 본문 없음) 드립이 아니라 본문 — 오적용 방지
     no_drip = DraftResult(

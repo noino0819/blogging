@@ -277,10 +277,13 @@ def _find_drip_lines(lines: list[str]) -> list[int]:
     모델이 '한 줄 한 절' 습관으로 드립을 두 줄로 쪼개 쓰는 경우가 실제로 있어
     (리스타일 실측) 2줄짜리 문단까지 드립으로 본다. 3줄 이상은 본문 인트로.
 
-    마커 줄([사진:협찬] 등)은 빈 줄 취급 — 협찬 마커가 헤더 위/사이에 끼면
-    드립 감지가 통째로 꺼져 해시태그 서식이 사라지던 실측 버그.
+    마커 줄([사진:협찬] 등)과 태그줄은 빈 줄 취급 — 협찬 마커가 헤더 위/사이에 끼면
+    드립 감지가 통째로 꺼져 해시태그 서식이 사라지던 실측 버그. 태그줄 취급은 모델이
+    태그줄을 드립보다 먼저 쓴 이탈(와인따개 실측)에서 드립이 본문으로 새는 것 방지.
     """
-    lines = ["" if ln.strip().startswith("[") else ln for ln in lines]
+    lines = [
+        "" if ln.strip().startswith("[") or _is_hashtag_line(ln) else ln for ln in lines
+    ]
     idx = [i for i, ln in enumerate(lines) if ln.strip()]
     if len(idx) < 2:
         return []
@@ -585,14 +588,21 @@ def build_publish_plan(
             return
         # 드립 한 줄(태그줄 바로 위, 대제목 바로 아래) — 예전 해시태그 줄의 서식(작은
         # 파란 글씨·가운데)을 그대로 입힌다. 태그줄이 헤더 밖(본문 뒤)에 온 경우를
-        # 걸러내려고 '직전 블록이 대제목(헤더)'일 때만 적용한다.
+        # 걸러내려고 '직전 텍스트 블록이 대제목(헤더)'일 때만 적용한다. 사이에 낀
+        # 마커 블록(협찬 사진 등)은 무시한다(드립 경로와 동일).
         drip = blocks[-1] if blocks and blocks[-1].kind == "text" else None
-        if drip is not None and len(blocks) >= 2 and id(blocks[-2]) in header_ids:
+        prev_is_header = next(
+            (id(b) in header_ids for b in blocks[:-1][::-1] if b.kind == "text"), False
+        )
+        if drip is not None and prev_is_header:
             st = structure_styles.hashtags
             drip.align = st.align or drip.align
+            drip_lines = [ln.strip() for ln in drip.text.split("\n") if ln.strip()]
+            if len(drip_lines) == 2:  # 두 줄 드립은 한 줄로 — 작은 글씨라 줄 나눌 이유 없음
+                drip_lines = [" ".join(drip_lines)]
+                drip.text = drip_lines[0]
             drip.emphases = [
-                StyledSpan(text=ln, preset_id=None, style=st.to_style())
-                for ln in drip.text.split("\n") if ln.strip()
+                StyledSpan(text=ln, preset_id=None, style=st.to_style()) for ln in drip_lines
             ]
             drip_ids.add(id(drip))
         prev_is_divider = bool(blocks) and blocks[-1].kind == "divider"
@@ -603,17 +613,13 @@ def build_publish_plan(
     def emit_drip_block(s: str):
         """드립 한 줄(대제목 아래) — 태그줄이 없어도 예전 해시태그 줄 서식(작은 파란 글씨·
         가운데)과 헤더 구분선을 입힌다(리스타일 등). 뒤에 태그줄이 오면 consume_tag_line은
-        직전 블록이 구분선이라 스타일·구분선을 중복 적용하지 않는다."""
+        직전 블록이 구분선이라 스타일·구분선을 중복 적용하지 않는다. 모델이 두 줄로 쪼갠
+        드립도 호출부에서 한 줄로 합쳐 들어온다(작은 글씨라 줄 나눌 이유 없음)."""
         st = structure_styles.hashtags
-        # 두 줄짜리 드립도 줄마다 span을 나눈다 — \n을 넘는 span은 실행기의 드래그
-        # 선택이 문단 경계에서 실패한다(consume_tag_line 경로와 동일한 처리).
         blocks.append(
             PublishBlock(
                 kind="text", text=s, align=st.align or "center",
-                emphases=[
-                    StyledSpan(text=ln, preset_id=None, style=st.to_style())
-                    for ln in s.split("\n") if ln.strip()
-                ],
+                emphases=[StyledSpan(text=s, preset_id=None, style=st.to_style())],
             )
         )
         header_ids.add(id(blocks[-1]))
@@ -774,7 +780,7 @@ def build_publish_plan(
                 # 마지막 '텍스트' 블록이 대제목(헤더)일 때만 — 대제목이 서식으로 안 잡힌
                 # 초안에선 본문 취급. 사이에 낀 마커 블록(협찬 사진 등)은 무시한다.
                 flush_text()
-                emit_drip_block("\n".join(body_lines[i].strip() for i in drip_idxs))
+                emit_drip_block(" ".join(body_lines[i].strip() for i in drip_idxs))
                 drip_emitted = True
             elif drip_emitted and li in drip_idxs[1:]:
                 pass  # 드립 둘째 줄 — 위에서 드립 블록에 이미 포함(미발동 시엔 본문으로)
