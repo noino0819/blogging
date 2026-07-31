@@ -358,6 +358,37 @@ class PublishPlan(BaseModel):
     rep_image_path: str | None = None
 
 
+def apply_photo_meta_overrides(plan: PublishPlan, photo_meta: dict) -> None:
+    """발행 시점의 ★ 대표·AI 표시 변경을 이미 굳어 있는 플랜에 덧반영한다(제자리 수정).
+
+    플랜은 글감 생성(또는 '받아온 글 가져오기') 시점에 서버에 굳는데, 🎨 AI 썸네일 적용과
+    🔁 사진 대체는 그 '뒤'에 일어나는 게 흔하다(외부 모델에 다녀오는 동안 순서가 뒤집힘).
+    그대로 발행하면 새 이미지는 본문에 안 들어가고 대표도 옛 사진으로 지정된다. 그래서
+    발행 요청에 실려 온 현재 사진 메타로 ① AI 표시 플래그 갱신, ② ★ 사진이 플랜에 없으면
+    첫 이미지 자리에 삽입, ③ 대표 지정 경로 교체를 수행한다.
+    """
+    meta = photo_meta or {}
+    ai = {p for p, m in meta.items() if isinstance(m, dict) and m.get("ai_generated")}
+    for b in plan.blocks:
+        if b.kind == "image" and b.image_path in ai:
+            b.ai_generated = True
+    thumb = next(
+        (p for p, m in meta.items() if isinstance(m, dict) and m.get("thumbnail")), None
+    )
+    if not thumb:
+        return  # ★ 해제만 한 경우는 건드리지 않는다(대표=첫 이미지, 네이버 기본과 동일)
+    if all(b.image_path != thumb for b in plan.blocks if b.kind == "image"):
+        # ponytail: 드립 줄 아래가 아니라 '첫 이미지 자리'에 삽입 — 대표 지정은 어차피
+        # rep_image_path로 명시 클릭이라 정확하고, 위치까지 맞추려면 드립 앵커 재계산이 필요
+        first = next(
+            (i for i, b in enumerate(plan.blocks) if b.kind == "image"), len(plan.blocks)
+        )
+        plan.blocks.insert(
+            first, PublishBlock(kind="image", image_path=thumb, ai_generated=thumb in ai)
+        )
+    plan.rep_image_path = thumb
+
+
 _MEDIA_KINDS = ("image", "video")
 
 

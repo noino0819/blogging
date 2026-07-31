@@ -683,3 +683,26 @@ def test_structure_instruction_pins_recipe_to_postit():
     # 포스트잇만 고른 경우엔 번호 없는 마커가 곧 포스트잇
     only = build_structure_instruction(quote_keys=["quotation_postit"])
     assert "레시피" in only and "[인용구:5]" not in only
+
+
+def test_apply_photo_meta_overrides_late_thumb_swap():
+    # 플랜 생성 '뒤' AI 썸네일 적용·사진 대체 — 새 이미지 삽입 + 대표 교체 + AI 표시
+    from autoblog.publish.plan import apply_photo_meta_overrides
+
+    draft = DraftResult(text="제목\n\n인트로.\n[사진]\n본문.")
+    plan = build_publish_plan(draft, [PhotoItem(path="old.jpg", label="음식")])
+    assert plan.rep_image_path == "old.jpg"
+
+    apply_photo_meta_overrides(plan, {"ai.png": {"thumbnail": True, "ai_generated": True}})
+    imgs = [b for b in plan.blocks if b.kind == "image"]
+    assert imgs[0].image_path == "ai.png" and imgs[0].ai_generated
+    assert plan.rep_image_path == "ai.png"
+
+    # 같은 메타로 재발행(재시도) — 중복 삽입 없음
+    apply_photo_meta_overrides(plan, {"ai.png": {"thumbnail": True, "ai_generated": True}})
+    assert sum(1 for b in plan.blocks if b.image_path == "ai.png") == 1
+
+    # 이미 플랜에 있는 사진에 ★만 옮긴 경우 — 삽입 없이 대표만 교체
+    apply_photo_meta_overrides(plan, {"old.jpg": {"thumbnail": True}})
+    assert plan.rep_image_path == "old.jpg"
+    assert sum(1 for b in plan.blocks if b.image_path == "old.jpg") == 1

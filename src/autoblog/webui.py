@@ -2570,7 +2570,9 @@ function fireSave(title, category){
     if(reserveAt) localStorage.setItem('lastReservedAt', String(new Date(reserveAt).getTime()));
   }
   const r=SAVES[id]={id,title,el:makeSaveTab(id,title),timer:null,serverId:null,reserved:!!reserveAt,
-    body:{category,inplace,inplaceDraft,draftId:CURWS,reserveAt}};  // draftId=지금 탭 → 서버가 '그 탭 글'을 저장
+    // draftId=지금 탭 → 서버가 '그 탭 글'을 저장. photoMeta=지금 시점 ★ 대표·AI 표시 —
+    // 플랜 생성 뒤 AI 썸네일 적용·사진 대체를 해도 발행에 반영되게 서버가 플랜에 덧입힌다.
+    body:{category,inplace,inplaceDraft,draftId:CURWS,reserveAt,photoMeta:photoMetaForSel()}};
   runSave(r, null);
 }
 $('#save').onclick=()=>{
@@ -4197,6 +4199,13 @@ def _make_handler(state: dict):
                             {"error": "예약 시각은 미래여야 해요"}, ensure_ascii=False
                         ).encode())
                         return
+                # 플랜 생성 '뒤'에 바뀐 ★ 대표·AI 표시(AI 썸네일 적용·사진 대체)를 굳은 플랜에
+                # 덧반영 — 안 하면 새 이미지가 본문에 안 들어가고 대표도 옛 사진으로 지정된다.
+                photo_meta = body.get("photoMeta")
+                if isinstance(photo_meta, dict) and photo_meta:
+                    from autoblog.publish.plan import apply_photo_meta_overrides
+
+                    apply_photo_meta_overrides(result.plan, photo_meta)
                 # 이 글의 저장 옵션·플랜을 작업id로 스냅샷해 둔다 — 실패 시 재시도(retryJob)가 참조한다.
                 job_id = _uuid.uuid4().hex[:12]
                 jobs[job_id] = {
