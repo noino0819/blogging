@@ -2349,26 +2349,28 @@ function expLoading(on){
 function expStage(msg){if(msg)typeText($('#pmsg'), msg);}
 $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
-  $('#export').disabled=true; expLoading(true);
+  $('#export').disabled=true; st('프롬프트를 만드는 중…',true);
   try{
     const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES,
       restyle:$('#restyleMode').checked,  // 켜면 export도 restyle.md 사용(원문 표·나열 보존)
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 [영상] 순서 고정 지시를 프롬프트에 포함
     const r=await fetch('/api/export-prompt',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-    if(!r.body){closePM(); toast('프롬프트 생성 실패','err');return;}
+    if(!r.body){st(''); toast('프롬프트 생성 실패','err');return;}
     // NDJSON 스트림: {stage} 단계 갱신, 마지막에 {prompt} 또는 {error}
     const reader=r.body.getReader(), dec=new TextDecoder(); let buf='', prompt=null, err=null;
     for(;;){const {value,done}=await reader.read();
       if(value){buf+=dec.decode(value,{stream:true}); let nl;
         while((nl=buf.indexOf('\n'))>=0){const line=buf.slice(0,nl).trim(); buf=buf.slice(nl+1);
           if(!line)continue; let ev; try{ev=JSON.parse(line);}catch(_){continue;}
-          if(ev.stage)expStage(ev.stage); if(ev.prompt!=null)prompt=ev.prompt; if(ev.error)err=ev.error;}}
+          if(ev.stage)st(ev.stage,true); if(ev.prompt!=null)prompt=ev.prompt; if(ev.error)err=ev.error;}}
       if(done)break;}
-    if(err){closePM(); errNotice('프롬프트 생성 실패', err);return;}
-    if(prompt==null){closePM(); toast('프롬프트 생성 실패','err');return;}
-    $('#ptext').value=prompt; expLoading(false);
-  }catch(e){closePM(); toast('프롬프트 오류: '+e,'err');}finally{$('#export').disabled=false;}
+    if(err){st(''); errNotice('프롬프트 생성 실패', err);return;}
+    if(prompt==null){st(''); toast('프롬프트 생성 실패','err');return;}
+    // 모달 없이 바로 클립보드로. 브라우저가 클립보드를 막은 경우에만 기존 모달로 폴백.
+    try{await navigator.clipboard.writeText(prompt); st('프롬프트를 복사했어요.'); toast('프롬프트를 복사했어요! 다른 챗봇에 붙여넣으세요.','ok');}
+    catch(_){$('#ptext').value=prompt; expLoading(false); $('#pmodal').style.display='flex'; st('');}
+  }catch(e){st(''); toast('프롬프트 오류: '+e,'err');}finally{$('#export').disabled=false;}
 };
 $('#pcopy').onclick=async()=>{const t=$('#ptext');
   try{await navigator.clipboard.writeText(t.value);}catch(e){t.select();document.execCommand('copy');}
