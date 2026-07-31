@@ -436,7 +436,6 @@ class BlogPublisher:
 
         삭제마다 목록 li 인덱스가 바뀌므로 매 회 다시 읽고, 가장 오래된 일치 항목부터 지운다.
         """
-        page = self._page
         norm = (title or "").strip()
         if not norm:
             return 0
@@ -449,16 +448,8 @@ class BlogPublisher:
             if len(matches) <= 1:
                 break  # 최근 1건만 남으면(또는 없으면) 종료
             matches.sort(key=lambda d: d.get("date") or "")  # 날짜 오름차순 → [0]이 가장 오래된 것
-            target_idx = matches[0]["idx"]
-            del_buttons = page.query_selector_all(SMART_EDITOR["draft_item_delete"])
-            if target_idx >= len(del_buttons):
-                break  # 목록과 버튼 수가 어긋나면 안전하게 중단
-            del_buttons[target_idx].click()
-            page.wait_for_timeout(500)
-            confirm = page.query_selector(SMART_EDITOR["draft_delete_confirm"])  # '삭제하시겠습니까' 확인
-            if confirm and confirm.is_visible():
-                confirm.click()
-            page.wait_for_timeout(900)  # 목록 갱신 대기
+            if not self._delete_draft_at(matches[0]["idx"]):
+                break  # 삭제가 안 먹히면 같은 대상을 무한 재시도하지 않고 중단
             deleted += 1
         return deleted
 
@@ -513,18 +504,47 @@ class BlogPublisher:
         return deleted
 
     def _delete_draft_at(self, idx: int) -> bool:
-        """임시저장 목록 idx번 항목을 삭제(확인 팝업까지). 성공 시 True. (목록이 열려있다고 가정)"""
+        """임시저장 목록 idx번 항목을 삭제. 목록이 실제로 줄었는지 확인해 성공 여부를 반환한다.
+        (목록이 열려있다고 가정)
+
+        2026-07 개편 실측 두 가지: ① 삭제 버튼은 항목 hover 중에만 보인다(안 하면 클릭
+        타임아웃), ② 확인창이 DOM 팝업이 아니라 네이티브 confirm이다 — Playwright가 기본으로
+        dismiss해 삭제가 조용히 무산되므로 수락 핸들러를 달아야 한다. 구 DOM 팝업도 폴백으로
+        계속 처리한다(UI 재변경 대비)."""
         page = self._page
+        items_before = len(self._read_draft_items())
+        lis = page.query_selector_all(SMART_EDITOR["draft_list"] + " > li")
         del_buttons = page.query_selector_all(SMART_EDITOR["draft_item_delete"])
         if idx < 0 or idx >= len(del_buttons):
             return False
-        del_buttons[idx].click()
-        page.wait_for_timeout(500)
-        confirm = page.query_selector(SMART_EDITOR["draft_delete_confirm"])  # '삭제하시겠습니까' 확인
-        if confirm and confirm.is_visible():
-            confirm.click()
-        page.wait_for_timeout(900)  # 목록 갱신 대기
-        return True
+
+        def _accept(dialog):
+            # 삭제 확인 confirm만 수락 — 다른 다이얼로그는 기본 동작(닫기)대로
+            if "삭제" in (dialog.message or ""):
+                dialog.accept()
+            else:
+                dialog.dismiss()
+
+        page.on("dialog", _accept)
+        try:
+            if idx < len(lis):
+                lis[idx].hover()  # 삭제 버튼은 hover 중에만 visible
+                page.wait_for_timeout(200)
+            del_buttons[idx].click(timeout=8000)
+            page.wait_for_timeout(500)
+            confirm = page.query_selector(SMART_EDITOR["draft_delete_confirm"])  # 구 DOM 팝업 폴백
+            if confirm and confirm.is_visible():
+                confirm.click()
+            page.wait_for_timeout(900)  # 목록 갱신 대기
+        except Exception:  # noqa: BLE001 - 실패는 False로 알려 호출부 루프가 멈추게
+            page.keyboard.press("Escape")
+            return False
+        finally:
+            try:
+                page.remove_listener("dialog", _accept)
+            except Exception:  # noqa: BLE001 - 이미 해제됐으면 무시
+                pass
+        return len(self._read_draft_items()) < items_before
 
     def _resolve_draft_idx(self, title: str, date: str = "") -> int | None:
         """제목(+날짜)으로 현재 임시저장 목록에서 idx를 '지금' 다시 찾는다.
@@ -852,55 +872,59 @@ class BlogPublisher:
     # 불러온 글에서 지울 '장식' 컴포넌트를 고르는 JS.
     # 사진(se-image)·영상(se-video)·본문 텍스트(se-text)·제목(se-documentTitle)이 '아닌' 모든
     # 컴포넌트(= 스티커·지도(장소)·링크카드·인용구·구분선 등)를 대상으로 본다. 종류마다 클래스가
-    # 달라도 '보존 대상이 아니면 제거'로 잡아 놓치지 않는다. 첫 제거 대상의 문서 순 인덱스와
-    # 남은 제거 대상 총수({idx, count})를 돌려준다(count로 삭제 진전 여부를 판정).
+    # 달라도 '보존 대상이 아니면 제거'로 잡아 놓치지 않는다. skip개를 건너뛴 다음 제거 대상의
+    # 문서 순 인덱스와 남은 제거 대상 총수({idx, count})를 돌려준다(skip = 삭제가 안 먹혀
+    # 문서에 남아 있는 컴포넌트 수 — 그 다음 것부터 계속 시도하기 위한 커서).
     _REMOVABLE_COMP_JS = r"""
-    () => {
+    (skip) => {
       const comps = [...document.querySelectorAll('.se-component')];
       const keep = /se-text|se-image|se-video|se-documentTitle/;
       let idx = -1, count = 0;
       for (let i = 0; i < comps.length; i++) {
         if (keep.test(comps[i].className.toString())) continue;
-        if (idx < 0) idx = i;
         count++;
+        if (idx < 0 && count > skip) idx = i;
       }
       return {idx, count};
     }
     """
 
-    def _remove_imported_extras(self) -> int:
-        """불러온 임시저장 글에 이미 들어 있던 '장식' 컴포넌트(스티커·지도·링크카드·인용구·구분선)를
-        지운다 — 사진/영상/본문 텍스트/제목은 그대로 둔다.
+    def _remove_imported_extras(self) -> tuple[int, int]:
+        """불러온 임시저장 글에 이미 들어 있던 '장식' 컴포넌트(스티커·지도·링크카드·인용구·구분선·표)를
+        지운다 — 사진/영상/본문 텍스트/제목은 그대로 둔다. (지운 개수, 못 지운 개수)를 반환한다.
 
         새 플랜이 같은 종류(스티커·지도·링크 등)를 다시 넣으므로, 옛것을 남겨두면 중복된다.
-        컴포넌트를 클릭해 객체선택한 뒤 Delete로 제거하고, 하나 지울 때마다 문서 순서가 바뀌므로
-        매번 첫 제거 대상을 다시 찾는다. 지운 개수를 반환한다. (안전 상한으로 무한루프 방지,
-        직전 삭제가 먹히지 않아 남은 개수가 안 줄면 더 시도하지 않고 멈춘다.)"""
+        클릭은 컴포넌트 '모서리'로 — 인용구·표처럼 내부가 편집 가능한 컴포넌트는 중앙 클릭이
+        텍스트 편집 모드로 들어가 Delete가 글자만 지우고 객체는 남는다(2026-07 실측: 모서리
+        클릭은 5종 전부 객체 선택→Delete 삭제 성공). 삭제가 실제로 됐는지 매번 개수로 검증하고,
+        안 지워지는 컴포넌트는 건너뛰고 다음 것을 계속 지운다 — 첫 실패에서 멈추면 그 뒤 장식이
+        전부 살아남아 유령 중복이 된다(우이락 글 실측)."""
         page = self._page
         removed = 0
-        prev_count = None
+        skipped = 0  # 삭제가 안 먹혀 문서에 남은 컴포넌트 수 — 다음 대상 탐색 시 건너뛴다
         for _ in range(80):  # 안전 상한(무한루프 방지)
-            info = page.evaluate(self._REMOVABLE_COMP_JS)
+            info = page.evaluate(self._REMOVABLE_COMP_JS, skipped)
             count, idx = info["count"], info["idx"]
-            if count == 0 or idx < 0:
-                break
-            if prev_count is not None and count >= prev_count:
-                break  # 직전 삭제가 반영 안 됨(진전 없음) — 더 시도해도 소용없어 중단
-            prev_count = count
+            if idx < 0:
+                break  # 건너뛴 것 말고는 제거 대상 없음
             comps = page.query_selector_all(".se-component")
             if idx >= len(comps):
                 break
             try:
                 comps[idx].scroll_into_view_if_needed()
-                comps[idx].click()  # 컴포넌트 객체 선택
+                comps[idx].click(position={"x": 4, "y": 4})  # 모서리 클릭 = 객체 선택
                 page.wait_for_timeout(200)
                 page.keyboard.press("Delete")
                 page.wait_for_timeout(300)
             except Exception:  # noqa: BLE001 - 한 컴포넌트 삭제 실패가 전체를 막지 않게
                 page.keyboard.press("Escape")
-                break
-            removed += 1
-        return removed
+                skipped += 1
+                continue
+            if page.evaluate(self._REMOVABLE_COMP_JS, 0)["count"] < count:
+                removed += 1
+            else:
+                skipped += 1  # 이 컴포넌트는 이 방식으로 안 지워짐 — 다음 것으로
+        return removed, skipped
 
     # 아직 '내용이 있는' 첫 본문 텍스트 컴포넌트의 인덱스와, 내용 있는 텍스트 컴포넌트 총수를
     # 돌려주는 JS(제목 se-documentTitle은 제외 — 제목은 _type_title(clear=True)에서 따로 지운다).
@@ -1007,13 +1031,19 @@ class BlogPublisher:
         # 다시 넣으므로, 옛것을 남겨두면 새 내용과 뒤섞인다. 정리는 보조라 실패해도 작성은 진행.
         if clean_imported:
             try:
-                extras = self._remove_imported_extras()
+                extras, left = self._remove_imported_extras()
                 cleared = self._clear_imported_body()
                 if extras or cleared:
                     # 정리는 clean_imported 기본 동작이라 오류·확인 대상이 아님 → 안내(infos)로 전달
                     infos.append(
                         f"불러온 글의 옛 내용을 정리했어요(장식 {extras}개 삭제, 본문 {cleared}곳 비움) "
                         "— 사진·영상은 그대로 두고 새로 작성했어요."
+                    )
+                if left:
+                    # 못 지운 옛 장식은 새 플랜 내용과 중복된다 — 조용히 남기지 않고 알린다
+                    warnings.append(
+                        f"불러온 글의 옛 장식 {left}개를 지우지 못했어요 — 발행 전에 "
+                        "스티커·지도·인용구 등이 중복되지 않았는지 확인해 주세요."
                     )
             except Exception:  # noqa: BLE001 - 정리 실패는 본문 작성에 영향 없음
                 page.keyboard.press("Escape")
