@@ -10,7 +10,11 @@
   3) 그 글을 다시 열어 헤더 문단들의 폰트/크기/색 검증(PASS/FAIL)
   4) ZZ 글 삭제(실패 시 수동 삭제 안내)
 
-실행: .venv/bin/python scripts/probe_inplace_header_style.py [--keep(삭제 생략)]
+--broken: 1)에서 유저 실측과 같은 '이미 깨진' 글(헤더 텍스트 포함, 드립 줄에 대제목
+서식 fs30·남색이 덮이고 대제목은 무서식)을 시드로 만든 뒤 재발행 복구를 검증한다
+— 깨진 글에 다시 발행하면 정상으로 돌아오는지 + 옛 서식이 새 본문에 새는지 확인.
+
+실행: .venv/bin/python scripts/probe_inplace_header_style.py [--keep(삭제 생략)] [--broken] [--debug]
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from PIL import Image  # noqa: E402
 from autoblog.collect.selectors import SMART_EDITOR  # noqa: E402
 from autoblog.draft.generate import DraftResult  # noqa: E402
 from autoblog.publish.editor import BlogPublisher  # noqa: E402
+from autoblog.publish.emphasis import StyledSpan  # noqa: E402
 from autoblog.publish.plan import (  # noqa: E402
     PhotoItem,
     PublishBlock,
@@ -182,16 +187,60 @@ def main() -> int:
         if debug:
             _instrument(pub)
 
-        print("\n[1] 일회용 임시저장 글 생성 …")
-        seed = PublishPlan(title=TITLE, blocks=[
-            PublishBlock(kind="text", text="원본 인트로(곧 지워질 내용)."),
-            PublishBlock(kind="image", image_path=a),
-            PublishBlock(kind="text", text="원본 중간 문단."),
-            PublishBlock(kind="image", image_path=b),
-            PublishBlock(kind="text", text="원본 마무리."),
-        ])
+        broken = "--broken" in sys.argv
+        if broken:
+            # 유저 실측(속초·보정동)과 같은 '깨진' 시드를 만든다: 헤더 텍스트가 있고
+            # 대제목은 무서식(본문 크기). 드립 줄의 fs30·남색은 저장 후 직접 입힌다
+            # (아래 [1b]) — 발행 경로에 맡기면 상태를 보장 못 해서 수동으로 확정한다.
+            print("\n[1] '깨진' 일회용 임시저장 글 생성 …")
+            seed = PublishPlan(title=TITLE, blocks=[
+                PublishBlock(kind="text", text=BIG, align="center"),
+                PublishBlock(kind="text", text=DRIP, align="center"),
+                PublishBlock(kind="image", image_path=a),
+                PublishBlock(kind="text", text="원본 본문 문단(곧 재작성될 내용)."),
+                PublishBlock(kind="image", image_path=b),
+                PublishBlock(kind="text", text="원본 마무리."),
+            ])
+        else:
+            print("\n[1] 일회용 임시저장 글 생성 …")
+            seed = PublishPlan(title=TITLE, blocks=[
+                PublishBlock(kind="text", text="원본 인트로(곧 지워질 내용)."),
+                PublishBlock(kind="image", image_path=a),
+                PublishBlock(kind="text", text="원본 중간 문단."),
+                PublishBlock(kind="image", image_path=b),
+                PublishBlock(kind="text", text="원본 마무리."),
+            ])
         pub.publish(seed, save=True, submit=False, mark_ai=False)
         page.wait_for_timeout(1200)
+
+        if broken:
+            # [1b] 저장된 시드를 다시 열어 드립 줄에 대제목 서식(fs30·남색)을 직접 덮고
+            # 재저장 — 유저의 깨진 글과 동일한 '저장된 상태'를 확정한다.
+            print("[1b] 드립 줄에 fs30·남색 덮고 재저장(깨진 상태 확정) …")
+            pub.open_write_page()
+            pub._open_draft_list()
+            idx = pub._resolve_draft_idx(TITLE, "")
+            assert idx is not None, "시드 글을 목록에서 못 찾음"
+            pub._load_draft_into_editor(idx)
+            page.wait_for_timeout(1500)
+            assert pub._select_body_text(DRIP), "드립 줄 선택 실패"
+            pub._apply_color(SMART_EDITOR["toolbar_text_color"], "#395D73")
+            pub._apply_font("nanummaruburi")
+            pub._apply_font_size(30)
+            pub.save_draft()
+            page.wait_for_timeout(1200)
+            pub.open_write_page()
+            pub._open_draft_list()
+            idx = pub._resolve_draft_idx(TITLE, "")
+            pub._load_draft_into_editor(idx)
+            page.wait_for_timeout(1500)
+            rows = page.evaluate(_HEAD_JS)
+            print("   깨진 시드(저장 후 재열람) 상태:")
+            for r in rows:
+                print("     ", r)
+            drip_row = _find(rows, DRIP[:6])
+            if not (drip_row and "se-fs30" in drip_row["cls"]):
+                print("   ⚠️ 드립 줄 fs30 확정 실패 — 깨진 상태 재현이 안 됨(계속 진행은 함)")
 
         print("[2] publish_inplace(save=True) — 실제 파이프라인 경로 …")
         warnings, infos = pub.publish_inplace(
