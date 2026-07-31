@@ -226,7 +226,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .modalft{margin-top:14px;display:flex;gap:10px}
  /* photo grid */
  .pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;max-height:230px;overflow:auto;padding:2px;user-select:none;-webkit-user-select:none}
- .pcell{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;cursor:pointer;border:2px solid transparent}
+ .pcell{position:relative;aspect-ratio:1;border-radius:9px;overflow:hidden;cursor:pointer;border:2px solid transparent;background:#eceff3}
  .pcell img{width:100%;height:100%;object-fit:cover;display:block}
  .vidbadge{position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,.72);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:7px;pointer-events:none}
  .pcell.sel{border-color:var(--green)}
@@ -3470,8 +3470,12 @@ def _make_handler(state: dict):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             # 사진 타일은 캐시 허용 — 분류판이 재렌더될 때마다(칸 순서 드래그 등) 전 장을
-            # 재다운로드하며 흰 타일로 깜빡이던 문제 방지. 파일 경로가 키라 내용이 바뀌면 경로도 바뀜.
-            self.send_header("Cache-Control", "public, max-age=3600" if cache else "no-store")
+            # 재다운로드하며 흰 타일로 깜빡이던 문제 방지. 파일 경로가 키라 내용이 바뀌면 경로도 바뀜
+            # (업로드·불러오기·AI 썸네일 모두 uuid 새 파일). max-age=3600이면 탭을 1시간 넘게
+            # 열어둔 뒤 재렌더 때 전 장 만료→재다운로드로 흰 타일이 재발해 immutable 영구 캐시.
+            self.send_header(
+                "Cache-Control", "public, max-age=31536000, immutable" if cache else "no-store"
+            )
             self.end_headers()
             self.wfile.write(body)
 
