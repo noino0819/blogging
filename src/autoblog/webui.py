@@ -1305,6 +1305,24 @@ function renderRanks(rows){
 // 수집 종류: 직접 클릭 → 고정, 안 골랐으면 입력으로 자동 추정
 $$('#kindseg button').forEach(b=>b.onclick=()=>setKind(b.dataset.k,true));
 $('#srcval').oninput=()=>{if(!KINDMANUAL)setKind(autoKind($('#srcval').value),false);};
+// 맛집 URL은 붙여넣는 즉시(또는 포커스가 떠날 때) 미리 수집해 서버 캐시를 데워둔다
+// — '프롬프트 만들기'에서 수집 대기가 사라진다. 상품은 검색어 타이핑 중 오발동이 잦아 제외.
+let PREFETCHED='';
+async function prefetchCard(){
+  const v=$('#srcval').value.trim();
+  if(!v||v===PREFETCHED||SRCKIND!=='place'||!(/^https?:\/\//.test(v)||v.includes('naver.me')))return;
+  PREFETCHED=v;
+  const hint=$('#srchint'), esc=s=>String(s).replace(/</g,'&lt;');
+  hint.innerHTML='🍜 가게 정보를 미리 수집하는 중…';
+  try{
+    const r=await(await fetch('/api/prefetch-card',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({srcval:v,kind:SRCKIND})})).json();
+    if($('#srcval').value.trim()!==v)return; // 그 사이 입력이 바뀌었으면 힌트 안 덮음
+    hint.innerHTML=r.ok?('🍜 <b>'+esc(r.name||'가게')+'</b> 정보 수집 완료 — 프롬프트에 자동으로 들어가요')
+      :'가게 정보를 못 가져왔어요 — 링크 확인해 주세요 (프롬프트 만들기 때 자동 재시도)';
+  }catch(e){}
+}
+$('#srcval').addEventListener('change',prefetchCard);
+$('#srcval').addEventListener('paste',()=>setTimeout(prefetchCard,0));
 // 협찬 토글 — 켜면 고지 스티커 픽커·쿠팡 링크 입력을 펼침
 $('#sponsw').onclick=function(){FMT.sponsored=!FMT.sponsored;
   this.classList.toggle('on',FMT.sponsored);
@@ -3634,6 +3652,8 @@ def _make_handler(state: dict):
                     self._export_prompt(self._json_body())
                 elif path == "/api/import-draft":
                     self._import_draft(self._json_body())
+                elif path == "/api/prefetch-card":
+                    self._prefetch_card(self._json_body())
                 elif path == "/api/personas/fetch":
                     self._persona_fetch(self._json_body())
                 elif path == "/api/personas/extract":
@@ -3869,6 +3889,25 @@ def _make_handler(state: dict):
                 self._stream_write({"error": str(exc)})
                 return
             self._stream_write({"prompt": text})
+
+        def _prefetch_card(self, body):
+            """맛집 URL 붙여넣기 직후 미리 수집(캐시 워밍) — 생성 시 수집 대기 제거.
+
+            ThreadingHTTPServer라 요청 스레드에서 그대로 돌린다. 실패 카드는
+            collect_card가 캐시하지 않으므로 '프롬프트 만들기' 때 자동 재시도된다."""
+            from autoblog.pipeline import collect_card
+
+            srcval, src = self._resolve_src(body)
+            if not srcval or src != "place":
+                self._send(200, json.dumps({"ok": False}).encode())
+                return
+            try:
+                card = collect_card(place_url=srcval, use_cache=True)
+            except Exception as exc:  # noqa: BLE001 — 미리 수집 실패는 안내만
+                self._send(200, json.dumps({"ok": False, "error": str(exc)}).encode())
+                return
+            name = card.place.name if card.place else None
+            self._send(200, json.dumps({"ok": not card.is_fallback, "name": name}).encode())
 
         def _caption_photos(self, body):
             """온디맨드 '✨ AI 자동 추천' — 사진 맥락 캡션 → [{path,label,caption}]."""
