@@ -61,8 +61,9 @@ def ui(monkeypatch):
     server.shutdown()
 
 
-def _post_publish(url: str) -> tuple[int, dict]:
-    body = json.dumps({"inplace": True, "inplaceDraft": {"title": "x", "date": ""}}).encode()
+def _post_publish(url: str, extra: dict | None = None) -> tuple[int, dict]:
+    payload = {"inplace": True, "inplaceDraft": {"title": "x", "date": ""}, **(extra or {})}
+    body = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"{url}/api/publish", data=body, headers={"content-type": "application/json"}
     )
@@ -88,8 +89,8 @@ def test_auto_retry_recovers(ui, monkeypatch):
     assert d.get("warnings") == ["경고1"]
 
 
-def test_auto_retry_exhausted(ui, monkeypatch):
-    """3번 전부 안전 중단 — 그때는 실패로 알리고(수동 재시도용 jobId 포함) 더 시도 안 함."""
+def test_auto_retry_exhausted_then_manual(ui, monkeypatch):
+    """3번 전부 안전 중단 → 실패 + 스냅샷(jobId). 그 jobId로 수동 재시도하면 성공."""
     import autoblog.publish.editor as ed
 
     server, url = ui
@@ -100,3 +101,38 @@ def test_auto_retry_exhausted(ui, monkeypatch):
     assert status == 500 and "중단" in (d.get("error") or ""), d
     assert calls["n"] == 3  # 자동 재시도 소진 후 멈춤
     assert d.get("jobId")  # 수동 재시도(retryJob)용 스냅샷이 남는다
+
+    # 수동 재시도: 스냅샷 그대로 다시 저장(이번엔 에디터가 멀쩡한 상황) → 성공
+    calls2 = {"n": 0}
+    monkeypatch.setattr(ed, "BlogPublisher", _make_fake_pub(0, calls2))
+    status, d2 = _post_publish(url, {"retryJob": d["jobId"]})
+    assert status == 200 and d2.get("ok"), d2
+    assert calls2["n"] == 1
+
+
+def test_retry_first_lock_priority():
+    """점유 중 락에 일반→재시도 순서로 줄 서도, 풀리면 재시도가 먼저 잡는다."""
+    import time
+
+    lock = webui._RetryFirstLock()
+    order: list[str] = []
+    lock._acquire(False)  # 진행 중인 작업 상태로 시작
+
+    def normal():
+        with lock:
+            order.append("normal")
+
+    def retry():
+        with lock.first():
+            order.append("retry")
+
+    t1 = threading.Thread(target=normal)
+    t1.start()
+    time.sleep(0.15)  # 일반이 먼저 줄 선다
+    t2 = threading.Thread(target=retry)
+    t2.start()
+    time.sleep(0.15)  # 재시도가 뒤에 줄 선다
+    lock.release()  # 진행 중이던 작업 종료 — 다음 차례는 재시도여야 함
+    t1.join(3)
+    t2.join(3)
+    assert order == ["retry", "normal"]

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -4328,7 +4329,9 @@ def _make_handler(state: dict):
             try:
                 # 연속으로 저장을 눌러도 한 건씩 순서대로 처리한다(대기열). 락을 못 잡으면
                 # 앞 건이 끝날 때까지 이 스레드가 대기 → 브라우저가 하나만 뜬다.
-                with state["publish_lock"]:
+                # 재시도(retryJob)는 실패한 글을 살리는 작업이라 대기열 맨 앞에 선다
+                # (진행 중인 건은 안 끊음 — 다음 차례만 양보받는다).
+                with (state["publish_lock"].first() if retry_id else state["publish_lock"]):
                     # 안전 중단(PublishAborted: 저장 '전' 검증 실패라 아무것도 저장 안 됨 —
                     # 멱등)은 일시적 에디터 상태(지연·오버레이)가 원인이라, 실패로 끝내지
                     # 않고 새 브라우저로 잠시 쉬었다가 자동 재시도한다(최대 3회).
@@ -5212,6 +5215,52 @@ def _set_sponsor_sticker(ref: str) -> str:
     return cat.sponsor
 
 
+class _RetryFirstLock:
+    """게시 직렬화 락 + '다시 시도' 우선권.
+
+    일반 진입(with lock:)은 기존 Lock과 동일한 줄서기. 재시도는 with lock.first():로
+    잡으면 이미 줄 서 있는 일반 작업들보다 먼저 락을 받는다 — 실패한 글을 살리려는
+    재시도가 그 사이 쌓인 다른 글 저장 뒤에서 몇 분씩 기다리지 않게. 진행 '중'인
+    작업은 끊지 않는다(중간에 끊으면 그 글이 또 깨진다 — 다음 차례만 양보받는 것).
+    """
+    # ponytail: 재시도를 연타하면 일반 저장이 계속 밀릴 수 있음 — 사람 손 빈도라 무시
+
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._busy = False
+        self._first = 0  # 대기 중인 우선(재시도) 작업 수
+
+    def _acquire(self, priority: bool):
+        with self._cond:
+            if priority:
+                self._first += 1
+            while self._busy or (not priority and self._first):
+                self._cond.wait()
+            self._busy = True
+            if priority:
+                self._first -= 1
+
+    def release(self):
+        with self._cond:
+            self._busy = False
+            self._cond.notify_all()
+
+    def __enter__(self):
+        self._acquire(False)
+        return self
+
+    def __exit__(self, *exc):
+        self.release()
+
+    @contextlib.contextmanager
+    def first(self):
+        self._acquire(True)
+        try:
+            yield
+        finally:
+            self.release()
+
+
 def serve_ui(host: str = "127.0.0.1", port: int = 8770) -> ThreadingHTTPServer:
     """글쓰기 UI 서버 생성. publish는 블로킹이라 스레드 서버 사용."""
     state: dict = {
@@ -5224,7 +5273,8 @@ def serve_ui(host: str = "127.0.0.1", port: int = 8770) -> ThreadingHTTPServer:
         "label": {"running": False, "done": 0, "total": 0},
         # 임시저장을 한 건씩 순서대로 처리하는 직렬화 락(여러 건을 연속으로 눌러도
         # 헤드리스 브라우저/세션이 동시에 뜨지 않게 한 번에 하나만 게시한다).
-        "publish_lock": threading.Lock(),
+        # 재시도(retryJob)는 .first()로 대기열 맨 앞에 선다.
+        "publish_lock": _RetryFirstLock(),
         # 백그라운드 임시저장 '작업' 스냅샷 저장소(작업id→플랜/옵션). 저장이 실패해도
         # 스냅샷을 남겨, 유저가 이미 다음 글로 넘어갔어도(state["last"]가 바뀌어도) 그
         # 실패한 '그 글'을 상단 탭에서 다시 시도할 수 있게 한다. 성공하면 스냅샷을 지운다.
