@@ -657,7 +657,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
 </div></div>
 <div id=capmodal class=modal style="display:none"><div class=modalbox style="width:min(460px,94vw)">
   <div class=modalhd><span>📝 사진 세부 설명</span><button class=mx id=capx>✕</button></div>
-  <div class=muted>이 사진에 대해 글에 녹일 설명을 적어주세요. 초안 생성 때 이 내용이 그대로 반영돼요. (분류: <b id=caplabel></b>)</div>
+  <div class=muted>이 사진에 대해 글에 녹일 설명을 적어주세요. 초안 생성 때 반영되고, 직접 쓴 설명은 발행 시 사진 아래 <b>캡션(사진 설명)</b>에도 그대로 들어가요. (분류: <b id=caplabel></b>)</div>
   <div style="margin-top:10px;text-align:center"><img id=capimg style="max-width:160px;max-height:160px;border-radius:9px;border:1px solid #e5e7eb;object-fit:cover"></div>
   <textarea id=capinput placeholder="예: 가장 인상 깊었던 메뉴. 겉은 바삭하고 속은 촉촉했어요." style="min-height:110px;margin-top:10px;font-family:inherit;font-size:14px;line-height:1.5;background:#fff;border:1px solid #cdd3da;border-radius:9px;padding:10px 12px;width:100%;resize:vertical"></textarea>
   <div class=muted style="margin-top:6px;font-size:11.5px">Enter 로 저장 · Shift+Enter 줄바꿈 · 비우고 저장하면 설명이 삭제돼요</div>
@@ -1730,6 +1730,7 @@ async function loadPhotoCats(){ try{PHOTO_CATS=await (await fetch('/api/photo_ca
 function curCats(){ return PHOTO_CATS[SRCKIND]||PHOTO_CATS.place||['외관','내부','메뉴판','음식','영수증','기타']; }
 function photoMetaForSel(){ const o={}; SELP.forEach(p=>{const m=PHOTOMETA[p]||{}; const e={};
   if(m.label)e.label=m.label; if(m.caption)e.caption=m.caption; if(p===THUMB)e.thumbnail=true;
+  if(m.caption&&m.user_caption)e.user_caption=true;  // 직접 쓴 세부 설명 — 발행 시 사진 캡션칸 입력
   if(AISET.has(p))e.ai_generated=true;
   if(e.label||e.caption||e.thumbnail||e.ai_generated)o[p]=e; }); return o; }
 function setThumb(path){ THUMB=(THUMB===path?null:path); renderGrid(); renderPmeta(); updatePhotoSummary(); }
@@ -1824,7 +1825,8 @@ function openCapModal(path){
 function closeCapModal(){ $('#capmodal').style.display='none'; CAPPATH=null; }
 function capSubmit(){
   if(CAPPATH){ const v=$('#capinput').value.trim();
-    (PHOTOMETA[CAPPATH]=PHOTOMETA[CAPPATH]||{}).caption=v; }
+    const m=(PHOTOMETA[CAPPATH]=PHOTOMETA[CAPPATH]||{}); m.caption=v;
+    if(v)m.user_caption=true; else delete m.user_caption; }  // 직접 쓴 설명 → 발행 시 사진 캡션칸에 그대로
   closeCapModal(); renderGrid(); renderPmeta();
   toast('세부 설명을 저장했어요.','ok');
 }
@@ -2234,7 +2236,9 @@ function aiApply(wsid, items){
   const st = wsid===CURWS ? null : (findWS(wsid)||{}).state;
   const meta = st? st.PHOTOMETA : PHOTOMETA;
   if(!meta) return;
-  (items||[]).forEach(p=>{meta[p.path]={label:p.label||'',caption:p.caption||''};});
+  (items||[]).forEach(p=>{const old=meta[p.path]||{};  // 직접 쓴 세부 설명은 AI가 덮어쓰지 않는다
+    meta[p.path]= old.user_caption? {label:p.label||'',caption:old.caption||'',user_caption:true}
+                                  : {label:p.label||'',caption:p.caption||''};});
 }
 const AIBATCH=4;  // ponytail: 4장씩 순차 배치 — 실제 진행도 표시 + 실패 시 끝난 배치까지 반영
 async function runAiCaption(paths, hint, ctx){

@@ -374,6 +374,7 @@ class PublishBlock(BaseModel):
     emphases: list[StyledSpan] = Field(default_factory=list)
     image_path: str | None = None
     image_label: str = ""
+    image_caption: str = ""  # 사용자가 직접 쓴 세부 설명 — SE 사진 캡션칸에 그대로 입력(빈 값=입력 안 함)
     image_size: str | None = None  # 이미지 표시 크기 힌트: "small"(협찬 고지 사진 등). None=기본
     ai_generated: bool = False  # AI 생성 이미지 — 게시 시 'AI 활용' 표시(네이버 자율 표기)
     variant: int = 1  # 구분선/인용구 종류(1=기본)
@@ -408,6 +409,11 @@ def apply_photo_meta_overrides(plan: PublishPlan, photo_meta: dict) -> None:
     for b in plan.blocks:
         if b.kind == "image" and b.image_path in ai:
             b.ai_generated = True
+        if b.kind == "image" and b.image_path:
+            # 세부 설명(사용자 직접 입력)은 플랜이 굳은 뒤에도 고칠 수 있다 — 발행 시점 값으로 갱신
+            m = meta.get(b.image_path)
+            if isinstance(m, dict) and m.get("user_caption"):
+                b.image_caption = (m.get("caption") or "").strip()
     thumb = next(
         (p for p, m in meta.items() if isinstance(m, dict) and m.get("thumbnail")), None
     )
@@ -577,6 +583,7 @@ def build_publish_plan(
         kind = "video" if ph.media_kind == "video" else "image"
         return PublishBlock(
             kind=kind, image_path=ph.path, image_label=ph.caption or ph.label,
+            image_caption=(ph.caption.strip() if ph.user_caption else ""),
             ai_generated=ph.ai_generated,
         )
 

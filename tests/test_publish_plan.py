@@ -769,6 +769,28 @@ def test_apply_photo_meta_overrides_late_thumb_swap():
     assert sum(1 for b in plan.blocks if b.image_path == "old.jpg") == 1
 
 
+def test_user_caption_flows_to_image_caption():
+    # 사용자가 직접 쓴 세부 설명(user_caption)만 SE 사진 캡션칸 입력 대상이 된다
+    from autoblog.publish.plan import apply_photo_meta_overrides
+
+    draft = DraftResult(text="제목\n\n인트로.\n[사진]\n본문.\n[사진]")
+    photos = [
+        PhotoItem(path="mine.jpg", label="음식", caption="겉바속촉 돈까스", user_caption=True),
+        PhotoItem(path="ai.jpg", label="외관", caption="가게 외관"),  # AI 캡션 — 캡션칸 입력 없음
+    ]
+    plan = build_publish_plan(draft, photos)
+    caps = {b.image_path: b.image_caption for b in plan.blocks if b.kind == "image"}
+    assert caps["mine.jpg"] == "겉바속촉 돈까스"
+    assert caps["ai.jpg"] == ""
+
+    # 플랜이 굳은 뒤 세부 설명을 고쳐도 발행 시점 메타로 갱신된다
+    apply_photo_meta_overrides(
+        plan, {"mine.jpg": {"caption": "수정한 설명", "user_caption": True}}
+    )
+    caps = {b.image_path: b.image_caption for b in plan.blocks if b.kind == "image"}
+    assert caps["mine.jpg"] == "수정한 설명"
+
+
 def test_build_plan_raw_urls_become_link_cards():
     # LLM이 본문에 생링크·마크다운 링크를 써도 본문 텍스트에 노출되지 않고 링크 카드로만
     draft = DraftResult(

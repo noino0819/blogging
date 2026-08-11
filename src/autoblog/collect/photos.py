@@ -64,6 +64,7 @@ def attach_photos(
             path=p,
             label=(meta.get(p) or {}).get("label") or "기타",
             caption=(meta.get(p) or {}).get("caption") or "",
+            user_caption=bool((meta.get(p) or {}).get("user_caption")),
             thumbnail=bool((meta.get(p) or {}).get("thumbnail")),
             ai_generated=bool((meta.get(p) or {}).get("ai_generated")),
             media_kind=media_kind_of(p),

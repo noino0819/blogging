@@ -64,6 +64,10 @@ SMART_EDITOR = {
     "draft_load_confirm": "button.se-popup-button-confirm",  # 불러오기 시 뜨는 확인 팝업
     "draft_delete_confirm": "button.se-popup-button-confirm",  # 삭제 확인 팝업(확인)
     "editor_image": "img.se-image-resource",  # 본문 사진(지도 se-map-image는 제외됨)
+    # 사진 캡션('사진 설명을 입력하세요.') — 이미지 컴포넌트 안에 상시 존재하는 텍스트 모듈.
+    # 이미지 클릭(객체 선택) 후 이 영역을 클릭해 타이핑하면 들어간다(라이브 검증 2026-08-11,
+    # scripts/probe_image_caption.py). 비어 있으면 se-is-empty 클래스가 붙어 있다.
+    "image_caption": ".se-caption",
     # AI 활용 표시(네이버 자율 표기, 2025~): 이미지에 마우스를 올리면 뜨는 'AI 활용 설정' 배지의
     # 토글 버튼(대표 배지와 같은 hover 방식). 클릭하면 se-is-selected가 붙고 발행 시 이미지
     # 우하단에 'AI 활용' 아이콘이 붙는다. (라이브 검증 2026-07-23, scripts/probe_ai_label.py)

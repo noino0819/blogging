@@ -339,6 +339,8 @@ class BlogPublisher:
                 _ = exc
         # 저장 직전: 문단 정렬을 플랜과 대조해 자동복구(사진 정렬 상속/무음 실패 대비).
         self._heal_alignment(plan, warnings)
+        # 사용자가 직접 쓴 세부 설명 → 사진 캡션칸(정렬 복구 뒤 — 캡션 편집이 정렬 대조에 안 섞이게).
+        self._fill_image_captions(plan, warnings)
         # AI 생성 이미지에 'AI 활용' 표시(대표 지정보다 먼저 — 대표 플래그를 안 건드림).
         if mark_ai:
             self._mark_ai_images(plan)
@@ -852,6 +854,76 @@ class BlogPublisher:
             page.keyboard.press("Escape")
             warnings.append(
                 "대표사진 자동 지정에 실패했어요 — 발행 전에 대표사진이 맞는지 확인해 주세요."
+            )
+
+    def _fill_image_captions(self, plan, warnings: list[str]) -> None:
+        """사용자가 직접 쓴 세부 설명(image_caption)을 SE 사진 캡션칸에 입력한다.
+
+        매핑은 _mark_ai_images·_set_rep_photo와 동일: 플랜의 k번째 이미지 블록 = 본문의
+        k번째 '단일 네이버 업로드' 사진(콜라주·외부 핫링크 제외). 캡션 영역(.se-caption,
+        placeholder '사진 설명을 입력하세요.')은 컴포넌트에 상시 존재 — 이미지 클릭(객체
+        선택) 후 캡션을 클릭해 타이핑하면 들어간다(라이브 검증 2026-08-11,
+        scripts/probe_image_caption.py). 본문 입력이 끝난 뒤의 후처리 패스라 커서 흐름을
+        안 건드린다. 이미 내용 있는 캡션(se-is-empty 없음)은 중복 방지로 건너뛴다."""
+        plan_imgs = [
+            b.image_path for b in plan.blocks
+            if b.kind == "image" and b.image_path and b.image_path not in self._failed_images
+        ]
+        todo = [
+            # 줄바꿈은 공백으로 — 캡션 안에서 Enter를 치면 편집 상태가 흐트러진다
+            (plan_imgs.index(b.image_path), " ".join(b.image_caption.split()))
+            for b in plan.blocks
+            if b.kind == "image" and b.image_path in plan_imgs
+            and (b.image_caption or "").strip()
+        ]
+        if not todo:
+            return
+        page = self._page
+        try:  # 단일/외부 판별과 클릭 좌표는 이미지가 로드돼야 정확하다
+            page.evaluate(self._FORCE_LOAD_IMGS_JS)
+        except Exception:  # noqa: BLE001
+            pass
+        failed: list[str] = []
+        for k, cap in todo:
+            try:
+                handle = page.evaluate_handle(
+                    r"""(k) => {
+                      const singles = [...document.querySelectorAll('.se-component')].filter(c => {
+                        const imgs = c.querySelectorAll('img.se-image-resource');
+                        if (imgs.length !== 1) return false;
+                        const s = imgs[0].src || '';
+                        return !(/^https?:/.test(s) && !/pstatic\.net/.test(s));
+                      });
+                      return singles[k] || null;
+                    }""",
+                    k,
+                )
+                comp = handle.as_element()
+                cap_el = comp.query_selector(SMART_EDITOR["image_caption"]) if comp else None
+                if cap_el is None:
+                    failed.append(cap[:15])
+                    continue
+                if "se-is-empty" not in (cap_el.get_attribute("class") or ""):
+                    continue  # 이미 캡션 있음(재시도 등) — 덧붙이면 중복
+                comp.scroll_into_view_if_needed()
+                comp.query_selector("img.se-image-resource").click()  # 객체 선택 → 캡션 활성
+                page.wait_for_timeout(300)
+                cap_el.click()
+                page.wait_for_timeout(300)
+                page.keyboard.type(cap, delay=15)
+                page.wait_for_timeout(200)
+                # 실측: 타이핑이 실제 캡션 요소에 실렸는지(캐럿이 딴 데 있었으면 여기서 걸림)
+                if self._sig(cap, 10) not in self._sig(cap_el.text_content() or ""):
+                    failed.append(cap[:15])
+            except Exception:  # noqa: BLE001 - 캡션은 보조, 실패해도 저장 진행
+                failed.append(cap[:15])
+                page.keyboard.press("Escape")
+        page.keyboard.press("Escape")  # 캡션 편집 상태 정리(다음 후처리 단계로)
+        if failed:
+            names = ", ".join(f"‘{c}…’" for c in failed[:3])
+            warnings.append(
+                f"사진 캡션 자동 입력 실패 {len(failed)}건({names}) — 에디터에서 사진 아래 "
+                "‘사진 설명’에 직접 적어 주세요."
             )
 
     def _mark_ai_images(self, plan) -> None:
@@ -1560,10 +1632,29 @@ class BlogPublisher:
                         "저장되는 걸 막으려고 중단했습니다. 다시 시도해 주세요."
                     )
 
+        def _merge_text_runs(blks: list) -> list:
+            """연속 텍스트 블록(같은 정렬)을 한 블록으로 합쳐 앵커 왕복을 줄인다.
+
+            앵커 한 번이 ~0.7초(프로파일 실측)라 텍스트가 많은 글에서 크게 절약되고,
+            앵커 시도 횟수 자체가 줄어 실패 여지도 준다. 블록 사이 빈 줄은 종전 렌더
+            (블록 끝 Enter가 만들던 빈 문단)와 동일하게 \n\n으로 재현. 강조·정렬 복구·
+            관문은 전부 원본 plan.blocks 기준이라 영향 없음(합친 블록은 타이핑 전용)."""
+            out: list = []
+            for b in blks:
+                prev = out[-1] if out else None
+                if (b.kind == "text" and prev is not None and prev.kind == "text"
+                        and (prev.align or "left") == (b.align or "left")):
+                    out[-1] = PublishBlock(
+                        kind="text", text=prev.text + "\n\n" + b.text, align=prev.align,
+                    )
+                    continue
+                out.append(b)
+            return out
+
         # 각 구간 안에서 블록을 '역순'으로 넣되 매번 구간 앵커를 다시 잡아, 나중 것이 위로 밀려
         # 결과적으로 플랜 순서대로 쌓인다(커서 이어가기에 의존하지 않아 블록 종류가 섞여도 안전).
         for seg_idx, blks in enumerate(segments):
-            for block in reversed(blks):
+            for block in reversed(_merge_text_runs(blks)):
                 _anchor_segment(seg_idx)
                 _insert_one(block)
         # 본문 입력 후 강조 적용(커서 간섭 방지 — 기존 publish와 동일한 후처리 패스).
@@ -1580,6 +1671,8 @@ class BlogPublisher:
                 page.keyboard.press("Escape")
         # 저장 직전: 문단 정렬 검증·자동복구(in-place는 사진 앵커마다 사진 정렬을 상속해 특히 취약).
         self._heal_alignment(plan, warnings)
+        # 사용자가 직접 쓴 세부 설명 → 사진 캡션칸(재삽입된 사진은 캡션이 비어 있다).
+        self._fill_image_captions(plan, warnings)
         # AI 생성 이미지에 'AI 활용' 표시(대표 지정보다 먼저 — 대표 플래그를 안 건드림).
         if mark_ai:
             self._mark_ai_images(plan)
@@ -1808,7 +1901,12 @@ class BlogPublisher:
     # --- 카테고리 (유저별 동적) ---
     def _open_publish_layer(self):
         self._page.click(SMART_EDITOR["publish_button"])
-        self._page.wait_for_timeout(1500)
+        # 레이어가 떴다는 신호(태그 입력칸)까지만 대기 — 안 뜨면 종전 상한(1.5초)만큼 기다린 셈
+        try:
+            self._page.wait_for_selector(SMART_EDITOR["tag_input"], timeout=1500)
+            self._page.wait_for_timeout(200)  # 레이어 애니메이션 여유
+        except Exception:  # noqa: BLE001 - 신호 미감지 시 종전과 동일하게 진행
+            pass
 
     def get_categories(self) -> list[str]:
         """현재 유저의 블로그 카테고리 목록을 동적으로 읽는다(발행 레이어).
