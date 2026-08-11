@@ -816,6 +816,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <input type=datetime-local id=reserveat class=reserveat style="display:none">
           <button class=btn id=save disabled title="초안을 검토한 뒤 네이버 블로그에 임시저장">임시저장</button>
         </div>
+        <div id=inplacebadge style="display:none;margin-top:6px;align-items:center;gap:8px;font-size:12.5px;color:#8a6d1a;background:#fff7dd;border:1px solid #f0dfae;border-radius:8px;padding:6px 10px"></div>
         <div id=reservehint class=reservehint style="display:none"></div>
         <div class="doc empty" id=preview><div class=docguide>
           <div class=dg-ic>✍️</div>
@@ -1510,6 +1511,7 @@ async function importDraft(idx, title, date){
     if(paths.length) applyDraftTitleKeyword(title);
     // 이 원본 글을 저장 완료 후 삭제 대상으로 기억(제목+저장일시로 식별).
     if(paths.length) IMPORTED_DRAFT={title:(title||''), date:(date||'')};
+    renderInplaceBadge();  // '저장 = 기존 글 갱신' 딱지를 즉시 표시
     renderTabs();  // 불러온 글 제목이 탭에 반영되게
   }catch(e){ el.stop(); stat.textContent='가져오기 실패'; toast('사진을 못 가져왔어요 — '+e.message,'err'); }
   DRAFTBUSY=false;
@@ -1999,6 +2001,7 @@ function applyWS(s){
   if(PLAN)renderPreview(PLAN);  // 스냅샷 HTML은 당시 '사진 보기' 설정으로 그린 것 — 현재 설정으로 다시 그린다
   if($('#save')) $('#save').disabled=(s.saveDisabled!==false);
   setKind(s.SRCKIND||'place', s.KINDMANUAL);  // kind UI + 상품링크칸 표시 동기화
+  renderInplaceBadge();  // 탭 전환·복원 시 in-place 딱지 표시 동기화
   renderGrid(); renderPmeta(); updatePhotoSummary();
 }
 // 탭 제목: 초안 제목 > 메모 첫 줄 > 불러온 원본 제목 > '새 글 N'.
@@ -2012,6 +2015,23 @@ function wsTitle(w){
   const m=(memo||'').trim().split('\n')[0]; if(m) return m.slice(0,20);
   if(imp&&imp.title) return imp.title;
   return '새 글 '+(w.seq||'');
+}
+// in-place 딱지 배지 — 탭에 IMPORTED_DRAFT가 남아 있으면 '저장 = 기존 글 갱신'임을 저장
+// 버튼 옆에 항상 보여준다. 딱지는 자동으로 지워지지 않아서, 불러오기 탭을 리스타일 등
+// 새 글 작업에 재사용하면 발행이 조용히 in-place로 새어 기존 임시저장을 덮어쓰는 사고가
+// 났었다(2026-08-11 화성 글) — 배지 + ✕(연결 해제)로 경로를 눈에 보이게 한다.
+function renderInplaceBadge(){
+  const el=$('#inplacebadge'); if(!el) return;
+  if(IMPORTED_DRAFT){
+    el.innerHTML='';
+    const s=document.createElement('span');
+    s.textContent='📥 저장하면 기존 글을 갱신해요: '+(IMPORTED_DRAFT.title||'(제목 없음)');
+    const x=document.createElement('button'); x.type='button'; x.textContent='✕ 연결 해제';
+    x.title='해제하면 이 탭은 새 글로 저장돼요(원본 임시저장 글은 그대로 남음)';
+    x.style.cssText='margin-left:auto;border:1px solid #e0cf9a;background:#fff;border-radius:6px;padding:2px 8px;font-size:12px;cursor:pointer;color:#8a6d1a';
+    x.onclick=()=>{ IMPORTED_DRAFT=null; renderInplaceBadge(); renderTabs(); toast('불러온 글 연결을 해제했어요 — 이제 새 글로 저장돼요','ok'); };
+    el.appendChild(s); el.appendChild(x); el.style.display='flex';
+  } else el.style.display='none';
 }
 function renderTabs(){
   const bar=$('#workbar'); if(!bar) return; bar.innerHTML='';
