@@ -27,6 +27,14 @@ from autoblog.publish.plan import PublishBlock, PublishPlan
 STATE_PATH = DATA_DIR / "naver_state.json"
 
 
+class PublishAborted(RuntimeError):
+    """저장 '전' 안전 중단 — 에디터 상태가 나빠 계속하면 글이 뒤섞일 때 던진다.
+
+    이 예외가 나온 시점엔 아무것도 저장되지 않았으므로(원본 임시저장 무사) 같은
+    플랜으로 다시 시도해도 무해하다(멱등). webui는 이 예외에 한해 새 브라우저로
+    자동 재시도한다 — 일시적 에디터 상태(지연·오버레이)가 원인이라 재기동이 약."""
+
+
 def _original_url_candidates(src: str) -> list[str]:
     """에디터 img src(표시용 축소본, ?type=w966 등) → 원본 화질 후보 URL 목록.
 
@@ -1365,13 +1373,13 @@ class BlogPublisher:
                     # 앵커 실패 상태로 계속 넣으면 남은 블록 전부가 이전 캐럿 자리에 짜깁기돼
                     # 문서가 통째로 뒤섞인다(2026-08-11 실사고). 저장 전 중단이라 원본은 무사 —
                     # 웹UI 실패 탭에서 '다시 시도'하면 된다.
-                    raise RuntimeError(
+                    raise PublishAborted(
                         "본문 삽입 위치(제목 아래 새 문단)를 잡지 못했어요 — 글이 뒤섞인 채 "
                         "저장되는 걸 막으려고 중단했습니다. 다시 시도해 주세요."
                     )
             else:
                 if not self._anchor_after_video_index(min(seg_idx, n_phys_video) - 1):
-                    raise RuntimeError(
+                    raise PublishAborted(
                         "본문 삽입 위치(영상 뒤 새 문단)를 잡지 못했어요 — 글이 뒤섞인 채 "
                         "저장되는 걸 막으려고 중단했습니다. 다시 시도해 주세요."
                     )
@@ -1410,7 +1418,7 @@ class BlogPublisher:
         if misses:
             detail = "; ".join(misses[:3]) + ("…" if len(misses) > 3 else "")
             if save:
-                raise RuntimeError(
+                raise PublishAborted(
                     f"저장 전 최종 검증에서 본문이 글감과 다르게 조립된 걸 발견했어요({detail}) "
                     "— 뒤섞인 채 저장되는 걸 막으려고 저장하지 않았습니다. 다시 시도해 주세요."
                 )
