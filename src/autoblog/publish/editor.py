@@ -1157,6 +1157,83 @@ class BlogPublisher:
     }
     """
 
+    # 정리 '전' 문서에서 가장 흔한 (서체, 크기) 조합 — 그 블로그의 기본 본문체로 본다.
+    # 서식 리셋(_reset_leftover_format)이 서체·크기를 되돌릴 목표값으로 쓴다.
+    _DOMINANT_STYLE_JS = r"""
+    () => {
+      const tally = {};
+      for (const p of document.querySelectorAll('.se-component.se-text p.se-text-paragraph')) {
+        const t = (p.textContent || '').replace(/[​﻿]/g, '').trim();
+        if (!t) continue;
+        const s = p.querySelector('span');
+        if (!s) continue;
+        const cls = s.className.toString();
+        const ff = (cls.match(/se-ff-([a-z0-9]+)/i) || [])[1] || '';
+        const fs = (cls.match(/se-fs(\d+)/i) || [])[1] || '';
+        if (!ff && !fs) continue;
+        const k = ff + '|' + fs;
+        tally[k] = (tally[k] || 0) + 1;
+      }
+      let best = '', n = 0;
+      for (const k in tally) if (tally[k] > n) { n = tally[k]; best = k; }
+      return best;
+    }
+    """
+
+    def _apply_bg_none(self) -> bool:
+        """선택 텍스트의 배경(형광)을 팔레트 '색상 없음'으로 제거. 눌렀으면 True."""
+        page = self._page
+        for _ in range(3):
+            page.evaluate(
+                "()=>{const b=document.querySelector('button[data-name=\"background-color\"]');"
+                "if(b)b.click();}"
+            )
+            page.wait_for_timeout(400)
+            clicked = page.evaluate(
+                "()=>{const o=document.querySelector('button.se-color-palette-no-color');"
+                "if(o&&o.offsetParent){o.click();return true;}return false;}"
+            )
+            page.wait_for_timeout(250)
+            if clicked:
+                return True
+        return False
+
+    def _reset_leftover_format(self, dominant: str) -> None:
+        """정리 후 남은 빈 문단의 잔류 서식(색·형광·서체·크기)을 기본으로 되돌린다.
+
+        Ctrl+A+Delete로 비워도 SE는 빈 문단에 직전 글자의 서식을 남기고, 역순 삽입의 첫
+        타이핑 블록(=플랜 '마지막' 블록)이 그걸 상속한다(2026-08-11 화성 글 마지막 문단이
+        주의 프리셋체로 저장된 실사고 — 강조 없는 블록이라 덮어쓰기도 안 됨). 빈 문단은
+        컴포넌트째 제거가 안 되므로(모서리클릭 Delete·Backspace 모두 불가 실측) 센티널 한
+        글자를 타이핑→드래그 선택→네이티브 툴바로 서식을 리셋하고 지운다. 서체·크기는 정리
+        전 문서의 지배적 값(=그 블로그 기본 본문체), 배경은 '색상 없음'.
+        보조 단계라 실패해도 발행은 진행한다(최악 = 기존과 동일한 상속)."""
+        page = self._page
+        try:
+            comp = page.query_selector(".se-component.se-text")
+            if comp is None:
+                return  # 텍스트 컴포넌트가 없으면 앵커 Enter가 새 기본 문단을 만든다
+            comp.click()
+            page.wait_for_timeout(150)
+            page.keyboard.type(self._ANCHOR_SENTINEL)
+            page.wait_for_timeout(150)
+            if not self._select_body_text(self._ANCHOR_SENTINEL):
+                page.keyboard.press("Backspace")
+                return
+            self._apply_bg_none()
+            # ponytail: 기본 글자색은 검정으로 가정 — 블로그별 커스텀 글자색이 필요해지면
+            # dominant 측정에 색을 추가
+            self._apply_color(SMART_EDITOR["toolbar_text_color"], "#000000")
+            ff, _, fs = (dominant or "").partition("|")
+            if ff:
+                self._apply_font(ff)
+            if fs:
+                self._apply_font_size(fs)
+            page.keyboard.press("Backspace")  # 적용 후에도 선택 유지(실측) — 센티널 삭제
+            page.wait_for_timeout(150)
+        except Exception:  # noqa: BLE001 - 리셋은 보조, 실패해도 발행 진행
+            page.keyboard.press("Escape")
+
     def _clear_imported_body(self) -> int:
         """불러온 글의 본문 텍스트 컴포넌트 내용을 모두 비운다(사진/영상은 보존).
 
@@ -1251,8 +1328,13 @@ class BlogPublisher:
         # 다시 넣으므로, 옛것을 남겨두면 새 내용과 뒤섞인다. 정리는 보조라 실패해도 작성은 진행.
         if clean_imported:
             try:
+                # 서체·크기 리셋 목표는 '정리 전' 문서에서 측정(그 블로그의 기본 본문체)
+                dominant = page.evaluate(self._DOMINANT_STYLE_JS)
                 extras, left = self._remove_imported_extras()
                 cleared = self._clear_imported_body()
+                # 비운 문단에 남은 잔류 서식(색·형광·서체)을 기본으로 — 첫 타이핑 블록의
+                # 서식 상속 사고 방지(2026-08-11 화성 글 마지막 문단 주의체 실측)
+                self._reset_leftover_format(dominant)
                 if extras or cleared:
                     # 정리는 clean_imported 기본 동작이라 오류·확인 대상이 아님 → 안내(infos)로 전달
                     infos.append(
