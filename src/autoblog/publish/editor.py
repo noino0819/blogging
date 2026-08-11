@@ -626,11 +626,20 @@ class BlogPublisher:
                 page.wait_for_timeout(400)  # 늦게 뜬 팝업이 렌더될 여유 → 다음 라운드에서 걷어냄
         else:
             raise TimeoutError("임시저장 글 클릭이 팝업 딤에 계속 가로채여 로드하지 못했어요.")
-        page.wait_for_timeout(1500)
+        # 확인 팝업은 보통 수백 ms 안에 뜬다 — 고정 1500ms 대신 등장을 기다리고(없는 케이스
+        # 상한 1500ms로 종전과 동일), 클릭 후엔 팝업이 사라지는 신호까지만 기다린다.
+        try:
+            page.wait_for_selector(SMART_EDITOR["draft_load_confirm"], timeout=1500)
+        except Exception:  # noqa: BLE001 - 빈 에디터 등 확인 팝업이 안 뜨는 케이스
+            pass
         confirm = page.query_selector(SMART_EDITOR["draft_load_confirm"])  # '불러오기' 확인 팝업
         if confirm and confirm.is_visible():
             confirm.click()
-        page.wait_for_timeout(800)
+            try:
+                confirm.wait_for_element_state("hidden", timeout=3000)
+            except Exception:  # noqa: BLE001 - 사라짐 감지 실패 시 짧은 고정 대기로
+                page.wait_for_timeout(600)
+        page.wait_for_timeout(200)  # 로드 직후 렌더 여유(호출부가 콘텐츠 신호를 추가로 기다림)
 
     # --- in-place 편집 (불러온 글에 직접 본문을 짜 넣는다) ---
     def _editor_photos(self):
@@ -1234,6 +1243,25 @@ class BlogPublisher:
             comp = page.query_selector(".se-component.se-text")
             if comp is None:
                 return  # 텍스트 컴포넌트가 없으면 앵커 Enter가 새 기본 문단을 만든다
+            # 잔류 서식이 '실제로 있을 때만' 리셋 — 리셋 한 번이 ~3초라(프로파일 실측),
+            # 형광·비검정 인라인색·비기본 서체가 남은 경우에만 비용을 낸다.
+            probe = page.evaluate(
+                r"""()=>{const p=document.querySelector('.se-component.se-text p.se-text-paragraph');
+                  if(!p) return null;
+                  const s=p.querySelector('span');
+                  if(!s) return {hl:false, stOk:true, key:''};
+                  const cls=s.className.toString();
+                  const st=(s.getAttribute('style')||'').trim();
+                  return {hl:/se-highlight/.test(cls),
+                          stOk: st==='' || /^color:\s*rgb\(0,\s*0,\s*0\);?$/.test(st),
+                          key:((cls.match(/se-ff-([a-z0-9]+)/i)||[])[1]||'')+'|'
+                              +((cls.match(/se-fs(\d+)/i)||[])[1]||'')};}"""
+            )
+            if probe is None or (
+                not probe["hl"] and probe["stOk"]
+                and probe["key"] in ("", "|", dominant or "")
+            ):
+                return  # 형광·색 잔재 없음 + 서체/크기 기본과 동일 → 리셋 불필요
             comp.click()
             page.wait_for_timeout(150)
             page.keyboard.type(self._ANCHOR_SENTINEL)
@@ -1375,8 +1403,12 @@ class BlogPublisher:
             raise ValueError("draft_title 또는 draft_idx 중 하나는 필요합니다")
         self._load_draft_into_editor(idx)
         try:
-            page.wait_for_selector(SMART_EDITOR["editor_image"], timeout=8000)
-        except Exception:
+            # 본문이 렌더됐다는 신호 — 텍스트든 사진이든 먼저 뜨는 쪽. (예전엔 editor_image만
+            # 기다려서 사진 없는 글이 매번 타임아웃 8초를 통째로 태웠다 — 프로파일 실측.)
+            page.wait_for_selector(
+                SMART_EDITOR["editor_image"] + ", .se-component.se-text", timeout=8000
+            )
+        except Exception:  # noqa: BLE001 - 빈 글 등 — 아래 고정 대기로 진행
             pass
         page.wait_for_timeout(800)
 
