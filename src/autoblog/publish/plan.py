@@ -66,6 +66,34 @@ def _is_coupang_url(url: str) -> bool:
     return any(host == h or host.endswith("." + h) for h in _COUPANG_HOSTS)
 
 
+# 본문 생링크 금지 — LLM이 텍스트에 URL을 직접 쓰면(마크다운 링크 포함) 본문에 노출하지
+# 않고 링크 카드(oglink)로만 넣는다. URL 뒤에 조사가 바로 붙는 한국어 특성상 한글부터는
+# URL로 잡지 않는다("https://x.com에서" → x.com까지만).
+_MD_LINK_RE = re.compile(r"\[([^\]]*)\]\((https?://[^)\s]+)\)")
+_BARE_URL_RE = re.compile(r"https?://[^\s가-힣<>\"']+")
+
+
+def strip_raw_urls(text: str) -> tuple[str, list[str]]:
+    """텍스트에서 URL을 걷어내 (정리된 텍스트, URL 목록)으로. 마크다운 링크는 라벨만
+    남기고, URL만 있던 줄은 통째로 지운다(원래 빈 줄은 문단 간격이므로 보존)."""
+    urls: list[str] = []
+
+    def _md(m: re.Match) -> str:
+        urls.append(m.group(2))
+        return m.group(1)
+
+    def _bare(m: re.Match) -> str:
+        urls.append(m.group(0).rstrip(".,;:!?)]"))
+        return ""
+
+    kept: list[str] = []
+    for ln in text.split("\n"):
+        cleaned = _BARE_URL_RE.sub(_bare, _MD_LINK_RE.sub(_md, ln))
+        if cleaned.strip() or not ln.strip():
+            kept.append(re.sub(r"[ \t]{2,}", " ", cleaned).rstrip())
+    return "\n".join(kept), urls
+
+
 def _resolve_place_marker_url(url: str) -> tuple[str, str | None] | None:
     """[지도:URL] 마커의 URL → (가게명, 도로명 주소). 세션 캐시 우선, 없으면 실시간 해석."""
     from autoblog.pipeline import cached_place_card  # 함수 내 임포트 - 모듈 순환 참조 회피
@@ -552,12 +580,31 @@ def build_publish_plan(
             ai_generated=ph.ai_generated,
         )
 
+    # 본문 URL → 링크 카드 중복 방지: 협찬·상품 링크는 아래 '카드 분산 삽입'이 따로
+    # 넣으므로(협찬은 keep_url_text로 크롤러용 URL 줄까지) 여기선 텍스트에서 지우기만 한다.
+    spread_urls = {
+        u.strip() for u in [*(sponsor_links or []), *(product_links or [])] if u.strip()
+    }
+    carded_urls: set[str] = set()
+
+    def emit_link_cards(urls: list[str]):
+        for url in urls:
+            if url in carded_urls or url in spread_urls:
+                continue
+            carded_urls.add(url)
+            blocks.append(PublishBlock(kind="link", link_url=url))
+
     def flush_text():
         text = "\n".join(text_buf).strip()
         text_buf.clear()
+        if not text:
+            return
+        text, urls = strip_raw_urls(text)  # 생링크는 본문에 노출하지 않는다
+        text = text.strip()
         if text:
             spans = [e for e in draft.emphases if e.text and e.text in text]
             blocks.append(PublishBlock(kind="text", text=text, emphases=spans, align="center"))
+        emit_link_cards(urls)
 
     def flush_table():
         buf = table_buf[:]
@@ -678,6 +725,9 @@ def build_publish_plan(
                 in_quote = False
                 qtext = "\n".join(quote_buf).strip()
                 quote_buf.clear()
+                # 인용구 안 생링크도 걷어내 카드로 — 인용구엔 카드가 못 들어가 뒤에 붙는다
+                qtext, qurls = strip_raw_urls(qtext)
+                qtext = qtext.strip()
                 if qtext:
                     blocks.append(
                         PublishBlock(
@@ -687,6 +737,7 @@ def build_publish_plan(
                             align=quote_align(quote_variant),
                         )
                     )
+                emit_link_cards(qurls)
             else:
                 quote_buf.append(line)
             continue

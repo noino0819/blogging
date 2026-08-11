@@ -767,3 +767,41 @@ def test_apply_photo_meta_overrides_late_thumb_swap():
     apply_photo_meta_overrides(plan, {"old.jpg": {"thumbnail": True}})
     assert plan.rep_image_path == "old.jpg"
     assert sum(1 for b in plan.blocks if b.image_path == "old.jpg") == 1
+
+
+def test_build_plan_raw_urls_become_link_cards():
+    # LLM이 본문에 생링크·마크다운 링크를 써도 본문 텍스트에 노출되지 않고 링크 카드로만
+    draft = DraftResult(
+        text="제목\n\n구매는 여기서 https://smartstore.naver.com/x/1 했어요.\n"
+        "[자세히](https://example.com/a)\nhttps://example.com/only-url\n마무리."
+    )
+    plan = build_publish_plan(draft, [])
+    texts = " ".join(b.text for b in plan.blocks if b.kind == "text")
+    assert "http" not in texts
+    assert "자세히" in texts  # 마크다운 라벨은 본문에 남는다
+    links = [b for b in plan.blocks if b.kind == "link"]
+    assert [b.link_url for b in links] == [
+        "https://smartstore.naver.com/x/1",
+        "https://example.com/a",
+        "https://example.com/only-url",
+    ]
+    assert all(not b.keep_url_text for b in links)  # 카드만, URL 텍스트 줄 없음
+
+
+def test_build_plan_text_url_dedupes_with_sponsor_spread():
+    # 협찬 URL을 본문에도 쓰면 텍스트만 지우고, 카드는 분산 삽입이 한 번만(keep_url_text 유지)
+    url = "https://revu.net/campaign/1"
+    draft = DraftResult(text=f"제목\n\n본문 시작.\n{url}\n본문 끝.")
+    plan = build_publish_plan(draft, [], sponsor_links=[url])
+    links = [b for b in plan.blocks if b.kind == "link"]
+    assert len(links) == 1 and links[0].keep_url_text
+    assert all("http" not in b.text for b in plan.blocks if b.kind == "text")
+
+
+def test_build_plan_quote_url_moves_to_link_card():
+    # 인용구 속 생링크 — 인용구 텍스트에서 걷어내고 카드가 인용구 뒤에 붙는다
+    draft = DraftResult(text="제목\n\n[인용구]\n좋았다\nhttps://example.com/q\n[/인용구]")
+    plan = build_publish_plan(draft, [])
+    quote = next(b for b in plan.blocks if b.kind == "quote")
+    assert "http" not in quote.text and "좋았다" in quote.text
+    assert any(b.kind == "link" and b.link_url == "https://example.com/q" for b in plan.blocks)
