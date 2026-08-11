@@ -4332,9 +4332,10 @@ def _make_handler(state: dict):
                 # 재시도(retryJob)는 실패한 글을 살리는 작업이라 대기열 맨 앞에 선다
                 # (진행 중인 건은 안 끊음 — 다음 차례만 양보받는다).
                 with (state["publish_lock"].first() if retry_id else state["publish_lock"]):
-                    # 안전 중단(PublishAborted: 저장 '전' 검증 실패라 아무것도 저장 안 됨 —
-                    # 멱등)은 일시적 에디터 상태(지연·오버레이)가 원인이라, 실패로 끝내지
-                    # 않고 새 브라우저로 잠시 쉬었다가 자동 재시도한다(최대 3회).
+                    # 안전 중단(PublishAborted)은 일시적 에디터 상태(지연·오버레이)가 원인이라,
+                    # 실패로 끝내지 않고 새 브라우저로 잠시 쉬었다가 자동 재시도한다(최대 3회).
+                    # 저장 '전' 관문 중단은 아무것도 저장 안 된 멱등 상태, 저장 '후' 실측
+                    # 불일치는 잘못 저장된 상태 — 둘 다 재시도(재발행)가 같은 글을 덮어써 해결.
                     for attempt in range(3):
                         # 임시저장(submit=False)은 사람 확인이 필요 없으니 평소엔 백그라운드(headless).
                         # 세션이 없으면 wait_for_login이 headful로 재기동해 직접 로그인하게 한다.

@@ -1225,6 +1225,10 @@ class BlogPublisher:
         self.open_write_page()
         if draft_title:
             idx = self._resolve_draft_idx(draft_title, draft_date)
+            if idx is None and plan.title:
+                # 재시도 경로: 직전 시도가 저장까지 갔다면 글 제목이 이미 새 제목(plan.title)으로
+                # 바뀌어 있어 원래 제목으로는 못 찾는다 — 새 제목 완전일치로 한 번 더 찾는다.
+                idx = self._resolve_draft_idx(plan.title)
             if idx is None:
                 raise RuntimeError(
                     f"불러온 글을 목록에서 다시 찾지 못했어요(제목 ‘{draft_title}’). "
@@ -1427,7 +1431,52 @@ class BlogPublisher:
             if category or plan.tags:
                 self._apply_category_for_draft(category, tags=plan.tags, warnings=warnings)
             self.save_draft()
+            self._verify_saved_draft(
+                plan, skipped_ids,
+                check_videos=(n_plan_video == n_phys_video), warnings=warnings,
+            )
         return warnings, infos
+
+    def _verify_saved_draft(
+        self, plan, skipped_ids: set, check_videos: bool, warnings: list[str],
+    ) -> None:
+        """저장 '후' 실측 관문: 방금 저장한 임시저장 글을 다시 로드해 플랜과 재대조한다.
+
+        화면 검증(센티널 앵커·저장 전 관문)이 전부 통과하고도 저장본이 뒤섞여 남은 실사고가
+        있다(2026-08-11 화성 글 — SE 내부 저장 모델과 화면의 괴리로 추정, 표·정리·태그레이어·
+        강조 소형 재현 4종 전부 정상인 비결정 타이밍 버그). 화면은 거짓말할 수 있으므로
+        저장본을 열어 실측하는 것만이 저장을 보증한다. 불일치면 PublishAborted — 웹UI
+        자동 재시도의 재발행이 잘못 저장된 글을 덮어써 복구한다.
+        검증 절차 자체가 실패하면(목록·로드 오류) 저장은 이미 된 상태라 경고만 남긴다."""
+        page = self._page
+        try:
+            self.open_write_page()
+            idx = self._resolve_draft_idx(plan.title or "")
+            if idx is None:
+                warnings.append(
+                    "저장 후 검증을 못 했어요(저장본을 목록에서 못 찾음) — 글을 열어 확인해 주세요."
+                )
+                return
+            self._load_draft_into_editor(idx)
+            prev = -1  # 렌더 안정화 대기 — 큰 글은 로드가 늦어 조기 대조가 오탐을 낸다
+            for _ in range(10):
+                n = page.evaluate("()=>document.querySelectorAll('.se-component').length")
+                if n == prev:
+                    break
+                prev = n
+                page.wait_for_timeout(800)
+            misses = self._verify_inplace_result(plan, skipped_ids, check_videos)
+        except Exception as exc:  # noqa: BLE001 - 검증 인프라 실패 ≠ 저장 실패
+            warnings.append(
+                f"저장 후 검증을 완료하지 못했어요({type(exc).__name__}) — 글을 열어 확인해 주세요."
+            )
+            return
+        if misses:
+            detail = "; ".join(misses[:3]) + ("…" if len(misses) > 3 else "")
+            raise PublishAborted(
+                f"저장 후 실측 검증에서 저장본이 글감과 다르게 남은 걸 발견했어요({detail}) — "
+                "화면 검증은 통과했지만 저장본이 달라, 재발행으로 바로잡아야 합니다."
+            )
 
     def import_draft_photos(self, idx: int, dest_dir: Path) -> list[str]:
         """idx번 임시저장 글을 에디터에 로드해 본문 사진을 dest_dir에 내려받고 로컬 경로 목록을 반환.
