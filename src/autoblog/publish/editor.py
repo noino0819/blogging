@@ -194,27 +194,48 @@ class BlogPublisher:
         """
         page = self._page
         dim_sel = ".se-popup-dim"
+        # 2026-08 실측: 진입 '이어쓰기' 팝업이 SE 딤이 아니라 블로그 자체 레이어
+        # (layer_popup__<해시> isShow__<해시>)로 떠서 딤 감지에 안 걸린 채 제목 클릭을
+        # 가로챈다. 해시 클래스는 배포마다 바뀔 수 있어 접두사로 매칭해 같은 루프에서 닫는다.
+        layer_sel = "[class*=layer_popup][class*=isShow]"
         # 팝업이 늦게 뜨는 케이스까지 잡으려 몇 라운드 반복. 각 라운드에서 딤이 없으면 종료.
         for _ in range(8):
             dim = page.query_selector(dim_sel)
-            if not (dim and dim.is_visible()):
-                return  # 딤 없음 = 막는 오버레이 없음
+            layer = page.query_selector(layer_sel)
+            if not ((dim and dim.is_visible()) or (layer and layer.is_visible())):
+                return  # 딤·레이어 없음 = 막는 오버레이 없음
             clicked = False
-            for sel in (
-                SMART_EDITOR["draft_popup_cancel"],  # 이어쓰기 '취소'
-                "button:has-text('취소')",
-                "button.se-popup-close-button",       # 닫기(X)
-                SMART_EDITOR["help_close"],            # 도움말 패널
-            ):
+            if layer and layer.is_visible():
+                # 이어쓰기는 '취소'를 눌러야 옛 미저장 내용이 로드되지 않는다(확인=이어쓰기).
                 try:
-                    el = page.query_selector(sel)
-                    if el and el.is_visible():
-                        el.click()
-                        clicked = True
+                    clicked = bool(page.evaluate(
+                        """(sel)=>{const l=document.querySelector(sel); if(!l) return false;
+                          const bs=[...l.querySelectorAll('button')];
+                          const pick=bs.find(b=>/취소/.test(b.textContent||''))
+                            ||bs.find(b=>/닫기|확인/.test(b.textContent||''));
+                          if(pick){pick.click();return true;} return false;}""",
+                        layer_sel,
+                    ))
+                    if clicked:
                         page.wait_for_timeout(300)
-                        break
-                except Exception:
+                except Exception:  # noqa: BLE001 - 레이어 처리 실패 시 아래 공용 버튼 탐색으로
                     pass
+            if not clicked:
+                for sel in (
+                    SMART_EDITOR["draft_popup_cancel"],  # 이어쓰기 '취소'
+                    "button:has-text('취소')",
+                    "button.se-popup-close-button",       # 닫기(X)
+                    SMART_EDITOR["help_close"],            # 도움말 패널
+                ):
+                    try:
+                        el = page.query_selector(sel)
+                        if el and el.is_visible():
+                            el.click()
+                            clicked = True
+                            page.wait_for_timeout(300)
+                            break
+                    except Exception:  # noqa: BLE001 - 다음 후보 버튼으로
+                        pass
             if not clicked:
                 # 취소/닫기 버튼을 못 찾으면(확인만 있는 안내 등) Esc로 강제로 닫는다.
                 try:
