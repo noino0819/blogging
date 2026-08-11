@@ -613,21 +613,57 @@ class BlogPublisher:
         v = self._page.query_selector_all(".se-component.se-video")
         return v[0] if v else None
 
+    # 미디어(사진/영상) 앵커 검증: 센티널이 '해당 미디어 컴포넌트 바로 다음 텍스트 문단의
+    # 첫 글자'로 들어갔는지. kind='image'면 n번째 img 기준, 'video'면 n번째 영상 컴포넌트 기준.
+    _MEDIA_ANCHOR_VERIFY_JS = r"""
+    (args) => {
+      const {mark, kind, n, videoSel} = args;
+      const present = (document.body.textContent || '').includes(mark);
+      const comps = [...document.querySelectorAll('.se-component')];
+      let idx = -1;
+      if (kind === 'image') {
+        const imgs = [...document.querySelectorAll('img.se-image-resource')];
+        const comp = imgs[n] ? imgs[n].closest('.se-component') : null;
+        idx = comp ? comps.indexOf(comp) : -1;
+      } else {
+        const vids = [...document.querySelectorAll(videoSel)];
+        const comp = vids[n] ? (vids[n].closest('.se-component') || vids[n]) : null;
+        idx = comp ? comps.indexOf(comp) : -1;
+      }
+      let ok = false;
+      const c = idx >= 0 ? comps[idx + 1] : null;
+      if (c && /se-text(\s|$)/.test(c.className)) {
+        const p = c.querySelector('p.se-text-paragraph');
+        const clean = p ? (p.textContent || '').replace(/[\u200B\uFEFF]/g, '') : '';
+        ok = clean.startsWith(mark);
+      }
+      return {present, ok};
+    }
+    """
+
     def _anchor_after_photo(self, k: int) -> bool:
         """k번째 사진을 선택 → Enter로 그 사진 '바로 뒤'에 빈 문단을 만들고 커서를 둔다.
 
-        사진을 클릭하면 객체선택이라 바로 타이핑하면 글자가 사라진다(검증됨) → 반드시 Enter."""
+        사진을 클릭하면 객체선택이라 바로 타이핑하면 글자가 사라진다(검증됨) → 반드시 Enter.
+        Enter가 씹히면 캐럿이 객체선택에 남아 이후 타이핑이 통째로 사라지므로(실측),
+        센티널로 캐럿이 실제 사진 뒤 문단에 있는지 검증하고 실패하면 재시도한다."""
         page = self._page
         imgs = self._editor_photos()
         if not imgs:
             return False
         k = max(0, min(k, len(imgs) - 1))
-        imgs[k].scroll_into_view_if_needed()
-        imgs[k].click()
-        page.wait_for_timeout(300)
-        page.keyboard.press("Enter")
-        page.wait_for_timeout(300)
-        return True
+        for _ in range(3):
+            imgs[k].scroll_into_view_if_needed()
+            imgs[k].click()
+            page.wait_for_timeout(300)
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(300)
+            if self._sentinel_check(
+                self._MEDIA_ANCHOR_VERIFY_JS,
+                {"mark": self._ANCHOR_SENTINEL, "kind": "image", "n": k, "videoSel": ""},
+            ):
+                return True
+        return False
 
     def _anchor_after_video(self) -> bool:
         """영상 컴포넌트를 선택 → Enter로 영상 '바로 뒤'에 커서를 둔다(영상 자체는 안 건드림)."""
@@ -636,17 +672,25 @@ class BlogPublisher:
     def _anchor_after_video_index(self, n: int) -> bool:
         """n번째 영상(문서 순)을 선택 → Enter로 그 영상 '바로 뒤'에 커서를 둔다(영상 자체 보존).
 
-        in-place 사진 재배치에서 '구간 앵커'로 쓴다 — 영상은 옮길 수 없어 고정점이 된다."""
+        in-place 사진 재배치에서 '구간 앵커'로 쓴다 — 영상은 옮길 수 없어 고정점이 된다.
+        사진 앵커와 같은 이유로 센티널 검증 + 재시도(실패 시 False — 호출부가 중단 판단)."""
         page = self._page
         vids = self._page.query_selector_all(SMART_EDITOR["editor_video"])
         if not vids or n < 0 or n >= len(vids):
             return False
-        vids[n].scroll_into_view_if_needed()
-        vids[n].click()
-        page.wait_for_timeout(300)
-        page.keyboard.press("Enter")
-        page.wait_for_timeout(300)
-        return True
+        for _ in range(3):
+            vids[n].scroll_into_view_if_needed()
+            vids[n].click()
+            page.wait_for_timeout(300)
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(300)
+            if self._sentinel_check(
+                self._MEDIA_ANCHOR_VERIFY_JS,
+                {"mark": self._ANCHOR_SENTINEL, "kind": "video", "n": n,
+                 "videoSel": SMART_EDITOR["editor_video"]},
+            ):
+                return True
+        return False
 
     def _count_collages(self) -> int:
         """콜라주(한 컴포넌트에 사진 2장 이상)의 개수. 낱장으로 못 옮겨 고정 앵커로 둔다."""
@@ -893,21 +937,29 @@ class BlogPublisher:
             )
             page.keyboard.press("Enter")
             page.wait_for_timeout(300)
-            page.keyboard.type(self._ANCHOR_SENTINEL)
-            got = {"present": False, "ok": False}
-            for _ in range(6):  # SE 반영이 비동기라 잠깐 폴링
-                got = page.evaluate(self._ANCHOR_VERIFY_JS, self._ANCHOR_SENTINEL)
-                if got["present"]:
-                    break
-                page.wait_for_timeout(150)
-            if got["present"]:  # 어딘가 들어갔으면 캐럿이 그 뒤에 있으니 Backspace로 지운다
-                page.keyboard.press("Backspace")
-                page.wait_for_timeout(150)
-            # 입력이 통째로 씹혔으면(present=False) Backspace를 치지 않는다 — 캐럿이
-            # 엉뚱한 곳(제목 등)에 있을 때 남의 글자를 지우는 사고 방지.
-            if got["ok"]:
+            if self._sentinel_check(self._ANCHOR_VERIFY_JS, self._ANCHOR_SENTINEL):
                 return True
         return False
+
+    def _sentinel_check(self, verify_js: str, arg) -> bool:
+        """앵커 성공 여부를 '효과'로 검증: 센티널 한 글자를 실제 타이핑해 verify_js가 기대
+        위치에서 찾아내는지 확인하고 지운다. DOM 셀렉션은 SE가 캐럿을 내부 모델로 들고
+        비동기 반영이라(실측) 셀렉션 검사로는 앵커 실패를 못 잡는다 — 타이핑만이 진실.
+
+        Backspace 정리는 센티널이 문서 어딘가 들어간 게 확인될 때만 — 입력이 통째로
+        씹혔으면(객체선택 등) 캐럿 위치의 남의 글자를 지우는 사고를 피한다."""
+        page = self._page
+        page.keyboard.type(self._ANCHOR_SENTINEL)
+        got = {"present": False, "ok": False}
+        for _ in range(6):  # SE 반영이 비동기라 잠깐 폴링
+            got = page.evaluate(verify_js, arg)
+            if got["present"]:
+                break
+            page.wait_for_timeout(150)
+        if got["present"]:  # 어딘가 들어갔으면 캐럿이 그 바로 뒤에 있으니 Backspace로 지운다
+            page.keyboard.press("Backspace")
+            page.wait_for_timeout(150)
+        return bool(got["ok"])
 
     def _place_anchor(self, anchor) -> None:
         """anchor 위치(맨 앞 / 사진 k 뒤 / 영상 뒤)에 커서를 둔다."""
@@ -917,6 +969,98 @@ class BlogPublisher:
             self._anchor_after_photo(anchor[1])
         else:
             self._anchor_after_video()
+
+    # 저장 직전 최종 대조용: 문서를 (종류, 텍스트) 목록으로 평탄화. 텍스트 컴포넌트는
+    # 문단별로 낱개 항목(연속 텍스트 블록이 한 컴포넌트로 합쳐져도 줄 단위 대조 가능).
+    # 인용구/표 내부 문단은 해당 컴포넌트 항목 하나로만 잡는다(종류 판정을 먼저 하므로).
+    _DOC_FLATTEN_JS = r"""
+    () => {
+      const out = [];
+      for (const c of document.querySelectorAll('.se-component')) {
+        const cls = c.className.toString();
+        if (/se-documentTitle/.test(cls)) continue;
+        if (/se-video/.test(cls)) { out.push({k: 'video', t: ''}); continue; }
+        if (/se-sticker/.test(cls)) { out.push({k: 'sticker', t: ''}); continue; }
+        if (/se-horizontalLine/.test(cls)) { out.push({k: 'hr', t: ''}); continue; }
+        if (/se-quotation/.test(cls)) { out.push({k: 'quote', t: c.textContent || ''}); continue; }
+        if (/se-table/.test(cls)) {
+          const td = c.querySelector('td,th');
+          out.push({k: 'table', t: td ? (td.textContent || '') : ''});
+          continue;
+        }
+        if (/se-oglink/.test(cls)) { out.push({k: 'link', t: ''}); continue; }
+        if (/se-placesMap/.test(cls)) { out.push({k: 'place', t: ''}); continue; }
+        if (/se-imageStrip/.test(cls) || /se-image\b/.test(cls)
+            || c.querySelector('img.se-image-resource')) {
+          out.push({k: 'image', t: ''});
+          continue;
+        }
+        if (/se-text(\s|$)/.test(cls)) {
+          for (const p of c.querySelectorAll('p.se-text-paragraph')) {
+            const t = p.textContent || '';
+            if (t.replace(/[\u200B\uFEFF]/g, '').trim()) out.push({k: 'text', t});
+          }
+          continue;
+        }
+        out.push({k: 'etc', t: ''});
+      }
+      return out;
+    }
+    """
+
+    @staticmethod
+    def _sig(s: str, limit: int = 0) -> str:
+        """대조용 시그니처 — 한글·영숫자만 남긴다(이모지·문장부호·공백은 에디터가 변형·분해할
+        여지가 있어 제외). limit>0이면 앞 limit자만(기대값 쪽), 0이면 전체(문서 쪽)."""
+        out = re.sub(r"[^0-9A-Za-z가-힣]", "", s or "")
+        return out[:limit] if limit else out
+
+    def _verify_inplace_result(self, plan, skipped_ids: set, check_videos: bool) -> list[str]:
+        """저장 직전 최종 관문: 에디터 문서가 플랜 순서대로 조립됐는지 실물 대조한다.
+
+        원인이 무엇이든(앵커 유실·에디터 개편·미지의 레이스) 결과가 플랜과 다르면 여기서
+        걸린다 — 2026-08-11 화성 장학금 글 사고(본문 통째 뒤섞임이 조용히 저장됨)의 재발을
+        구조적으로 막는 마지막 방어선. 불일치 설명 목록을 반환한다(빈 목록 = 통과).
+
+        하드 대조: 텍스트 줄(줄 단위 순서)·인용구·표(삽입 실패로 경고된 것 제외)·사진(경고
+        제외)·영상(개수 일치 시). 소프트(스티커·구분선·지도·링크)는 원래 실패해도 경고만
+        하는 보조 장식이라 순서 대조에서 뺀다. 시그니처는 한글·영숫자 앞 10자 — 콜라주·협찬
+        배너 같은 플랜 밖 보존 컴포넌트는 순서만 안 깨면 사이에 있어도 통과."""
+        items = self._page.evaluate(self._DOC_FLATTEN_JS)
+        exps: list[tuple[str, str, str]] = []  # (종류, 시그니처, 사람용 설명)
+        for b in plan.blocks:
+            if id(b) in skipped_ids:
+                continue
+            if b.kind == "text":
+                for ln in b.text.split("\n"):
+                    if ln.strip():
+                        exps.append(("text", self._sig(ln, 10), f"본문 ‘{ln.strip()[:20]}’"))
+            elif b.kind == "quote":
+                first = next((ln for ln in b.text.split("\n") if ln.strip()), "")
+                exps.append(("quote", self._sig(first, 10), f"인용구 ‘{first.strip()[:20]}’"))
+            elif b.kind == "table":
+                cell = b.table_rows[0][0] if b.table_rows and b.table_rows[0] else ""
+                exps.append(("table", self._sig(cell, 10), f"표 ‘{cell[:15]}’"))
+            elif b.kind == "image":
+                exps.append(("image", "", "사진"))
+            elif b.kind == "video" and check_videos:
+                exps.append(("video", "", "동영상"))
+        misses: list[str] = []
+        j = 0
+        for kind, sig, desc in exps:
+            found = -1
+            for jj in range(j, len(items)):
+                it = items[jj]
+                if it["k"] == kind and (not sig or sig in self._sig(it["t"])):
+                    found = jj
+                    break
+            if found >= 0:
+                j = found + 1
+            else:
+                misses.append(desc)
+                if len(misses) >= 5:  # 다섯 개면 충분히 설명됨 — 나머지는 생략
+                    break
+        return misses
 
     # 불러온 글에서 지울 '장식' 컴포넌트를 고르는 JS.
     # 사진(se-image)·영상(se-video)·본문 텍스트(se-text)·제목(se-documentTitle)이 '아닌' 모든
@@ -1175,11 +1319,14 @@ class BlogPublisher:
                 "어긋날 수 있어요 — 확인해 주세요."
             )
 
+        skipped_ids: set[int] = set()  # 삽입 실패로 경고 처리된 블록 — 저장 전 최종 대조에서 제외
+
         def _insert_one(block):
             if block.kind == "image" and block.image_path:
                 warn = self._insert_image(block.image_path, size=block.image_size)
                 if warn:
                     warnings.append(warn)
+                    skipped_ids.add(id(block))
             elif block.kind == "text":
                 self._type_text_block(block)
             elif block.kind == "divider":
@@ -1205,6 +1352,7 @@ class BlogPublisher:
             elif block.kind == "table" and block.table_rows:
                 if not self._insert_table(block.table_rows, at_anchor=True):
                     warnings.append("표 자동 삽입 실패 — 에디터에서 직접 ‘표’를 추가해 주세요.")
+                    skipped_ids.add(id(block))
 
         def _anchor_segment(seg_idx):
             # 구간 커서: 0=첫 미디어 앞, K>0=(K-1)번 물리 영상 바로 뒤(영상 부족하면 마지막 영상 뒤).
@@ -1222,7 +1370,11 @@ class BlogPublisher:
                         "저장되는 걸 막으려고 중단했습니다. 다시 시도해 주세요."
                     )
             else:
-                self._anchor_after_video_index(min(seg_idx, n_phys_video) - 1)
+                if not self._anchor_after_video_index(min(seg_idx, n_phys_video) - 1):
+                    raise RuntimeError(
+                        "본문 삽입 위치(영상 뒤 새 문단)를 잡지 못했어요 — 글이 뒤섞인 채 "
+                        "저장되는 걸 막으려고 중단했습니다. 다시 시도해 주세요."
+                    )
 
         # 각 구간 안에서 블록을 '역순'으로 넣되 매번 구간 앵커를 다시 잡아, 나중 것이 위로 밀려
         # 결과적으로 플랜 순서대로 쌓인다(커서 이어가기에 의존하지 않아 블록 종류가 섞여도 안전).
@@ -1250,6 +1402,19 @@ class BlogPublisher:
         # 대표사진 지정은 반드시 '맨 마지막' — 위의 삭제·재삽입이 네이버 대표 플래그를 남은
         # 아무 사진으로 옮겨놓기 때문에, 모든 사진 조작이 끝난 여기서 명시적으로 재지정한다.
         self._set_rep_photo(plan, warnings)
+        # 저장 직전 최종 관문: 문서가 플랜 순서와 다르면 저장하지 않는다(원인 불문 —
+        # 뒤섞인 글이 조용히 저장되는 사고의 구조적 차단, 2026-08-11 실사고 재발 방지).
+        misses = self._verify_inplace_result(
+            plan, skipped_ids, check_videos=(n_plan_video == n_phys_video)
+        )
+        if misses:
+            detail = "; ".join(misses[:3]) + ("…" if len(misses) > 3 else "")
+            if save:
+                raise RuntimeError(
+                    f"저장 전 최종 검증에서 본문이 글감과 다르게 조립된 걸 발견했어요({detail}) "
+                    "— 뒤섞인 채 저장되는 걸 막으려고 저장하지 않았습니다. 다시 시도해 주세요."
+                )
+            warnings.append(f"최종 검증 불일치(저장 안 함 모드): {detail}")
         if save:
             if category or plan.tags:
                 self._apply_category_for_draft(category, tags=plan.tags, warnings=warnings)
