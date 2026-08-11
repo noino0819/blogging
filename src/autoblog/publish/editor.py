@@ -1255,14 +1255,46 @@ class BlogPublisher:
         except Exception:  # noqa: BLE001 - 리셋은 보조, 실패해도 발행 진행
             page.keyboard.press("Escape")
 
+    # 본문에 '보존해야 하는' 미디어(영상·외부 핫링크 이미지=협찬 배너)가 있는지.
+    # 2026-08-11 실측: SE 개편 후 본문 클릭+Ctrl+A는 그 컴포넌트가 아니라 '본문 전체'를
+    # 선택해, Delete가 영상(재업로드 불가!)·배너까지 지운다 → 있으면 안전 경로로 비운다.
+    _HAS_PRESERVED_MEDIA_JS = (
+        "()=>!!document.querySelector('.se-component.se-video')"
+        "||[...document.querySelectorAll('img.se-image-resource')]"
+        ".some(im=>/^https?:/.test(im.src||'')&&!/pstatic\\.net/.test(im.src||''))"
+    )
+
+    def _drag_select_component(self, comp) -> bool:
+        """텍스트 컴포넌트의 '내용만' 실제 마우스 드래그로 선택(첫 문단 시작→마지막 문단 끝).
+
+        Ctrl+A가 본문 전체 선택으로 바뀌어(2026-08-11 실측) 영상·배너 있는 글에서는 컴포넌트
+        범위 선택이 필요하다. _select_body_text와 같은 실드래그라 SE가 선택을 인식한다."""
+        page = self._page
+        ps = comp.query_selector_all("p.se-text-paragraph")
+        if not ps:
+            return False
+        b1, b2 = ps[0].bounding_box(), ps[-1].bounding_box()
+        if not b1 or not b2:
+            return False
+        page.mouse.move(b1["x"] + 2, b1["y"] + min(10.0, b1["height"] / 2))
+        page.mouse.down()
+        # 끝점은 마지막 문단의 '마지막 줄' 오른쪽 끝(여러 줄로 접힌 문단 대비 bottom 기준)
+        page.mouse.move(b2["x"] + b2["width"] - 2,
+                        b2["y"] + b2["height"] - min(8.0, b2["height"] / 2), steps=8)
+        page.mouse.up()
+        page.wait_for_timeout(200)
+        return True
+
     def _clear_imported_body(self) -> int:
         """불러온 글의 본문 텍스트 컴포넌트 내용을 모두 비운다(사진/영상은 보존).
 
-        SE는 컴포넌트마다 별도 contenteditable이라, 텍스트 컴포넌트에 커서를 넣고 Ctrl+A를 누르면
-        그 컴포넌트 내용'만' 선택된다(_type_title의 제목 지우기와 같은 방식). Delete로 지우면 빈
-        문단만 남고, 그 자리에 새 플랜 본문이 앵커(사진 뒤)로 들어간다. 내용이 남은 텍스트
-        컴포넌트가 없을 때까지 반복하고(매번 다시 탐색), 비운 컴포넌트 수를 반환한다."""
+        기본 경로는 본문 클릭+Ctrl+A+Delete — SE 개편(2026-08 실측)으로 이는 '본문 전체'
+        선택이라 한 방에 다 비워지지만, 영상·외부 배너처럼 지우면 안 되는 미디어까지 지운다.
+        그래서 보존 대상이 있으면 컴포넌트 범위 드래그 선택으로 하나씩 비운다(사진은 어차피
+        삭제→재삽입 설계라 전체선택에 지워져도 무해). 내용 남은 텍스트 컴포넌트가 없을 때까지
+        반복하고(매번 재탐색), 비운 컴포넌트 수를 반환한다."""
         page = self._page
+        safe_mode = bool(page.evaluate(self._HAS_PRESERVED_MEDIA_JS))
         cleared = 0
         prev_count = None
         for _ in range(200):  # 안전 상한(무한루프 방지)
@@ -1278,9 +1310,14 @@ class BlogPublisher:
                 break
             try:
                 comps[idx].scroll_into_view_if_needed()
-                comps[idx].click()  # 그 텍스트 컴포넌트에 커서 진입
-                page.wait_for_timeout(150)
-                page.keyboard.press("ControlOrMeta+a")  # 그 컴포넌트 내용만 선택
+                if safe_mode:
+                    # 영상·배너 보존: 이 컴포넌트 내용만 드래그 선택해 지운다
+                    if not self._drag_select_component(comps[idx]):
+                        break
+                else:
+                    comps[idx].click()
+                    page.wait_for_timeout(150)
+                    page.keyboard.press("ControlOrMeta+a")  # 개편 후 = 본문 전체 선택
                 page.keyboard.press("Delete")
                 page.wait_for_timeout(200)
             except Exception:  # noqa: BLE001 - 한 컴포넌트 비우기 실패가 전체를 막지 않게
