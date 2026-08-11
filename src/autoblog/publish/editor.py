@@ -831,34 +831,83 @@ class BlogPublisher:
                 page.keyboard.press("Escape")
         page.keyboard.press("Escape")  # hover 상태 정리(대표 지정 단계로)
 
+    # 앵커 검증: 센티널이 '제목 바로 아래 텍스트 컴포넌트의 첫 문단'에 정확히 그 한 글자로
+    # 들어갔는지( ok ), 그리고 문서 어딘가에 들어가긴 했는지( present — Backspace 정리 판단용 ).
+    _ANCHOR_SENTINEL = "‡"
+    _ANCHOR_VERIFY_JS = r"""
+    (mark) => {
+      const present = (document.body.textContent || '').includes(mark);
+      const comps = [...document.querySelectorAll('.se-component')];
+      const i = comps.findIndex(c => /se-documentTitle/.test(c.className));
+      const c = comps[i + 1];
+      let ok = false;
+      if (c && /se-text(\s|$)/.test(c.className)) {
+        const p = c.querySelector('p.se-text-paragraph');
+        // 제목 끝 Enter는 '새 빈 문단'이 아니라 첫 문단 맨 앞으로 캐럿을 옮긴다(실측) —
+        // 센티널이 첫 문단의 '첫 글자'로 들어갔으면 캐럿이 본문 맨 위에 있는 것.
+        // SE 빈 문단의 zero-width space 자리표시자는 비교 전에 걷어낸다.
+        const clean = p ? (p.textContent || '').replace(/[\u200B\uFEFF]/g, '') : '';
+        ok = clean.startsWith(mark);
+      }
+      return {present, ok};
+    }
+    """
+
     def _anchor_before_first_media(self) -> bool:
-        """첫 미디어(사진/영상) '위'에 커서를 둔다.
+        """첫 미디어(사진/영상) '위'에 커서를 둔다. 성공 여부를 '실측'으로 검증해 반환한다.
 
         맨 위 사진은 선택 툴바가 컴포넌트 top edge-button을 덮어 클릭이 막힌다(프로브로 확인:
         edge force/JS/좌표 클릭, Ctrl+Home 전부 실패). 대신 '제목 칸 끝에서 Enter'를 치면 제목
-        바로 아래(=첫 미디어 위)에 본문 문단이 생기고 캐럿도 그리로 간다(프로브에서 유일하게 성공)."""
+        바로 아래(=첫 미디어 위)에 본문 문단이 생기고 캐럿도 그리로 간다(프로브에서 유일하게 성공).
+
+        검증: DOM 셀렉션은 Enter 직후에도 제목을 가리켜(SE가 캐럿을 내부 모델로 따로 들고
+        비동기 반영 — 프로브 실측) 믿을 수 없다. 대신 센티널 한 글자를 실제로 타이핑해 그 글자가
+        제목 바로 아래 '첫 문단의 첫 글자'로 들어갔는지 확인하고 지운다(효과 검증 — 첫 컴포넌트가
+        텍스트면 Enter는 새 문단이 아니라 그 문단 맨 앞으로 캐럿을 옮긴다, 실측). 에디터 지연·오버레이로
+        Enter가 씹히면 캐럿이 이전 위치에 남아 이후 모든 블록이 엉뚱한 곳에 짜깁기되는데
+        (2026-08-11 화성 장학금 글 실사고 — 인용구가 뒤 본문을 삼키고 문단이 역순 병합),
+        그 상태를 여기서 잡아 재시도하고, 끝내 실패하면 False(호출부가 중단 판단)."""
         page = self._page
         # 미디어가 없어도 같은 경로를 쓴다 — 예전엔 본문 컴포넌트를 클릭했는데, Playwright가
         # 요소 '정중앙'을 클릭해 이미 입력한 문장 한가운데에 커서가 박혔다(in-place 역순 삽입에서
         # 사진 전부 삭제 직후 = 미디어 0개 구간의 본문 뒤섞임 원인). 제목 끝→Enter는 미디어
         # 유무와 무관하게 항상 '제목 바로 아래 = 본문 맨 위'를 만든다.
-        page.click(SMART_EDITOR["title_component"])
-        page.wait_for_timeout(200)
-        # 제목이 두 줄로 접히면 키보드 'End'는 시각 줄 끝(제목 중간)에 멈춰, 뒤이은 Enter가 본문으로
-        # 못 넘어가고 본문 글자가 제목 안에 박힌다(전체선택+Enter는 선택분 삭제로 제목이 날아감).
-        # 그래서 선택을 만들지 않고 JS로 캐럿을 제목 '논리적 끝'에 둔 뒤 Enter로 본문에 진입한다.
-        page.evaluate(
-            """(sel)=>{const comp=document.querySelector(sel);
-              if(!comp) return false;
-              const ed=comp.querySelector('[contenteditable=true]')||comp;
-              ed.focus();
-              const r=document.createRange(); r.selectNodeContents(ed); r.collapse(false);
-              const s=getSelection(); s.removeAllRanges(); s.addRange(r); return true;}""",
-            SMART_EDITOR["title_component"],
-        )
-        page.keyboard.press("Enter")
-        page.wait_for_timeout(300)
-        return True
+        for _ in range(3):
+            try:
+                page.click(SMART_EDITOR["title_component"], timeout=5000)
+            except Exception:  # noqa: BLE001 - 오버레이 등으로 클릭이 막히면 다음 시도로
+                page.keyboard.press("Escape")
+                continue
+            page.wait_for_timeout(200)
+            # 제목이 두 줄로 접히면 키보드 'End'는 시각 줄 끝(제목 중간)에 멈춰, 뒤이은 Enter가 본문으로
+            # 못 넘어가고 본문 글자가 제목 안에 박힌다(전체선택+Enter는 선택분 삭제로 제목이 날아감).
+            # 그래서 선택을 만들지 않고 JS로 캐럿을 제목 '논리적 끝'에 둔 뒤 Enter로 본문에 진입한다.
+            page.evaluate(
+                """(sel)=>{const comp=document.querySelector(sel);
+                  if(!comp) return false;
+                  const ed=comp.querySelector('[contenteditable=true]')||comp;
+                  ed.focus();
+                  const r=document.createRange(); r.selectNodeContents(ed); r.collapse(false);
+                  const s=getSelection(); s.removeAllRanges(); s.addRange(r); return true;}""",
+                SMART_EDITOR["title_component"],
+            )
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(300)
+            page.keyboard.type(self._ANCHOR_SENTINEL)
+            got = {"present": False, "ok": False}
+            for _ in range(6):  # SE 반영이 비동기라 잠깐 폴링
+                got = page.evaluate(self._ANCHOR_VERIFY_JS, self._ANCHOR_SENTINEL)
+                if got["present"]:
+                    break
+                page.wait_for_timeout(150)
+            if got["present"]:  # 어딘가 들어갔으면 캐럿이 그 뒤에 있으니 Backspace로 지운다
+                page.keyboard.press("Backspace")
+                page.wait_for_timeout(150)
+            # 입력이 통째로 씹혔으면(present=False) Backspace를 치지 않는다 — 캐럿이
+            # 엉뚱한 곳(제목 등)에 있을 때 남의 글자를 지우는 사고 방지.
+            if got["ok"]:
+                return True
+        return False
 
     def _place_anchor(self, anchor) -> None:
         """anchor 위치(맨 앞 / 사진 k 뒤 / 영상 뒤)에 커서를 둔다."""
@@ -1164,7 +1213,14 @@ class BlogPublisher:
                 # 본문이 배너 위로 밀려 고지가 상단에서 밀려난다. 실패 시 기존 최상단 앵커로.
                 if ext["lead"] and self._anchor_after_photo(0):
                     return
-                self._anchor_before_first_media()
+                if not self._anchor_before_first_media():
+                    # 앵커 실패 상태로 계속 넣으면 남은 블록 전부가 이전 캐럿 자리에 짜깁기돼
+                    # 문서가 통째로 뒤섞인다(2026-08-11 실사고). 저장 전 중단이라 원본은 무사 —
+                    # 웹UI 실패 탭에서 '다시 시도'하면 된다.
+                    raise RuntimeError(
+                        "본문 삽입 위치(제목 아래 새 문단)를 잡지 못했어요 — 글이 뒤섞인 채 "
+                        "저장되는 걸 막으려고 중단했습니다. 다시 시도해 주세요."
+                    )
             else:
                 self._anchor_after_video_index(min(seg_idx, n_phys_video) - 1)
 
