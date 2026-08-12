@@ -34,6 +34,31 @@ def test_add_dedupe_check_history(tmp_path, monkeypatch):
     assert rank.list_entries() == []
 
 
+def test_discover_topics_dedupe_filter_rank(monkeypatch):
+    """주제 발굴 — 시드 간 중복 제거, 검색량 하한 필터, ratio 내림차순 정렬."""
+    monkeypatch.setattr(rank, "load_env", lambda: type("E", (), {"has_searchad": True})())
+    related = {
+        "버거킹": [
+            {"keyword": "버거킹 아침메뉴", "volume": 170000},
+            {"keyword": "맥모닝 시간", "volume": 80000},
+            {"keyword": "듣보 키워드", "volume": 500},  # 하한 미달 → 제외
+        ],
+        "맥도날드": [
+            {"keyword": "맥모닝시간", "volume": 80000},  # 공백만 다른 중복 → 제외
+            {"keyword": "맥도날드 런치", "volume": 20000},
+        ],
+    }
+    monkeypatch.setattr(
+        rank, "_searchad_related", lambda kw, n, require_tokens=True: related[kw]
+    )
+    totals = {"버거킹 아침메뉴": 79000, "맥모닝 시간": 183000, "맥도날드 런치": 43000}
+    monkeypatch.setattr(rank, "_total", lambda kw: totals[kw])
+    rows = rank.discover_topics(["버거킹", "맥도날드"], min_volume=1000)
+    assert [r["keyword"] for r in rows] == ["버거킹 아침메뉴", "맥도날드 런치", "맥모닝 시간"]
+    assert rows[0]["ratio"] > rows[-1]["ratio"]
+    assert all("듣보" not in r["keyword"] for r in rows)
+
+
 def test_keyword_competition_survives_volume_failure(monkeypatch):
     """검색량(부가) 조회가 터져도 경쟁 판정은 나와야 한다 — 아니면 칩에 판정이 안 뜬다."""
     monkeypatch.setattr(rank, "_search_blog_full", lambda kw: {"total": 42, "items": []})

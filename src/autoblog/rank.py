@@ -227,13 +227,15 @@ def search_volumes(keywords: list[str]) -> dict[str, dict]:
     return out
 
 
-def _searchad_related(keyword: str, limit: int) -> list[dict]:
+def _searchad_related(keyword: str, limit: int, *, require_tokens: bool = True) -> list[dict]:
     """keywordstool이 힌트 외에 얹어 주는 연관 키워드 — 검색량이 이미 붙어 온다.
 
-    자동완성과 달리 광고 시장 기준 연관어라 엉뚱한 지역·주제가 섞인다. 원 키워드
-    토큰을 전부 포함하는 세부 롱테일만 남기고, 검색량순 상위 limit개만 쓴다.
+    자동완성과 달리 광고 시장 기준 연관어라 엉뚱한 지역·주제가 섞인다. 기본은 원 키워드
+    토큰을 전부 포함하는 세부 롱테일만 남기고 검색량순 상위 limit개만 쓴다.
+    require_tokens=False(주제 발굴)면 토큰 필터를 끄고 인접 주제까지 넓게 받는다
+    — 엉뚱한 후보는 발굴 쪽에서 검색량 하한·비율 정렬로 걸러진다.
     """
-    tokens = [t.lower() for t in keyword.split()]
+    tokens = [t.lower() for t in keyword.split()] if require_tokens else []
     try:
         resp = requests.get(
             _SEARCHAD_URL + "/keywordstool",
@@ -291,6 +293,61 @@ def _total(keyword: str) -> int:
     )
     resp.raise_for_status()
     return int(resp.json().get("total", 0))
+
+
+def discover_topics(
+    seeds: list[str],
+    per_seed: int = 15,
+    min_volume: int = 1000,
+    max_check: int = 60,
+) -> list[dict]:
+    """주제 발굴 — 시드 키워드들에서 연관 주제를 넓게 확장해 수요/공급 비율로 랭킹.
+
+    시드마다 검색광고 연관 키워드(검색량 포함, 토큰 필터 없이)를 받아 합치고,
+    검색량 하한으로 거른 뒤 상위 max_check개만 문서 수(경쟁 대리 지표)를 재서
+    ratio(월간 검색량 ÷ 블로그 문서수) 내림차순으로 돌려준다. 검색광고 키 필수.
+
+    ratio는 공식 지표가 아니라 대리 신호 — 문서수는 누적 전체라 최근 경쟁과 다를 수
+    있으니, 실제 발행 전 keyword_competition의 top(상위 블로그 면면)을 눈으로 확인.
+    """
+    if not load_env().has_searchad:
+        raise RuntimeError("검색광고 API 키(.env NAVER_SEARCHAD_*)가 필요해요")
+    seen: set[str] = set()
+    by_seed: list[list[dict]] = []  # 시드별 후보(검색량순) — 전역 정렬로 합치면 안 됨
+    for seed in seeds:
+        s = (seed or "").strip()
+        if not s:
+            continue
+        rows = []
+        for r in _searchad_related(s, per_seed, require_tokens=False):
+            norm = r["keyword"].replace(" ", "").lower()
+            if norm not in seen and r["volume"] >= min_volume:
+                seen.add(norm)
+                rows.append({"keyword": r["keyword"], "volume": r["volume"], "seed": s})
+        by_seed.append(rows)
+        time.sleep(0.3)  # keywordstool 연속 호출 제한 회피
+    # 문서수 조회가 비싸니 max_check개만 재되, 전역 검색량순으로 자르면 검색량 큰
+    # 시드(프랜차이즈 등)가 다른 카테고리를 다 밀어낸다 → 시드별 라운드로빈으로 고르게.
+    candidates: list[dict] = []
+    i = 0
+    while len(candidates) < max_check and any(by_seed):
+        picked = False
+        for rows in by_seed:
+            if i < len(rows) and len(candidates) < max_check:
+                candidates.append(rows[i])
+                picked = True
+        if not picked:
+            break
+        i += 1
+    out: list[dict] = []
+    for c in candidates:
+        try:
+            total = _total(c["keyword"])
+        except Exception:  # noqa: BLE001 — 개별 실패는 건너뛰고 나머지로 발굴
+            continue
+        out.append({**c, "total": total, "ratio": round(c["volume"] / (total + 1), 2)})
+    out.sort(key=lambda x: x["ratio"], reverse=True)
+    return out
 
 
 def keyword_suggest(keyword: str, limit: int = 8) -> dict:

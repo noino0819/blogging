@@ -422,6 +422,30 @@ def rank_rm(keyword: str, url: str):
     typer.echo("삭제됨" if remove_entry(keyword, url) else "해당 항목 없음")
 
 
+@rank_app.command("discover")
+def rank_discover(
+    seeds: list[str],
+    per_seed: int = typer.Option(15, help="시드당 연관 키워드 수"),
+    min_volume: int = typer.Option(1000, help="월간 검색량 하한"),
+    top: int = typer.Option(30, help="출력 개수"),
+):
+    """주제 발굴 — 시드에서 연관 주제 확장 → 수요/공급(검색량÷문서수) 랭킹.
+
+    예: autoblog rank discover "버거킹 메뉴" "무화과" "9월 제철과일"
+    """
+    from autoblog.rank import discover_topics
+
+    rows = discover_topics(seeds, per_seed=per_seed, min_volume=min_volume)
+    if not rows:
+        typer.echo("후보가 없어요 — 시드를 바꾸거나 --min-volume을 낮춰보세요.")
+        return
+    typer.echo(f"{'키워드':<20} {'월검색량':>9} {'문서수':>10} {'수요/공급':>8}  시드")
+    for r in rows[:top]:
+        typer.echo(
+            f"{r['keyword']:<20} {r['volume']:>9,} {r['total']:>10,} {r['ratio']:>8}  {r['seed']}"
+        )
+
+
 stickers_app = typer.Typer(help="스티커 카탈로그 — 불러오기/라벨링/검수")
 app.add_typer(stickers_app, name="stickers")
 
