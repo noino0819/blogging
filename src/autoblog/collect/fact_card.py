@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 class CardType(str, Enum):
     place = "place"  # 맛집 후기
     product = "product"  # 상품 리뷰
+    info = "info"  # 정보 글(효능·보관법·행사 정리 등) — 수집 없음, 재료는 메모
 
 
 class Source(str, Enum):

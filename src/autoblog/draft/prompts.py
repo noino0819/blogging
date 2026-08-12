@@ -14,6 +14,7 @@ from autoblog.config import CONFIG_DIR
 
 DEFAULT_PROMPT_PATH = CONFIG_DIR / "prompts" / "default.md"
 PRODUCT_PROMPT_PATH = CONFIG_DIR / "prompts" / "product.md"
+INFO_PROMPT_PATH = CONFIG_DIR / "prompts" / "info.md"
 COMMON_STYLE_PROMPT_PATH = CONFIG_DIR / "prompts" / "common_style.md"
 RESTYLE_PROMPT_PATH = CONFIG_DIR / "prompts" / "restyle.md"
 
@@ -39,6 +40,10 @@ def load_base_prompt(path: str | Path | None = None, *, card=None) -> str:
     if path is None and card is not None and PRODUCT_PROMPT_PATH.exists():
         if getattr(card, "is_product", False):
             path = PRODUCT_PROMPT_PATH
+    if path is None and card is not None and INFO_PROMPT_PATH.exists():
+        # CardType(str, Enum)이라 문자열 비교로 판정(순환 임포트 회피)
+        if getattr(card, "type", None) == "info":
+            path = INFO_PROMPT_PATH
     text = _strip_meta(Path(path or DEFAULT_PROMPT_PATH).read_text(encoding="utf-8"))
     if not explicit_path and COMMON_STYLE_PROMPT_PATH.exists():
         # 공통 문체 규칙(맛집·상품 공용, 단일 출처)

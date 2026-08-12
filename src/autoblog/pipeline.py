@@ -118,7 +118,9 @@ def collect_card(
             if use_cache and not card.is_fallback:
                 _SCRAPE_CACHE[key] = card.model_copy(deep=True)
     else:
-        ctype = CardType.product if card_kind == "product" else CardType.place
+        ctype = {"product": CardType.product, "info": CardType.info}.get(
+            card_kind or "", CardType.place
+        )
         card = FactCard(type=ctype)
     if photos:
         _say("사진을 정리하는 중…")
@@ -249,7 +251,9 @@ def build_export_prompt(
             if photos:
                 card = collect_card(photos=photos, photo_meta=photo_meta, card_kind=card_kind)
             else:
-                ctype = CardType.product if card_kind == "product" else CardType.place
+                ctype = {"product": CardType.product, "info": CardType.info}.get(
+                    card_kind or "", CardType.place
+                )
                 card = FactCard(type=ctype)
     if progress:
         progress("내 프롬프트와 입력 자료를 합치는 중…")

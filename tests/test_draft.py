@@ -61,11 +61,18 @@ def test_prompt_examples_follow_own_rules():
     from autoblog.draft.prompts import (
         COMMON_STYLE_PROMPT_PATH,
         DEFAULT_PROMPT_PATH,
+        INFO_PROMPT_PATH,
         PRODUCT_PROMPT_PATH,
     )
     from autoblog.draft.tones import TONES_PATH
 
-    for path in (DEFAULT_PROMPT_PATH, PRODUCT_PROMPT_PATH, COMMON_STYLE_PROMPT_PATH, TONES_PATH):
+    for path in (
+        DEFAULT_PROMPT_PATH,
+        PRODUCT_PROMPT_PATH,
+        INFO_PROMPT_PATH,
+        COMMON_STYLE_PROMPT_PATH,
+        TONES_PATH,
+    ):
         text = path.read_text(encoding="utf-8")
         assert "~!" not in text, path.name
         assert "🐰" not in text, path.name
@@ -123,6 +130,23 @@ def test_variation_block_type_specific():
     place = build_variation_block("메모|가게", is_product=False)
     assert "PICK 리스트 전환 멘트" in place
     assert "추천 체크리스트 소제목" not in place
+    # 정보 글: 맛집·상품 전용 변주(PICK/체크리스트/핵심 한마디)가 새면 안 된다
+    info = build_variation_block("메모|무화과 보관법", kind="info")
+    assert "PICK 리스트 전환 멘트" not in info
+    assert "추천 체크리스트 소제목" not in info
+    assert "핵심 한마디 위치" not in info
+    assert "섹션 흐름" in info  # structure_info 풀 사용
+
+
+def test_info_card_selects_info_prompt():
+    # 정보 카드 → info.md 베이스(효능·수치 지어내기 금지 규칙 포함) + 공통 문체 연결
+    from autoblog.collect.fact_card import CardType, FactCard
+
+    base = load_base_prompt(card=FactCard(type=CardType.info))
+    assert "사실 규칙" in base  # info.md 고유 섹션
+    assert "## 역할 설정" in base
+    # 맛집·상품 카드는 기존 프롬프트 유지
+    assert "사실 규칙" not in load_base_prompt(card=FactCard(type=CardType.place))
 
 
 def test_style_pool_user_override_and_sanitize(tmp_path, monkeypatch):

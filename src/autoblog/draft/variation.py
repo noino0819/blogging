@@ -27,6 +27,7 @@ _TILDE_PROTECTED = "(๑´~ˋ๑)"
 _LIST_KEYS = (
     "structure_place",
     "structure_product",
+    "structure_info",
     "quote_position",
     "checklist_heading",
     "summary_connector",
@@ -133,7 +134,12 @@ def _weighted_pick(rng: random.Random, pairs: list[tuple[dict, int]], k: int) ->
 
 
 def build_variation_block(
-    seed_text: str, is_product: bool = False, *, pool: dict | None = None, ornaments: bool = True
+    seed_text: str,
+    is_product: bool = False,
+    *,
+    pool: dict | None = None,
+    ornaments: bool = True,
+    kind: str | None = None,
 ) -> str | None:
     """이번 글에만 적용할 스타일 변주 블록(시스템 프롬프트에 덧붙임).
 
@@ -141,10 +147,13 @@ def build_variation_block(
     ornaments=False(발랄체가 아닌 어투)면 어투 결합 변주(카오모지·유행어·특수문자 빈도)는
     빼고 구조 변주(섹션 흐름·핵심 한마디 위치 등)만 남긴다 — 구조 다양화(유사문서 방지)는
     모든 어투에 유효하지만, 카오모지·유행어 주입은 유저가 고른 문체를 덮어쓰기 때문.
+    kind('place'|'product'|'info')를 주면 그 유형의 구조 풀을 쓴다 — 미지정이면
+    is_product로 place/product를 고른다(기존 호출 호환).
     """
     pool = pool if pool is not None else load_style_pool()
     if not pool:
         return None
+    kind = kind or ("product" if is_product else "place")
     seed = int(hashlib.md5(seed_text.encode("utf-8")).hexdigest()[:16], 16)
     rng = random.Random(seed)
 
@@ -219,16 +228,16 @@ def build_variation_block(
         else:
             lines.append("- 유행어: 이번 글에서는 유행어·신조어를 쓰지 말고 담백하게 써.")
 
-    # 글 구조 변형
-    structures = pool.get("structure_product" if is_product else "structure_place") or []
+    # 글 구조 변형 — 유형별 풀(structure_place/product/info). 풀에 키가 없으면 생략.
+    structures = pool.get(f"structure_{kind}") or []
     if structures:
         lines.append(f"- 섹션 흐름: {rng.choice(structures)} — 재료에 없는 섹션은 건너뛰어.")
-    if not is_product:  # '핵심 한마디'는 맛집 구조 전용(상품은 요약 박스가 그 역할)
+    if kind == "place":  # '핵심 한마디'는 맛집 구조 전용(상품은 요약 박스가 그 역할)
         quote_positions = pool.get("quote_position") or []
         if quote_positions:
             lines.append(f"- 핵심 한마디 위치: {rng.choice(quote_positions)}")
 
-    if is_product:
+    if kind == "product":
         headings = pool.get("checklist_heading") or []
         if headings:
             lines.append(f'- 추천 체크리스트 소제목: "🌟 {rng.choice(headings)}"')
@@ -236,7 +245,7 @@ def build_variation_block(
         if connectors:
             conn = rng.choice(connectors)
             lines.append(f"- 핵심 요약 박스의 소제목-설명 연결 문자: '{conn}'")
-    else:
+    elif kind == "place":  # PICK 리스트는 맛집 모음 글 전용
         transitions = pool.get("pick_transition") or []
         if transitions:
             lines.append(

@@ -109,9 +109,15 @@ def build_prompt(req: DraftRequest) -> tuple[str, str]:
         subject = req.fact_card.place.name
     elif req.fact_card.product:
         subject = req.fact_card.product.name
+    # 변주 유형: info 카드만 info, 나머지는 is_product 판정과 동일 기준(place/product 데이터
+    # 혼합 카드에서 프롬프트 선택과 변주가 어긋나지 않게).
+    var_kind = "info" if req.fact_card.type == "info" else ("product" if is_product else "place")
     try:
         variation = build_variation_block(
-            f"{req.experience_memo}|{subject}", is_product, ornaments=style.ornaments
+            f"{req.experience_memo}|{subject}",
+            is_product,
+            ornaments=style.ornaments,
+            kind=var_kind,
         )
     except Exception:  # 변주는 부가 기능 — 풀 데이터가 이상해도 초안 생성은 계속돼야 한다
         variation = None

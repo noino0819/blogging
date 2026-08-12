@@ -744,6 +744,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <div class=kindseg id=kindseg style="margin-top:8px">
             <button data-k=place class=on><span class=em>🍜</span>맛집</button>
             <button data-k=product><span class=em>🛍️</span>상품</button>
+            <button data-k=info><span class=em>📚</span>정보</button>
           </div>
           <div class=muted id=srchint style="margin-top:6px">링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
           <label class=f>사진 <span class=muted id=psel></span></label>
@@ -879,9 +880,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <p class=desc>초안 생성에 쓰이는 베이스 프롬프트를 직접 수정할 수 있어요. 저장하면 다음 생성부터 반영됩니다.</p>
     <div class=card>
       <h3>베이스 프롬프트 <span class=muted id=prompthdr style="font-weight:400">— config/prompts/default.md</span></h3>
-      <div class=seg id=promptkindseg style="max-width:390px;margin-bottom:10px">
+      <div class=seg id=promptkindseg style="max-width:490px;margin-bottom:10px">
         <button type=button data-k=place class=on>🍜 맛집</button>
         <button type=button data-k=product>🛍️ 상품</button>
+        <button type=button data-k=info>📚 정보</button>
         <button type=button data-k=common>🧾 공통 포맷</button>
       </div>
       <p class=desc style="margin:0 0 8px">파트를 눌러 펼치고 그 부분만 고치면 돼요. 파트를 새로 만들거나 지울 땐 '원문으로 편집'을 쓰세요.</p>
@@ -1161,9 +1163,15 @@ function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
   $$('#kindseg button').forEach(b=>{b.classList.toggle('on',b.dataset.k===k);
     b.classList.toggle('auto',!KINDMANUAL&&b.dataset.k===k);});
   {const pb=$('#prodlinkbox'); if(pb)pb.style.display=(k==='product')?'block':'none';}
-  $('#srchint').innerHTML=KINDMANUAL
-    ?('<b>'+(k==='place'?'맛집':'상품')+'</b>으로 수집합니다.')
-    :('입력을 보고 <b>'+(k==='place'?'맛집':'상품')+'</b>으로 자동 인식했어요. 직접 골라도 돼요.');}
+  const KL={place:'맛집',product:'상품',info:'정보'};
+  $('#memo').placeholder=(k==='info')
+    ?'예: 무화과 제철·보관법 정리. 조사한 사실·수치(제철 8~11월, 냉장 3~4일 등)를 여기 붙여넣으세요 — 재료에 없는 수치는 글에 안 들어갑니다. 직접 먹어본 경험도 한두 줄!'
+    :'예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요.';
+  $('#srchint').innerHTML=(k==='info')
+    ?'<b>정보</b> 글은 수집 없이 메모(주제+조사 자료)로만 씁니다. 위 수집칸은 무시돼요.'
+    :(KINDMANUAL
+      ?('<b>'+KL[k]+'</b>으로 수집합니다.')
+      :('입력을 보고 <b>'+KL[k]+'</b>으로 자동 인식했어요. 직접 골라도 돼요.'));}
 // 강조색·구분선/인용구·스티커는 항상 켜둠(즐겨찾기/설정이 없으면 자동으로 안 들어감) — 토글 UI 제거.
 const FMT={emphasis:true,structure:true,stickers:true,stickerAll:false,sponsored:false,sponsorSticker:'',hideDefault:true};
 let CATEGORY='';
@@ -3880,6 +3888,9 @@ def _make_handler(state: dict):
             # 유저가 명시한 선택(kind)을 srcval 유무와 무관하게 존중한다. 상품은 스마트스토어
             # WTM 차단으로 검색어를 비우는 경우가 많은데, 예전엔 srcval이 비면 kind를 버려서
             # 상품 글이 맛집 프롬프트로 떨어졌다(빈 상품 카드는 collect_card가 card_kind로 처리).
+            # 정보(info)는 수집이 없어 srcval을 아예 안 쓴다(빈 info 카드 → info.md 프롬프트).
+            if kind == "info":
+                return "", kind
             if kind in ("place", "product"):
                 return srcval, kind
             is_url = srcval.startswith("http") or "naver.me" in srcval or "place" in srcval
@@ -4909,15 +4920,18 @@ def _save_emphasis_preset_tag(preset_id, tag: str) -> None:
 
 
 def _prompt_path_for(kind: str):
-    """kind('product'|'common'|'place') → 편집 대상 프롬프트 파일 경로."""
+    """kind('product'|'info'|'common'|'place') → 편집 대상 프롬프트 파일 경로."""
     from autoblog.draft.prompts import (
         COMMON_STYLE_PROMPT_PATH,
         DEFAULT_PROMPT_PATH,
+        INFO_PROMPT_PATH,
         PRODUCT_PROMPT_PATH,
     )
 
     if kind == "product":
         return PRODUCT_PROMPT_PATH
+    if kind == "info":
+        return INFO_PROMPT_PATH
     if kind == "common":
         return COMMON_STYLE_PROMPT_PATH
     return DEFAULT_PROMPT_PATH
@@ -4952,7 +4966,7 @@ def _prompt_preview(kind: str = "place") -> dict:
     return {
         "base_raw": path.read_text(encoding="utf-8"),
         "layers": layers,
-        "kind": kind if kind in ("product", "common") else "place",
+        "kind": kind if kind in ("product", "info", "common") else "place",
         "path": f"config/prompts/{path.name}",
     }
 
