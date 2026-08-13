@@ -59,6 +59,18 @@ def test_discover_topics_dedupe_filter_rank(monkeypatch):
     assert all("듣보" not in r["keyword"] for r in rows)
 
 
+def test_load_topic_seeds_merges_month(tmp_path):
+    """저장 시드 — base + 해당 월만 병합, 중복 제거, 파일 없으면 빈 리스트."""
+    p = tmp_path / "seeds.yaml"
+    p.write_text(
+        "base: [버거킹 메뉴, 편의점 신상]\nmonthly:\n  8: [무화과, 버거킹 메뉴]\n  9: [샤인머스캣]\n",
+        encoding="utf-8",
+    )
+    seeds = rank.load_topic_seeds(month=8, path=p)
+    assert seeds == ["버거킹 메뉴", "편의점 신상", "무화과"]  # 9월 시드 제외, 중복 병합
+    assert rank.load_topic_seeds(month=8, path=tmp_path / "없음.yaml") == []
+
+
 def test_keyword_competition_survives_volume_failure(monkeypatch):
     """검색량(부가) 조회가 터져도 경쟁 판정은 나와야 한다 — 아니면 칩에 판정이 안 뜬다."""
     monkeypatch.setattr(rank, "_search_blog_full", lambda kw: {"total": 42, "items": []})

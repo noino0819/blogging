@@ -295,6 +295,33 @@ def _total(keyword: str) -> int:
     return int(resp.json().get("total", 0))
 
 
+def load_topic_seeds(month: int | None = None, path=None) -> list[str]:
+    """config/topic_seeds.yaml → base + 해당 월 시드. 파일 없으면 빈 리스트.
+
+    discover를 인자 없이 돌리는 경로의 단일 출처 — 매달 뭘 시드로 줄지 사람이
+    생각하지 않아도 되게 시즌 캘린더를 파일에 박아둔다(유저 수정 가능).
+    """
+    import yaml
+
+    from autoblog.config import CONFIG_DIR
+
+    p = path or CONFIG_DIR / "topic_seeds.yaml"
+    try:
+        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    seeds = [str(s).strip() for s in (data.get("base") or []) if str(s).strip()]
+    monthly = data.get("monthly") or {}
+    m = month or datetime.now().month
+    for s in monthly.get(m) or monthly.get(str(m)) or []:
+        s = str(s).strip()
+        if s and s not in seeds:
+            seeds.append(s)
+    return seeds
+
+
 def discover_topics(
     seeds: list[str],
     per_seed: int = 15,

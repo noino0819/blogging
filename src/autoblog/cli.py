@@ -424,17 +424,24 @@ def rank_rm(keyword: str, url: str):
 
 @rank_app.command("discover")
 def rank_discover(
-    seeds: list[str],
+    seeds: list[str] = typer.Argument(None, help="비우면 config/topic_seeds.yaml(base+이번 달)"),
     per_seed: int = typer.Option(15, help="시드당 연관 키워드 수"),
     min_volume: int = typer.Option(1000, help="월간 검색량 하한"),
     top: int = typer.Option(30, help="출력 개수"),
 ):
     """주제 발굴 — 시드에서 연관 주제 확장 → 수요/공급(검색량÷문서수) 랭킹.
 
-    예: autoblog rank discover "버거킹 메뉴" "무화과" "9월 제철과일"
+    인자 없이 실행하면 저장된 시드(base + 이번 달 시즌)를 쓴다: `autoblog rank discover`
+    직접 지정도 가능: autoblog rank discover "버거킹 메뉴" "무화과"
     """
-    from autoblog.rank import discover_topics
+    from autoblog.rank import discover_topics, load_topic_seeds
 
+    if not seeds:
+        seeds = load_topic_seeds()
+        if not seeds:
+            typer.echo("시드가 없어요 — config/topic_seeds.yaml을 확인하거나 시드를 직접 지정하세요.")
+            raise typer.Exit(1)
+        typer.echo(f"저장된 시드 {len(seeds)}개(base+이번 달)로 발굴합니다: {', '.join(seeds)}")
     rows = discover_topics(seeds, per_seed=per_seed, min_volume=min_volume)
     if not rows:
         typer.echo("후보가 없어요 — 시드를 바꾸거나 --min-volume을 낮춰보세요.")
