@@ -2633,8 +2633,8 @@ function runSave(r, retryId){
     })
     .catch(e=>{ if(r.timer){r.timer.stop(); r.timer=null;}
       tabSetState(r,'err','!'); cntEl.textContent='실패 — 다시 시도 ↻';
-      // 실패 탭은 아무 데나 눌러도 재시도(✕ 버튼 제외). 서버가 이미 자동 재시도(최대 3회)를
-      // 소진한 뒤라, 여기서부터는 사람이 원할 때 다시 시도한다(저장 전 중단이라 몇 번이든 무해).
+      // 실패 탭은 아무 데나 눌러도 재시도(✕ 버튼 제외). 서버는 자동 재시도를 하지 않으니
+      // (구조적 실패에 무익, 2026-08-13 제거) 사람이 원할 때 여기서 다시 시도한다(저장 전 중단이라 무해).
       r.el.style.cursor='pointer';
       r.el.onclick=ev=>{ if(ev.target.closest('.sx'))return; retrySave(r.id); };
       // 실패한 글이 지금 보고 있는 탭이면 [임시저장] 버튼도 다시 살린다 — 버튼으로 눌러도 재시도.
@@ -4304,10 +4304,9 @@ def _make_handler(state: dict):
             ).encode())
 
         def _publish(self, body):
-            import time as _time
             import uuid as _uuid
 
-            from autoblog.publish.editor import BlogPublisher, PublishAborted
+            from autoblog.publish.editor import BlogPublisher
 
             jobs = state["jobs"]
             # 재시도 요청(retryJob=작업id): 처음 저장 때 잡아둔 그 글의 스냅샷을 그대로 다시 쓴다.
@@ -4405,61 +4404,47 @@ def _make_handler(state: dict):
                 # 재시도(retryJob)는 실패한 글을 살리는 작업이라 대기열 맨 앞에 선다
                 # (진행 중인 건은 안 끊음 — 다음 차례만 양보받는다).
                 with (state["publish_lock"].first() if retry_id else state["publish_lock"]):
-                    # 안전 중단(PublishAborted)은 일시적 에디터 상태(지연·오버레이)가 원인이라,
-                    # 실패로 끝내지 않고 새 브라우저로 잠시 쉬었다가 자동 재시도한다(최대 3회).
-                    # 저장 '전' 관문 중단은 아무것도 저장 안 된 멱등 상태, 저장 '후' 실측
-                    # 불일치는 잘못 저장된 상태 — 둘 다 재시도(재발행)가 같은 글을 덮어써 해결.
-                    for attempt in range(3):
-                        # 임시저장(submit=False)은 사람 확인이 필요 없으니 평소엔 백그라운드(headless).
-                        # 세션이 없으면 wait_for_login이 headful로 재기동해 직접 로그인하게 한다.
-                        pub = BlogPublisher(headless=headless)
-                        pub.start()
-                        try:
-                            if not pub.wait_for_login():
-                                raise RuntimeError("네이버 로그인이 필요합니다")
-                            if inplace_draft:
-                                photo_paths = [
-                                    ph.path for ph in result.card.photos
-                                    if getattr(ph, "media_kind", "image") != "video"
-                                ]
-                                warnings, infos = pub.publish_inplace(
-                                    result.plan,
-                                    draft_title=inplace_draft.get("title") or "",
-                                    draft_date=inplace_draft.get("date") or "",
-                                    photo_paths=photo_paths,
-                                    category=category,
-                                    save=True,
-                                    clean_imported=clean_imported,
-                                    mark_ai=mark_ai,
-                                )
-                            else:
-                                infos = []
-                                warnings = pub.publish(
-                                    result.plan,
-                                    category=category,
-                                    save=True,
-                                    submit=False,
-                                    reserve_at=reserve_at,
-                                    prune_same_title=prune,
-                                    delete_imported=imported,
-                                    mark_ai=mark_ai,
-                                )
-                            if attempt:
-                                infos.append(
-                                    f"에디터가 잠깐 불안정해서 자동으로 다시 시도했어요"
-                                    f"({attempt + 1}번째 시도에 성공)."
-                                )
-                            break
-                        except PublishAborted:
-                            if attempt >= 2:
-                                raise  # 자동 재시도 소진 — 저장 탭 ↻/임시저장 버튼으로 수동 재시도
-                            print(
-                                f"[webui] 저장 안전 중단(저장 전) — 20초 후 자동 재시도"
-                                f"({attempt + 2}/3)", flush=True,
+                    # 자동 재시도 없음 — 안전 중단(PublishAborted)도 바로 실패 탭으로 보낸다.
+                    # 실측상 중단 원인은 일시적 흔들림이 아니라 구조적 문제(맨 위 협찬 배너
+                    # 앵커 등)라 재시도가 성공한 적이 없고, 3회×20초 동안 브라우저만 여닫으며
+                    # 편집기를 뒤흔들었다(2026-08-13 결정). 저장 전 중단은 멱등이라 실패 탭에서
+                    # 사람이 원할 때 다시 시도하면 충분하다.
+                    # 임시저장(submit=False)은 사람 확인이 필요 없으니 평소엔 백그라운드(headless).
+                    # 세션이 없으면 wait_for_login이 headful로 재기동해 직접 로그인하게 한다.
+                    pub = BlogPublisher(headless=headless)
+                    pub.start()
+                    try:
+                        if not pub.wait_for_login():
+                            raise RuntimeError("네이버 로그인이 필요합니다")
+                        if inplace_draft:
+                            photo_paths = [
+                                ph.path for ph in result.card.photos
+                                if getattr(ph, "media_kind", "image") != "video"
+                            ]
+                            warnings, infos = pub.publish_inplace(
+                                result.plan,
+                                draft_title=inplace_draft.get("title") or "",
+                                draft_date=inplace_draft.get("date") or "",
+                                photo_paths=photo_paths,
+                                category=category,
+                                save=True,
+                                clean_imported=clean_imported,
+                                mark_ai=mark_ai,
                             )
-                        finally:
-                            pub.close()
-                        _time.sleep(20)  # 에디터가 진정할 시간 — 새 브라우저로 다시 연다
+                        else:
+                            infos = []
+                            warnings = pub.publish(
+                                result.plan,
+                                category=category,
+                                save=True,
+                                submit=False,
+                                reserve_at=reserve_at,
+                                prune_same_title=prune,
+                                delete_imported=imported,
+                                mark_ai=mark_ai,
+                            )
+                    finally:
+                        pub.close()
             except Exception as exc:  # noqa: BLE001 — 실패해도 스냅샷을 남겨 상단 탭에서 재시도 가능
                 import traceback
 

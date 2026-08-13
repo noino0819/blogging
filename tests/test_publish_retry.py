@@ -1,8 +1,9 @@
-"""/api/publish 자동 재시도 — 안전 중단(PublishAborted)은 실패로 끝내지 않고 재시도한다.
+"""/api/publish 실패 처리 — 안전 중단(PublishAborted)은 자동 재시도 없이 즉시 실패 탭으로.
 
-실사고(2026-08-11): 일시적 에디터 상태로 저장 전 검증이 중단됐을 때, 사람이 다시
-누르지 않아도 서버가 새 브라우저로 자동 재시도해 성공해야 한다(최대 3회).
-가짜 퍼블리셔로 편집기 없이 재시도 루프만 검증한다(time.sleep은 무력화).
+자동 재시도(3회×20초)는 제거됨(2026-08-13): 실측상 중단 원인이 일시적 흔들림이
+아니라 구조적 문제(맨 위 협찬 배너 앵커 등)라 재시도가 성공한 적이 없고,
+브라우저를 여닫으며 편집기만 뒤흔들었다. 저장 전 중단은 멱등이므로 스냅샷을
+남겨 실패 탭에서 수동 재시도(retryJob)한다 — 여기서는 그 경로만 검증한다.
 """
 from __future__ import annotations
 
@@ -53,8 +54,7 @@ def _make_fake_pub(fail_times: int, calls: dict):
 
 
 @pytest.fixture()
-def ui(monkeypatch):
-    monkeypatch.setattr("time.sleep", lambda s: None)  # 재시도 대기 무력화(테스트 속도)
+def ui():
     server = webui.serve_ui(port=0)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield server, f"http://127.0.0.1:{server.server_address[1]}"
@@ -74,23 +74,9 @@ def _post_publish(url: str, extra: dict | None = None) -> tuple[int, dict]:
         return e.code, json.load(e)
 
 
-def test_auto_retry_recovers(ui, monkeypatch):
-    """2번 안전 중단 후 3번째 성공 — 응답은 성공 + 자동 재시도 안내 info."""
-    import autoblog.publish.editor as ed
-
-    server, url = ui
-    server.state["last"] = _FakeResult()
-    calls = {"n": 0}
-    monkeypatch.setattr(ed, "BlogPublisher", _make_fake_pub(2, calls))
-    status, d = _post_publish(url)
-    assert status == 200 and d.get("ok"), d
-    assert calls["n"] == 3
-    assert any("다시 시도" in m for m in d.get("infos", [])), d.get("infos")
-    assert d.get("warnings") == ["경고1"]
-
-
-def test_auto_retry_exhausted_then_manual(ui, monkeypatch):
-    """3번 전부 안전 중단 → 실패 + 스냅샷(jobId). 그 jobId로 수동 재시도하면 성공."""
+def test_abort_fails_immediately_then_manual_retry(ui, monkeypatch):
+    """안전 중단 1번 = 즉시 실패(자동 재시도 없음) + 스냅샷(jobId).
+    그 jobId로 수동 재시도하면 성공."""
     import autoblog.publish.editor as ed
 
     server, url = ui
@@ -99,7 +85,7 @@ def test_auto_retry_exhausted_then_manual(ui, monkeypatch):
     monkeypatch.setattr(ed, "BlogPublisher", _make_fake_pub(99, calls))
     status, d = _post_publish(url)
     assert status == 500 and "중단" in (d.get("error") or ""), d
-    assert calls["n"] == 3  # 자동 재시도 소진 후 멈춤
+    assert calls["n"] == 1  # 자동 재시도 없이 한 번만 시도
     assert d.get("jobId")  # 수동 재시도(retryJob)용 스냅샷이 남는다
 
     # 수동 재시도: 스냅샷 그대로 다시 저장(이번엔 에디터가 멀쩡한 상황) → 성공
