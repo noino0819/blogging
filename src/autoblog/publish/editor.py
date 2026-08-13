@@ -709,6 +709,13 @@ class BlogPublisher:
         if not imgs:
             return False
         k = max(0, min(k, len(imgs) - 1))
+        # 대상 위쪽 사진의 lazy-load가 클릭 직전에 레이아웃을 밀면 클릭이 본문 텍스트에
+        # 빗나가고, 뒤이은 Enter가 문단을 어절 사이에서 쪼갠다(꼬리 공백 실사고 2026-08-13).
+        # 클릭 전에 위쪽 사진을 로드 완료까지 정착시켜 시프트 경합을 없앤다.
+        try:
+            page.evaluate(self._FORCE_LOAD_IMGS_JS, k)
+        except Exception:  # noqa: BLE001 - 로드 정착은 보조, 실패해도 앵커 시도는 진행
+            pass
         for _ in range(3):
             imgs[k].scroll_into_view_if_needed()
             if not self._click_media_or_deselect(imgs[k]):
@@ -736,6 +743,12 @@ class BlogPublisher:
         vids = self._page.query_selector_all(SMART_EDITOR["editor_video"])
         if not vids or n < 0 or n >= len(vids):
             return False
+        # 사진 앵커와 같은 이유(lazy-load 시프트로 클릭 빗나감 → Enter가 문단 분할) — 영상은
+        # 위쪽 사진 수 계산이 번거로워 전부 정착시킨다(영상 앵커는 글당 한두 번이라 저렴).
+        try:
+            page.evaluate(self._FORCE_LOAD_IMGS_JS)
+        except Exception:  # noqa: BLE001 - 로드 정착은 보조, 실패해도 앵커 시도는 진행
+            pass
         for _ in range(3):
             vids[n].scroll_into_view_if_needed()
             if not self._click_media_or_deselect(vids[n]):
@@ -762,9 +775,13 @@ class BlogPublisher:
     # 로드가 될수록 분류가 정확해진다. 단, 판별 자체는 'pstatic으로 확인된 것만 네이버 사진'
     # (화이트리스트)이라 끝내 미로드여도 보존 쪽으로 떨어진다 — 예전엔 미로드=삭제 대상으로
     # 떨어져 외부 호스트가 한 번 버벅이자 협찬 배너가 삭제된 채 저장됐다(2026-08-13 실사고).
+    # n을 주면 앞에서 n+1장까지만 로드한다 — 앵커 클릭 전 '대상 위쪽' 사진만 정착시키는 용도
+    # (아래쪽 사진의 로드는 대상 좌표를 안 움직이므로 기다릴 이유가 없다). 인자 없으면 전부.
     _FORCE_LOAD_IMGS_JS = r"""
-    async () => {
-      for (const im of document.querySelectorAll('img.se-image-resource')) {
+    async (n) => {
+      let imgs = [...document.querySelectorAll('img.se-image-resource')];
+      if (n !== null && n !== undefined) imgs = imgs.slice(0, n + 1);
+      for (const im of imgs) {
         im.scrollIntoView({block: 'center'});
         for (let t = 0; t < 25; t++) {
           if (im.src && !im.src.startsWith('data:')) break;
@@ -1072,13 +1089,35 @@ class BlogPublisher:
                 return True
         return False
 
+    # 센티널이 든 문단이 '같은 컴포넌트 안에서 앞 문단(<p>)을 가진' 텍스트 문단인지 —
+    # 빗나간 앵커 Enter가 본문 문단을 쪼갠(또는 사이에 빈 문단을 만든) 흔적 판별.
+    # 앞 형제가 <p>일 때만 True: 컴포넌트 첫 문단(앞이 사진/영상)이면 False라, 뒤의
+    # 재결합 Backspace가 미디어를 건드릴 일이 없다.
+    _SENTINEL_SPLIT_JS = r"""
+    (mark) => {
+      for (const p of document.querySelectorAll('p.se-text-paragraph')) {
+        if ((p.textContent || '').includes(mark)) {
+          const prev = p.previousElementSibling;
+          return !!(prev && prev.tagName === 'P');
+        }
+      }
+      return false;
+    }
+    """
+
     def _sentinel_check(self, verify_js: str, arg) -> bool:
         """앵커 성공 여부를 '효과'로 검증: 센티널 한 글자를 실제 타이핑해 verify_js가 기대
         위치에서 찾아내는지 확인하고 지운다. DOM 셀렉션은 SE가 캐럿을 내부 모델로 들고
         비동기 반영이라(실측) 셀렉션 검사로는 앵커 실패를 못 잡는다 — 타이핑만이 진실.
 
         Backspace 정리는 센티널이 문서 어딘가 들어간 게 확인될 때만 — 입력이 통째로
-        씹혔으면(객체선택 등) 캐럿 위치의 남의 글자를 지우는 사고를 피한다."""
+        씹혔으면(객체선택 등) 캐럿 위치의 남의 글자를 지우는 사고를 피한다.
+
+        앵커 실패인데 센티널이 '앞 문단 있는 텍스트 문단'에 박혔다면, 직전 Enter가 캐럿이
+        놓인 본문 한가운데서 문단을 쪼갠 것이다(어절 공백에서 갈라져 '…밖에서도 ' 같은
+        경계 공백이 발행본에 남던 실사고 2026-08-13). 센티널 삭제 후 캐럿이 정확히 그
+        분할점에 있으므로 Backspace 한 번 더로 재결합해 원문을 복원한다
+        (scripts/probe_trailing_space.py --split 로 라이브 검증)."""
         page = self._page
         page.keyboard.type(self._ANCHOR_SENTINEL)
         got = {"present": False, "ok": False}
@@ -1088,8 +1127,17 @@ class BlogPublisher:
                 break
             page.wait_for_timeout(150)
         if got["present"]:  # 어딘가 들어갔으면 캐럿이 그 바로 뒤에 있으니 Backspace로 지운다
+            split = False
+            if not got["ok"]:  # 삭제 전에 판별해야 센티널 위치를 알 수 있다
+                try:
+                    split = page.evaluate(self._SENTINEL_SPLIT_JS, self._ANCHOR_SENTINEL)
+                except Exception:  # noqa: BLE001 - 판별 실패면 복구 없이 기존 동작 유지
+                    split = False
             page.keyboard.press("Backspace")
             page.wait_for_timeout(150)
+            if split:
+                page.keyboard.press("Backspace")  # 빗나간 Enter의 문단 분할 재결합
+                page.wait_for_timeout(150)
         return bool(got["ok"])
 
     def _place_anchor(self, anchor) -> None:
@@ -1760,6 +1808,21 @@ class BlogPublisher:
                 prev = n
                 page.wait_for_timeout(800)
             misses = self._verify_inplace_result(plan, skipped_ids, check_videos)
+            # 문단 경계 공백 검사 — 플랜 줄은 전부 strip이라 문단 머리/꼬리의 보이는 공백은
+            # 전부 조립 사고 흔적(빗나간 Enter의 문단 분할 등, 2026-08-13 실사고)이다.
+            # 예방·복구를 뚫고 재발하면 조용히 지나가지 않게 경고로 표면화한다.
+            stray = page.evaluate(
+                r"""() => [...document.querySelectorAll(
+                      '.se-component.se-text .se-text-paragraph')]
+                    .map(p => (p.textContent || '').replace(/[​﻿]/g, ''))
+                    .filter(t => t.trim() && /^[  　]|[  　]$/.test(t))
+                    .length"""
+            )
+            if stray:
+                warnings.append(
+                    f"저장본 문단 {stray}곳의 머리/끝에 원문에 없는 공백이 남았어요 — "
+                    "문단이 의도치 않게 쪼개졌을 수 있으니 글을 열어 확인해 주세요."
+                )
         except Exception as exc:  # noqa: BLE001 - 검증 인프라 실패 ≠ 저장 실패
             warnings.append(
                 f"저장 후 검증을 완료하지 못했어요({type(exc).__name__}) — 글을 열어 확인해 주세요."
