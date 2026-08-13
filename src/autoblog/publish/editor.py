@@ -681,6 +681,23 @@ class BlogPublisher:
     }
     """
 
+    def _click_media_or_deselect(self, el) -> bool:
+        """미디어 컴포넌트 클릭. 성공하면 True.
+
+        직전 라운드 클릭으로 선택된 컴포넌트 위에 컨텍스트 툴바가 떠 클릭 지점을 덮으면
+        Playwright가 30초 대기 후 예외로 죽어 호출부의 재시도·폴백을 전부 건너뛴다
+        (작게 넣은 협찬 배너에서 실사고 2026-08-13). 짧게 기다렸다 가로채이면 Escape로
+        선택을 풀어 툴바를 걷고 False — 호출부 루프가 재시도한다."""
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+        try:
+            el.click(timeout=5000)
+            return True
+        except PlaywrightTimeoutError:
+            self._page.keyboard.press("Escape")
+            self._page.wait_for_timeout(300)
+            return False
+
     def _anchor_after_photo(self, k: int) -> bool:
         """k번째 사진을 선택 → Enter로 그 사진 '바로 뒤'에 빈 문단을 만들고 커서를 둔다.
 
@@ -694,7 +711,8 @@ class BlogPublisher:
         k = max(0, min(k, len(imgs) - 1))
         for _ in range(3):
             imgs[k].scroll_into_view_if_needed()
-            imgs[k].click()
+            if not self._click_media_or_deselect(imgs[k]):
+                continue
             page.wait_for_timeout(300)
             page.keyboard.press("Enter")
             page.wait_for_timeout(300)
@@ -720,7 +738,8 @@ class BlogPublisher:
             return False
         for _ in range(3):
             vids[n].scroll_into_view_if_needed()
-            vids[n].click()
+            if not self._click_media_or_deselect(vids[n]):
+                continue
             page.wait_for_timeout(300)
             page.keyboard.press("Enter")
             page.wait_for_timeout(300)
