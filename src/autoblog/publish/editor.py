@@ -759,7 +759,9 @@ class BlogPublisher:
         )
 
     # 본문 img 들의 lazy src 를 전부 로드시킨다(스크롤·폴링). 외부/네이버 판별이 src 기반이라
-    # 미로드(빈 src) 상태로 분류하면 보존해야 할 외부 이미지를 지울 수 있다.
+    # 로드가 될수록 분류가 정확해진다. 단, 판별 자체는 'pstatic으로 확인된 것만 네이버 사진'
+    # (화이트리스트)이라 끝내 미로드여도 보존 쪽으로 떨어진다 — 예전엔 미로드=삭제 대상으로
+    # 떨어져 외부 호스트가 한 번 버벅이자 협찬 배너가 삭제된 채 저장됐다(2026-08-13 실사고).
     _FORCE_LOAD_IMGS_JS = r"""
     async () => {
       for (const im of document.querySelectorAll('img.se-image-resource')) {
@@ -792,7 +794,7 @@ class BlogPublisher:
                     const imgs = c.querySelectorAll('img.se-image-resource');
                     if (imgs.length !== 1) continue;
                     const s = imgs[0].src || '';
-                    if (/^https?:/.test(s) && !/pstatic\.net/.test(s)) continue;  // 외부 이미지 보존
+                    if (!/pstatic\.net/.test(s)) continue;  // 네이버 CDN '확인'된 사진만 삭제 — 외부·미로드 보존
                     return imgs[0];
                   }
                   return null;
@@ -850,7 +852,7 @@ class BlogPublisher:
                     const imgs = c.querySelectorAll('img.se-image-resource');
                     if (imgs.length !== 1) return false;
                     const s = imgs[0].src || '';
-                    return !(/^https?:/.test(s) && !/pstatic\.net/.test(s));
+                    return /pstatic\.net/.test(s);  // 네이버 CDN 확인된 사진만 — 삭제 규칙과 동일 기준
                   });
                   return singles[k] || null;
                 }""",
@@ -911,7 +913,7 @@ class BlogPublisher:
                         const imgs = c.querySelectorAll('img.se-image-resource');
                         if (imgs.length !== 1) return false;
                         const s = imgs[0].src || '';
-                        return !(/^https?:/.test(s) && !/pstatic\.net/.test(s));
+                        return /pstatic\.net/.test(s);  // 네이버 CDN 확인된 사진만 — 삭제 규칙과 동일 기준
                       });
                       return singles[k] || null;
                     }""",
@@ -981,7 +983,7 @@ class BlogPublisher:
                         const imgs = c.querySelectorAll('img.se-image-resource');
                         if (imgs.length !== 1) return false;
                         const s = imgs[0].src || '';
-                        return !(/^https?:/.test(s) && !/pstatic\.net/.test(s));
+                        return /pstatic\.net/.test(s);  // 네이버 CDN 확인된 사진만 — 삭제 규칙과 동일 기준
                       });
                       return singles[k] || null;
                     }""",
@@ -1380,7 +1382,7 @@ class BlogPublisher:
     _HAS_PRESERVED_MEDIA_JS = (
         "()=>!!document.querySelector('.se-component.se-video')"
         "||[...document.querySelectorAll('img.se-image-resource')]"
-        ".some(im=>/^https?:/.test(im.src||'')&&!/pstatic\\.net/.test(im.src||''))"
+        ".some(im=>!/pstatic\\.net/.test(im.src||''))"
     )
 
     def _drag_select_component(self, comp) -> bool:
@@ -1568,8 +1570,7 @@ class BlogPublisher:
                 const cls = c.className.toString();
                 const imgs = c.querySelectorAll('img.se-image-resource');
                 const isMedia = /se-video/.test(cls) || imgs.length > 0;
-                const isExt = imgs.length === 1 && /^https?:/.test(imgs[0].src || '')
-                              && !/pstatic\.net/.test(imgs[0].src);
+                const isExt = imgs.length === 1 && !/pstatic\.net/.test(imgs[0].src || '');
                 if (isExt) n++;
                 if (isMedia && lead === null) lead = isExt;
               }
@@ -1863,7 +1864,7 @@ class BlogPublisher:
         const src = (im.src && !im.src.startsWith('data:')) ? im.src : '';
         // 외부 핫링크(협찬 배너 추적 URL 등, src가 pstatic이 아님)는 다운로드·재업로드 금지
         // 대상이라 별도 종류로 표시한다(고정 앵커, 사진 목록에서 제외).
-        const external = /^https?:/.test(src) && !/pstatic\.net/.test(src);
+        const external = !/pstatic\.net/.test(src);  // 미로드('')도 외부 취급 — 다운로드·삭제 금지 쪽이 안전
         out.push({kind: external ? 'external' : 'image', src});
       }
       return out;
