@@ -747,6 +747,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <button data-k=info><span class=em>📚</span>정보</button>
           </div>
           <div class=muted id=srchint style="margin-top:6px">링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
+          <button type=button class="btn ghost" id=prepbtn style="display:none;width:100%;justify-content:center;margin-top:8px">🔍 주제 준비 — 목차·팩트시트 자동 채우기</button>
           <label class=f>사진 <span class=muted id=psel></span></label>
           <button type=button class="btn ghost" id=photobtn style="width:100%;justify-content:center;gap:8px">📷 사진 추가·분류 <span class=muted id=photosum>사진 없음</span></button>
         </div>
@@ -1167,11 +1168,31 @@ function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
   $('#memo').placeholder=(k==='info')
     ?'예: 무화과 제철·보관법 정리. 조사한 사실·수치(제철 8~11월, 냉장 3~4일 등)를 여기 붙여넣으세요 — 재료에 없는 수치는 글에 안 들어갑니다. 직접 먹어본 경험도 한두 줄!'
     :'예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요.';
+  $('#srcval').placeholder=(k==='info')
+    ?'정보 주제 입력 (예: 복숭아 보관법)'
+    :'맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력';
+  {const pb2=$('#prepbtn'); if(pb2)pb2.style.display=(k==='info')?'flex':'none';}
   $('#srchint').innerHTML=(k==='info')
-    ?'<b>정보</b> 글은 수집 없이 메모(주제+조사 자료)로만 씁니다. 위 수집칸은 무시돼요.'
+    ?'<b>정보</b> 주제를 입력하고 [주제 준비]를 누르면 목차·팩트시트가 메모에 채워져요. 시트의 [내 경험] 두 줄만 직접 채우면 끝.'
     :(KINDMANUAL
       ?('<b>'+KL[k]+'</b>으로 수집합니다.')
       :('입력을 보고 <b>'+KL[k]+'</b>으로 자동 인식했어요. 직접 골라도 돼요.'));}
+// 주제 준비 — 정보 모드: 주제 → /api/prepare-info → 팩트 시트를 메모에 채움
+$('#prepbtn').onclick=async()=>{
+  const t=($('#srcval').value||'').trim();
+  if(!t){alert('주제를 먼저 입력해 주세요 (예: 복숭아 보관법)');$('#srcval').focus();return;}
+  const memo=$('#memo');
+  if(memo.value.trim()&&!confirm('메모를 새 팩트 시트로 바꿀까요? 기존 내용은 지워져요.'))return;
+  const b=$('#prepbtn'); b.disabled=true; const old=b.textContent;
+  b.textContent='🔍 조사 중… 상위 글을 읽고 사실을 추리는 중 (30초 안팎)';
+  try{
+    const r=await fetch('/api/prepare-info',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({topic:t})});
+    const d=await r.json(); if(d.error)throw new Error(d.error);
+    memo.value=d.sheet;
+    memo.scrollTop=0;
+  }catch(e){alert('주제 준비 실패: '+(e.message||e));}
+  finally{b.disabled=false; b.textContent=old;}
+};
 // 강조색·구분선/인용구·스티커는 항상 켜둠(즐겨찾기/설정이 없으면 자동으로 안 들어감) — 토글 UI 제거.
 const FMT={emphasis:true,structure:true,stickers:true,stickerAll:false,sponsored:false,sponsorSticker:'',hideDefault:true};
 let CATEGORY='';
@@ -3715,6 +3736,8 @@ def _make_handler(state: dict):
                     self._export_prompt(self._json_body())
                 elif path == "/api/import-draft":
                     self._import_draft(self._json_body())
+                elif path == "/api/prepare-info":
+                    self._prepare_info(body)
                 elif path == "/api/prefetch-card":
                     self._prefetch_card(self._json_body())
                 elif path == "/api/personas/fetch":
@@ -3955,6 +3978,21 @@ def _make_handler(state: dict):
                 self._stream_write({"error": str(exc)})
                 return
             self._stream_write({"prompt": text})
+
+        def _prepare_info(self, body):
+            """정보 모드 '주제 준비' — 목차(자동완성)+상위 글 근거+LLM 팩트 시트."""
+            from autoblog.collect.info_topic import prepare_info_sheet
+
+            topic = (body.get("topic") or "").strip()
+            if not topic:
+                self._send(400, json.dumps({"error": "주제가 비어 있어요"}).encode())
+                return
+            try:
+                out = prepare_info_sheet(topic)
+            except Exception as exc:  # noqa: BLE001 — 키 미설정/네트워크/LLM 오류 그대로 안내
+                self._send(400, json.dumps({"error": _friendly_error(exc)}).encode())
+                return
+            self._send(200, json.dumps(out, ensure_ascii=False).encode())
 
         def _prefetch_card(self, body):
             """맛집 URL 붙여넣기 직후 미리 수집(캐시 워밍) — 생성 시 수집 대기 제거.
