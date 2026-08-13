@@ -32,6 +32,25 @@ def test_prepare_info_sheet_assembly(monkeypatch):
     assert len(out["sources"]) == 1 and out["sources"][0]["title"] == "복숭아 보관 총정리"
 
 
+def test_prepare_info_prompt_no_llm_call(monkeypatch):
+    """외부 챗봇용 프롬프트 — LLM 호출 없이 시트 틀+원문을 담아야 한다(API 키 없는 유저 경로)."""
+    monkeypatch.setattr(info_topic, "_related_terms", lambda t: ["딱복 후숙"])
+    monkeypatch.setattr(
+        info_topic,
+        "_search_blog",
+        lambda t: [{"title": "보관 팁", "link": "https://blog.naver.com/aaa/111"}],
+    )
+    monkeypatch.setattr(info_topic, "_fetch_post_text", lambda link, max_chars=4000: "본문 " * 200)
+    monkeypatch.setattr(
+        info_topic, "chat", lambda *a, **k: (_ for _ in ()).throw(AssertionError("LLM 호출 금지"))
+    )
+    out = info_topic.prepare_info_prompt("복숭아 보관법")
+    p = out["prompt"]
+    assert "# 시트 틀" in p and "# 원문들" in p and "딱복 후숙" in p
+    assert info_topic._FILL_MARK in p  # 채울 자리 표시가 틀 안에 있어야 응답=완성 시트
+    assert "보관 팁" in p and "[내 경험" in p
+
+
 def test_prepare_info_sheet_no_sources(monkeypatch):
     monkeypatch.setattr(info_topic, "_related_terms", lambda t: [])
     monkeypatch.setattr(info_topic, "_search_blog", lambda t: [])

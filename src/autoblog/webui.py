@@ -747,7 +747,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <button data-k=info><span class=em>📚</span>정보</button>
           </div>
           <div class=muted id=srchint style="margin-top:6px">링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
-          <button type=button class="btn ghost" id=prepbtn style="display:none;width:100%;justify-content:center;margin-top:8px">🔍 주제 준비 — 목차·팩트시트 자동 채우기</button>
+          <div id=preprow style="display:none;gap:8px;margin-top:8px">
+            <button type=button class="btn ghost" id=prepbtn style="flex:1;justify-content:center">🔍 주제 준비 — 팩트시트 자동 채우기</button>
+            <button type=button class="btn ghost" id=prepexport title="API 키 없이 쓰는 경로 — 수집한 원문·시트 틀을 복사해 외부 챗봇에 붙여넣고, 응답을 메모칸에 붙여넣으세요" style="flex:0 0 150px;justify-content:center">📋 챗봇용 복사</button>
+          </div>
           <label class=f>사진 <span class=muted id=psel></span></label>
           <button type=button class="btn ghost" id=photobtn style="width:100%;justify-content:center;gap:8px">📷 사진 추가·분류 <span class=muted id=photosum>사진 없음</span></button>
         </div>
@@ -1171,7 +1174,7 @@ function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
   $('#srcval').placeholder=(k==='info')
     ?'정보 주제 입력 (예: 복숭아 보관법)'
     :'맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력';
-  {const pb2=$('#prepbtn'); if(pb2)pb2.style.display=(k==='info')?'flex':'none';}
+  {const pr=$('#preprow'); if(pr)pr.style.display=(k==='info')?'flex':'none';}
   $('#srchint').innerHTML=(k==='info')
     ?'<b>정보</b> 주제를 입력하고 [주제 준비]를 누르면 목차·팩트시트가 메모에 채워져요. 시트의 [내 경험] 두 줄만 직접 채우면 끝.'
     :(KINDMANUAL
@@ -1191,6 +1194,19 @@ $('#prepbtn').onclick=async()=>{
     memo.value=d.sheet;
     memo.scrollTop=0;
   }catch(e){alert('주제 준비 실패: '+(e.message||e));}
+  finally{b.disabled=false; b.textContent=old;}
+};
+// 챗봇용 복사 — 수집·시트 틀까지 서버가 만들고, 팩트 추출만 외부 LLM에 맡김(API 키 불필요)
+$('#prepexport').onclick=async()=>{
+  const t=($('#srcval').value||'').trim();
+  if(!t){alert('주제를 먼저 입력해 주세요 (예: 복숭아 보관법)');$('#srcval').focus();return;}
+  const b=$('#prepexport'); b.disabled=true; const old=b.textContent; b.textContent='수집 중…';
+  try{
+    const r=await fetch('/api/prepare-info',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({topic:t,export:true})});
+    const d=await r.json(); if(d.error)throw new Error(d.error);
+    try{await navigator.clipboard.writeText(d.prompt); toast('복사했어요! 챗봇에 붙여넣고, 응답 전체를 메모칸에 붙여넣으세요.','ok');}
+    catch(_){$('#ptext').value=d.prompt; $('#pmodal').style.display='flex';}
+  }catch(e){alert('프롬프트 준비 실패: '+(e.message||e));}
   finally{b.disabled=false; b.textContent=old;}
 };
 // 강조색·구분선/인용구·스티커는 항상 켜둠(즐겨찾기/설정이 없으면 자동으로 안 들어감) — 토글 UI 제거.
@@ -3983,12 +3999,15 @@ def _make_handler(state: dict):
             """정보 모드 '주제 준비' — 목차(자동완성)+상위 글 근거+LLM 팩트 시트."""
             from autoblog.collect.info_topic import prepare_info_sheet
 
+            from autoblog.collect.info_topic import prepare_info_prompt
+
             topic = (body.get("topic") or "").strip()
             if not topic:
                 self._send(400, json.dumps({"error": "주제가 비어 있어요"}).encode())
                 return
             try:
-                out = prepare_info_sheet(topic)
+                # export=True: 외부 챗봇용 복붙 프롬프트(LLM 호출 없음 — API 키 불필요)
+                out = prepare_info_prompt(topic) if body.get("export") else prepare_info_sheet(topic)
             except Exception as exc:  # noqa: BLE001 — 키 미설정/네트워크/LLM 오류 그대로 안내
                 self._send(400, json.dumps({"error": _friendly_error(exc)}).encode())
                 return

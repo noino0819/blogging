@@ -54,20 +54,12 @@ def _fetch_post_text(link: str, max_chars: int = 4000) -> str:
     return "\n".join(ln for ln in lines if ln)[:max_chars]
 
 
-def prepare_info_sheet(topic: str, n_sources: int = 4, model: str | None = None) -> dict:
-    """주제 → {sheet, terms, sources}. sheet는 메모칸에 그대로 넣는 팩트 시트 텍스트.
-
-    목차는 자동완성(실제 검색어), 사실은 블로그 상위 글에서 LLM이 추출(출처 번호 포함).
-    수치 환각을 원천 차단할 수는 없으므로 시트에 출처 URL을 남겨 발행 전 확인을 유도한다.
-    """
-    topic = (topic or "").strip()
-    if not topic:
-        raise ValueError("주제가 비어 있어요")
+def _collect(topic: str, n_sources: int) -> tuple[list[str], list[dict], list[str]]:
+    """수집 공통부 — (목차 terms, 출처 sources, 원문 bodies). API 경로·내보내기 경로가 공유."""
     try:
         terms = [t for t in _related_terms(topic) if t.replace(" ", "") != topic.replace(" ", "")][:8]
     except Exception:  # noqa: BLE001 — 목차는 부가 재료, 자동완성 실패해도 시트는 만든다
         terms = []
-
     sources: list[dict] = []
     bodies: list[str] = []
     for it in _search_blog(topic)[:12]:
@@ -82,16 +74,11 @@ def prepare_info_sheet(topic: str, n_sources: int = 4, model: str | None = None)
         bodies.append(text)
     if not bodies:
         raise RuntimeError("근거로 쓸 상위 글을 가져오지 못했어요 — 주제를 바꾸거나 잠시 후 다시 시도해 주세요")
+    return terms, sources, bodies
 
-    docs = "\n\n".join(f"### 원문 {i} — {s['title']}\n{b}" for i, (s, b) in enumerate(zip(sources, bodies), 1))
-    facts = chat(
-        [
-            {"role": "system", "content": _EXTRACT_SYSTEM},
-            {"role": "user", "content": f"주제: {topic}\n\n{docs}"},
-        ],
-        model=model,
-    ).strip()
 
+def _assemble_sheet(topic: str, terms: list[str], facts: str, sources: list[dict]) -> str:
+    """시트 조립 공통부 — facts 자리에 추출 결과(또는 외부 LLM용 채움 안내)를 넣는다."""
     now = datetime.now()
     parts = [f"주제: {topic}"]
     if terms:
@@ -103,4 +90,56 @@ def prepare_info_sheet(topic: str, n_sources: int = 4, model: str | None = None)
         "[출처 — 발행 전 수치가 맞는지 열어서 확인 권장. 이 목록은 본문에 절대 넣지 말 것]\n"
         + "\n".join(f"{i}. {s['title']} — {s['link']}" for i, s in enumerate(sources, 1))
     )
-    return {"sheet": "\n\n".join(parts), "terms": terms, "sources": sources}
+    return "\n\n".join(parts)
+
+
+def prepare_info_sheet(topic: str, n_sources: int = 4, model: str | None = None) -> dict:
+    """주제 → {sheet, terms, sources}. sheet는 메모칸에 그대로 넣는 팩트 시트 텍스트.
+
+    목차는 자동완성(실제 검색어), 사실은 블로그 상위 글에서 LLM이 추출(출처 번호 포함).
+    수치 환각을 원천 차단할 수는 없으므로 시트에 출처 URL을 남겨 발행 전 확인을 유도한다.
+    """
+    topic = (topic or "").strip()
+    if not topic:
+        raise ValueError("주제가 비어 있어요")
+    terms, sources, bodies = _collect(topic, n_sources)
+    docs = "\n\n".join(f"### 원문 {i} — {s['title']}\n{b}" for i, (s, b) in enumerate(zip(sources, bodies), 1))
+    facts = chat(
+        [
+            {"role": "system", "content": _EXTRACT_SYSTEM},
+            {"role": "user", "content": f"주제: {topic}\n\n{docs}"},
+        ],
+        model=model,
+    ).strip()
+    return {"sheet": _assemble_sheet(topic, terms, facts, sources), "terms": terms, "sources": sources}
+
+
+_FILL_MARK = "(이 줄을 지우고, 여기에 원문들에서 추출한 사실을 \"- \"로 한 줄씩 채워라)"
+
+
+def prepare_info_prompt(topic: str, n_sources: int = 4) -> dict:
+    """외부 챗봇용 복붙 프롬프트 — API 키 없이도 같은 팩트 시트를 만들 수 있게.
+
+    수집(목차·원문)은 여기서 다 해서 넣고, 팩트 추출만 외부 LLM에게 맡긴다.
+    챗봇 응답이 곧 완성 시트가 되도록 '시트 틀 그대로 출력' 프로토콜을 쓴다
+    (붙여넣기 후 조립 단계가 없어야 복붙 두 번으로 끝난다).
+    """
+    topic = (topic or "").strip()
+    if not topic:
+        raise ValueError("주제가 비어 있어요")
+    terms, sources, bodies = _collect(topic, n_sources)
+    template = _assemble_sheet(topic, terms, _FILL_MARK, sources)
+    docs = "\n\n".join(f"### 원문 {i} — {s['title']}\n{b}" for i, (s, b) in enumerate(zip(sources, bodies), 1))
+    prompt = (
+        "# 지시문 (블로그 정보 글의 재료 시트 만들기)\n\n"
+        f"{_EXTRACT_SYSTEM}\n\n"
+        "출력 규칙: 아래 [시트 틀]을 처음부터 끝까지 그대로 출력하되, "
+        f"{_FILL_MARK!r} 라고 적힌 자리만 네가 추출한 사실 목록으로 바꿔라. "
+        "틀의 나머지 줄(주제·타깃 검색어·커버할 내용·내 경험·출처)은 한 글자도 바꾸지 마라. "
+        "시트 외의 말(인사·설명·코드블록 기호)은 일절 출력하지 마라.\n\n"
+        "---\n\n"
+        f"# 시트 틀\n\n{template}\n\n"
+        "---\n\n"
+        f"# 원문들\n\n주제: {topic}\n\n{docs}"
+    )
+    return {"prompt": prompt, "terms": terms, "sources": sources}
