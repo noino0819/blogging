@@ -1629,13 +1629,22 @@ class BlogPublisher:
                     warnings.append("표 자동 삽입 실패 — 에디터에서 직접 ‘표’를 추가해 주세요.")
                     skipped_ids.add(id(block))
 
+        # 배너 뒤 앵커가 한 번이라도 실패하면 남은 블록 전부를 폴백(첫 미디어 앞)으로 통일한다.
+        # 블록마다 앵커를 다시 잡는 구조라 성공/실패가 섞이면 어떤 블록은 배너 '뒤', 어떤
+        # 블록은 배너 '앞'에 들어가 본문이 배너를 사이에 두고 찢어진다(2026-08-13 실사고 —
+        # 스티커가 협찬 배너 위로 밀림). 한쪽으로 통일하면 최악이 '배너가 고지 아래로 내려감'.
+        lead_anchor_ok = True
+
         def _anchor_segment(seg_idx):
+            nonlocal lead_anchor_ok
             # 구간 커서: 0=첫 미디어 앞, K>0=(K-1)번 물리 영상 바로 뒤(영상 부족하면 마지막 영상 뒤).
             if seg_idx == 0 or n_phys_video == 0:
                 # 첫 미디어가 보존된 외부 이미지(협찬 배너)면 그 '뒤'에 쌓는다 — 맨 앞에 쌓으면
                 # 본문이 배너 위로 밀려 고지가 상단에서 밀려난다. 실패 시 기존 최상단 앵커로.
-                if ext["lead"] and self._anchor_after_photo(0):
-                    return
+                if ext["lead"] and lead_anchor_ok:
+                    if self._anchor_after_photo(0):
+                        return
+                    lead_anchor_ok = False
                 if not self._anchor_before_first_media():
                     # 앵커 실패 상태로 계속 넣으면 남은 블록 전부가 이전 캐럿 자리에 짜깁기돼
                     # 문서가 통째로 뒤섞인다(2026-08-11 실사고). 저장 전 중단이라 원본은 무사 —
