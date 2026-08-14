@@ -2132,10 +2132,11 @@ function captureWS(){
     saveDisabled:$('#save')?$('#save').disabled:true,
   };
 }
-// 빈 상태(새 글 탭).
+// 빈 상태(새 글 탭). 글 종류는 지금 탭 것을 물려받는다 — 보통 비슷한 종류를 이어 쓰므로
+// 새 글·배치 불러오기마다 '맛집 후기'로 리셋되면 어색하다(글감 유지).
 function blankWS(){
   return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,AISET:new Set(),PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},XCATS:[],CATORDER:[],
-    MODE:'place',SRCKIND:'place',KINDMANUAL:false,IMPORTED_DRAFT:null,
+    MODE,SRCKIND,KINDMANUAL,IMPORTED_DRAFT:null,
     MEMOS:blankModeStore(),SRCVALS:blankModeStore(),
     memo:'',srcval:'',keywords:'',itext:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
     previewHTML:EMPTY_DOC,previewClass:'doc empty',saveDisabled:true};

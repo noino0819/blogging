@@ -111,6 +111,14 @@ def test_tab_state_roundtrip(page):
     assert page.input_value("#memo") == "테스트 메모 첫 줄"
 
 
+def test_new_tab_inherits_kind(page):
+    """새 글 탭: 글 종류가 '맛집 후기'로 리셋되지 않고 지금 탭 것을 물려받는다."""
+    page.click("#kindseg [data-k=info]")
+    page.click("#workbar .wadd")
+    assert page.evaluate("MODE") == "info"
+    assert "on" in page.get_attribute("#kindseg [data-k=info]", "class")
+
+
 def test_client_error_reaches_server_log(page, capfd):
     """프런트 JS 에러가 서버 로그로 수집된다(하얀 화면 사후 추적용)."""
     page.evaluate("setTimeout(()=>{ smokeTestBoom(); }, 0)")
