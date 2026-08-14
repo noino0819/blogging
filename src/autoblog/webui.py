@@ -189,12 +189,15 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .typing::after{content:'';display:inline-block;width:2px;height:1.02em;margin-left:2px;border-radius:1px;background:currentColor;vertical-align:text-bottom;animation:cur .8s step-end infinite}
  @keyframes cur{50%{opacity:0}}
  .spincount{color:var(--sub)}
- /* 수집 종류(맛집/상품) — 크게 잘 보이게 */
- .kindseg{display:flex;gap:8px;margin-top:8px}
- .kindseg button{flex:1;padding:12px;font-size:14px;font-weight:600;background:transparent;color:var(--color-neutral-500);border:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer;transition:.12s}
- .kindseg button .em{font-size:17px;margin-right:5px}
- .kindseg button.on{background:var(--color-accent);color:var(--color-bg);border-color:var(--color-accent);box-shadow:var(--shadow-sm)}
+ /* 글 종류 — 맛집/상품/정보(AI 메이트)/리스타일 4모드를 한 세그먼트에서 고른다 */
+ .kindseg{display:flex;gap:6px}
+ .kindseg button{flex:1;min-width:0;padding:11px 4px;font-size:13px;font-weight:700;background:transparent;color:var(--color-neutral-600);border:1px solid var(--line);border-radius:var(--r-sm);cursor:pointer;transition:.12s;white-space:nowrap}
+ .kindseg button small{font-size:10px;font-weight:600;opacity:.75}
+ .kindseg button.on{background:var(--color-accent);color:var(--color-surface);border-color:var(--color-accent);box-shadow:var(--shadow-sm)}
  .kindseg button.auto{outline:3px solid color-mix(in srgb,var(--color-accent) 25%,transparent)}
+ /* 모드 상시 설명 — 툴팁에 숨기지 않고 항상 보여준다(모드 간 차이가 여기서 갈린다) */
+ .modehint{margin:8px 0 12px;padding:9px 12px;background:var(--color-bg);border-radius:var(--r-sm);font-size:12.5px;line-height:1.6;color:var(--sub)}
+ .modehint b{color:var(--ink)}
  /* 상단 임시저장 작업 탭바 — 백그라운드 저장을 글마다 탭으로 띄운다. 실패한 탭은 남아 다시 시도. */
  #savebar{position:fixed;top:12px;left:232px;right:16px;z-index:9998;display:flex;flex-wrap:wrap;gap:8px;pointer-events:none}
  #savebar:empty{display:none}
@@ -600,7 +603,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .alertbg{position:fixed;inset:0;background:color-mix(in srgb,var(--color-neutral-900) 48%,transparent);z-index:10000;display:flex;align-items:center;justify-content:center;padding:24px;animation:tin .16s ease}
  .alertcard{background:var(--color-bg);border-radius:var(--r-lg);width:min(420px,92vw);padding:26px 26px 22px;text-align:center;box-shadow:var(--shadow-lg)}
  .alertcard .ai{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px}
- .alertcard.err .ai{background:var(--color-accent-2-100)}.alertcard.info .ai{background:var(--color-neutral-200)}.alertcard.ok .ai{background:var(--color-accent-100)}
+ .alertcard.err .ai{background:var(--color-accent-2-100);color:var(--red-d)}.alertcard.info .ai{background:var(--color-neutral-200);color:var(--color-neutral-800)}.alertcard.ok .ai{background:var(--color-olive-100);color:var(--color-olive-700)}
  .alertcard .at{font-family:var(--font-heading);font-size:18px;font-weight:700;color:var(--ink);margin:0 0 8px}
  .alertcard .am{font-size:14px;font-weight:400;color:var(--color-neutral-800);line-height:1.6;white-space:pre-wrap}
  .alertcard .ab{margin-top:20px;display:flex;gap:10px}
@@ -658,18 +661,18 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=modalft><button class=btn id=iapply style="flex:1">이 글로 미리보기</button><button class="btn ghost" id=imclose2 style="flex:0 0 120px">닫기</button></div>
 </div></div>
 <div id=phmodal class=modal style="display:none"><div class="modalbox phbox">
-  <div class=modalhd><span>📷 사진 추가·분류</span><button class=mx id=phclose title=닫기>✕</button></div>
+  <div class=modalhd><span>사진 추가·분류</span><button class=mx id=phclose title=닫기>✕</button></div>
   <div class=msec style="margin-top:4px"><span class=mn>1</span>사진 가져오기<span class=mh>PC에서 올리거나 네이버 임시저장 글에서 불러와요</span></div>
-  <div class=dropzone id=dropzone>📷 사진·동영상을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*,video/*" multiple hidden></div>
+  <div class=dropzone id=dropzone>사진·동영상을 끌어다 놓거나 <b>클릭해서 추가</b><input type=file id=fileinput accept="image/*,video/*" multiple hidden></div>
   <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
-    <button type=button class="btn ghost" id=draftload style="white-space:nowrap;flex:4 1 0">📥 임시저장에서 불러오기</button>
-    <button type=button class="btn ghost" id=draftrefresh title="네이버에서 목록 새로고침" style="display:none;flex:1 1 0;align-self:stretch;padding:4px 8px;font-size:12px;line-height:1">🔄</button>
+    <button type=button class="btn ghost" id=draftload style="white-space:nowrap;flex:4 1 0">임시저장에서 불러오기</button>
+    <button type=button class="btn ghost" id=draftrefresh title="네이버에서 목록 새로고침" style="display:none;flex:1 1 0;align-self:stretch;padding:4px 8px;font-size:12px;line-height:1">↻</button>
     <div id=draftmultiwrap style="display:none">여러 글 선택 <div class="sw sw-sm" id=draftmulti></div></div>
     <span class=muted id=draftstat></span>
   </div>
   <div class=draftlist id=draftlist style="display:none"></div>
   <div id=draftbatch style="display:none;margin-bottom:10px">
-    <button type=button class="btn" id=draftbatchgo>📥 선택한 글 새 탭으로 불러오기</button>
+    <button type=button class="btn" id=draftbatchgo>선택한 글 새 탭으로 불러오기</button>
   </div>
   <div class=phscroll>
     <div class=msec><span class=mn>2</span>분류 전 사진<span class=mcnt id=pinboxn>0</span><span class=mh>클릭=활성 칸에 담기 · Shift=여러 장 선택</span></div>
@@ -686,7 +689,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=modalft><button class=btn id=catok style="flex:1">추가</button><button class="btn ghost" id=catcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
 <div id=capmodal class=modal style="display:none"><div class=modalbox style="width:min(460px,94vw)">
-  <div class=modalhd><span>📝 사진 세부 설명</span><button class=mx id=capx>✕</button></div>
+  <div class=modalhd><span>사진 세부 설명</span><button class=mx id=capx>✕</button></div>
   <div class=muted>이 사진에 대해 글에 녹일 설명을 적어주세요. 초안 생성 때 반영되고, 직접 쓴 설명은 발행 시 사진 아래 <b>캡션(사진 설명)</b>에도 그대로 들어가요. (분류: <b id=caplabel></b>)</div>
   <div style="margin-top:10px;text-align:center"><img id=capimg style="max-width:160px;max-height:160px;border-radius:9px;border:1px solid var(--line);object-fit:cover"></div>
   <textarea id=capinput placeholder="예: 가장 인상 깊었던 메뉴. 겉은 바삭하고 속은 촉촉했어요." style="min-height:110px;margin-top:10px;font-family:inherit;font-size:14px;line-height:1.5;background:var(--color-bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px;width:100%;resize:vertical"></textarea>
@@ -694,12 +697,12 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=modalft><button class=btn id=capok style="flex:1">저장</button><button class="btn ghost" id=capcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
 <div id=npmodal class=modal style="display:none"><div class=modalbox style="width:min(420px,92vw)">
-  <div class=modalhd><span>✏️ 새 글 시작</span><button class=mx id=npx>✕</button></div>
+  <div class=modalhd><span>새 글 시작</span><button class=mx id=npx>✕</button></div>
   <div class=muted>지금 작성 중인 메모·사진 선택·분류가 모두 비워집니다. 새 글을 시작할까요?</div>
   <div class=modalft><button class="btn danger" id=npok style="flex:1">비우고 새 글 시작</button><button class="btn ghost" id=npcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
 <div id=tgmodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
-  <div class=modalhd><span>🎨 AI 썸네일 생성</span><button class=mx id=tgx>✕</button></div>
+  <div class=modalhd><span>AI 썸네일 생성</span><button class=mx id=tgx>✕</button></div>
   <div class=muted>★ 대표사진 위에 손글씨·드로잉을 얹어 감성 썸네일을 만들어요. 사진 속 오브젝트는 그대로 유지돼요.</div>
   <div style="margin-top:10px;text-align:center"><img id=tgimg style="max-width:150px;max-height:150px;border-radius:9px;border:1px solid var(--line);object-fit:cover"></div>
   <div class=muted style="margin-top:12px;font-size:12px"><b>타이틀</b> — 썸네일 중앙에 유화물감 배경으로 크게 들어갈 이름 (가게/제품/메뉴명)</div>
@@ -707,37 +710,37 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <div class=muted style="margin-top:12px;font-size:12px"><b>방향·요청</b> (선택) — 분위기, 포인트 색, 꼭 들어갈 문구 등 원하는 방향을 적어주세요</div>
   <textarea id=tgextra placeholder="예: 따뜻한 주황 포인트로, 글씨는 적게. '겉바속촉' 문구는 꼭 넣어줘." style="min-height:80px;margin-top:5px;font-family:inherit;font-size:14px;line-height:1.5;background:var(--color-bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px;width:100%;resize:vertical"></textarea>
   <div class=muted style="margin-top:6px;font-size:11.5px">생성엔 보통 30초~1분 걸려요 · 완성되면 ★ 대표가 새 이미지로 바뀌어요</div>
-  <div class=modalft><button class=btn id=tgok style="flex:1">🎨 생성 시작</button><button class="btn ghost" id=tgcancel style="flex:0 0 100px">취소</button></div>
+  <div class=modalft><button class=btn id=tgok style="flex:1">생성 시작</button><button class="btn ghost" id=tgcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
 <div id=tpmodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
-  <div class=modalhd><span>🎨 AI 썸네일 완성</span><button class=mx id=tpx>✕</button></div>
+  <div class=modalhd><span>AI 썸네일 완성</span><button class=mx id=tpx>✕</button></div>
   <div class=muted>마음에 들면 ★ 대표로 적용하세요. 적용하지 않으면 원래 대표사진이 그대로 유지돼요.</div>
   <div style="margin-top:10px;text-align:center"><img id=tpimg style="max-width:300px;max-height:300px;border-radius:9px;border:1px solid var(--line)"></div>
   <div class=muted style="margin-top:12px;font-size:11.5px">아쉬우면 외부 이미지 모델(Midjourney·DALL·E·nano-banana 등)에 맡겨보세요 — 프롬프트를 복사하고 원본사진을 챙겨 붙여넣으면 돼요.</div>
   <div style="display:flex;gap:8px;margin-top:6px">
-    <button class="btn ghost" id=tpcopy style="flex:1">📋 프롬프트 복사</button>
-    <a class="btn ghost" id=tpdl style="flex:1;text-align:center;text-decoration:none" download="원본사진.jpg">⬇ 원본사진 저장</a>
+    <button class="btn ghost" id=tpcopy style="flex:1">프롬프트 복사</button>
+    <a class="btn ghost" id=tpdl style="flex:1;text-align:center;text-decoration:none" download="원본사진.jpg">원본사진 저장</a>
   </div>
   <div class=modalft><button class=btn id=tpok style="flex:1">★ 대표로 적용</button><button class="btn ghost" id=tpskip style="flex:0 0 110px">적용 안 함</button></div>
 </div></div>
 <div id=tsmodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
-  <div class=modalhd><span>🔁 사진 대체</span><button class=mx id=tsx>✕</button></div>
+  <div class=modalhd><span>사진 대체</span><button class=mx id=tsx>✕</button></div>
   <div class=muted>외부 이미지 모델(ChatGPT·Midjourney·nano-banana 등)에 <b>원본사진 + 프롬프트</b>를 붙여넣어 만들고, 완성한 파일을 선택하면 ★ 대표가 바로 바뀌어요.</div>
   <div style="margin-top:10px;text-align:center"><img id=tsimg style="max-width:150px;max-height:150px;border-radius:9px;border:1px solid var(--line);object-fit:cover"></div>
   <div style="display:flex;gap:8px;margin-top:10px">
-    <button class="btn ghost" id=tscopyimg style="flex:1">📋 사진 복사</button>
-    <a class="btn ghost" id=tsdl style="flex:1;text-align:center;text-decoration:none">⬇ 사진 저장</a>
-    <button class="btn ghost" id=tscopypr style="flex:1">📋 프롬프트 복사</button>
+    <button class="btn ghost" id=tscopyimg style="flex:1">사진 복사</button>
+    <a class="btn ghost" id=tsdl style="flex:1;text-align:center;text-decoration:none">사진 저장</a>
+    <button class="btn ghost" id=tscopypr style="flex:1">프롬프트 복사</button>
   </div>
-  <div class=modalft><button class=btn id=tsfile style="flex:1">📁 완성한 이미지 파일 선택</button><button class="btn ghost" id=tscancel style="flex:0 0 100px">취소</button></div>
+  <div class=modalft><button class=btn id=tsfile style="flex:1">완성한 이미지 파일 선택</button><button class="btn ghost" id=tscancel style="flex:0 0 100px">취소</button></div>
 </div></div>
 <div id=aimodal class=modal style="display:none"><div class=modalbox style="width:min(480px,94vw)">
-  <div class=modalhd><span>✨ AI 사진 분석</span><button class=mx id=aix>✕</button></div>
+  <div class=modalhd><span>AI 사진 분석</span><button class=mx id=aix>✕</button></div>
   <div class=muted id=aidesc></div>
   <div class=muted style="margin-top:12px;font-size:12px"><b>요청사항</b> (선택) — 분류·설명에 반영할 지시를 적어주세요</div>
   <textarea id=aihint placeholder="예: 음식 사진은 메뉴 이름을 꼭 밝혀줘. 흔들리거나 중복된 사진은 '기타'로 분류해줘." style="min-height:70px;margin-top:5px;font-family:inherit;font-size:14px;line-height:1.5;background:var(--color-bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px;width:100%;resize:vertical"></textarea>
   <div class=muted style="margin-top:6px;font-size:11.5px">4장씩 나눠 분석하고 끝난 사진부터 바로 반영돼요 · 진행 중엔 모달을 닫아도 계속돼요</div>
-  <div class=modalft><button class=btn id=aiok style="flex:1">✨ 분석 시작</button><button class="btn ghost" id=aicancel style="flex:0 0 100px">취소</button></div>
+  <div class=modalft><button class=btn id=aiok style="flex:1">분석 시작</button><button class="btn ghost" id=aicancel style="flex:0 0 100px">취소</button></div>
 </div></div>
 <div id=cfmodal class=modal style="display:none"><div class=modalbox style="width:min(420px,92vw)">
   <div class=modalhd><span id=cftitle></span><button class=mx id=cfx>✕</button></div>
@@ -766,23 +769,31 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
       <div class=col>
         <div class=card>
           <div class=step><span class=stepn>1</span><span class=stept>글감</span><span class=steps>무엇에 대해 쓸까요?</span></div>
-          <label class=f style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;margin-bottom:8px"><input type=checkbox id=restyleMode style="width:auto;margin:0;transform:scale(1.15)"> 리스타일 모드 <span class=hint data-tip="켜면 아래 칸에 붙여넣은 '완성된 외부 초안'(다른 AI가 쓴 글 등)에 내 문체·이모티콘을 다시 입히고 사진을 배치해요. 원문의 구조·정보·순서·수치는 그대로 두고 말투·줄바꿈만 바꿉니다 — 맛집/상품 구조를 강제하지 않아요. 수집(아래 URL)은 무시됩니다.">i</span></label>
+          <input type=checkbox id=restyleMode hidden>
+          <label class=f style="margin-top:0">글 종류</label>
+          <div class=kindseg id=kindseg>
+            <button data-k=place class=on>맛집 후기</button>
+            <button data-k=product>상품 리뷰</button>
+            <button data-k=info>정보<small> · AI 메이트</small></button>
+            <button data-k=restyle>리스타일</button>
+          </div>
+          <div class=modehint id=srchint>링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
+          <div id=srcrow>
+            <label class=f id=srclabel>수집 <span class=hint id=srchintq data-tip="선택 사항이에요. 맛집 플레이스 URL을 붙여넣거나 상품 검색어를 적으면 정보를 자동으로 수집합니다.">i</span></label>
+            <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력">
+          </div>
+          <div class=kwrec id=inforec style="display:none;margin-top:8px">
+            <div class=kwrec-t>추천 주제 — 검색량 대비 경쟁 낮은 순 <button type=button class=kwrec-re id=increcbtn>불러오기</button></div>
+            <div class=kwrec-list id=increclist><span class=muted>[불러오기]를 누르면 시즌 시드로 주제를 발굴해요 (30초 안팎, 하루 한 번 새로 계산)</span></div>
+          </div>
+          <div id=preprow style="display:none;gap:8px;margin-top:8px">
+            <button type=button class="btn ghost" id=prepbtn style="flex:1;justify-content:center">주제 준비 — 팩트시트 자동 채우기</button>
+            <button type=button class="btn ghost" id=prepexport title="API 키 없이 쓰는 경로 — 수집한 원문·시트 틀을 복사해 외부 챗봇에 붙여넣고, 응답을 메모칸에 붙여넣으세요" style="flex:0 0 130px;justify-content:center">챗봇용 복사</button>
+          </div>
           <label class=f id=memolabel>경험 메모<span class=req>필수</span> <span class=hint data-tip="글의 중심이 되는 실제 경험을 자유롭게 적어주세요. 이 내용을 토대로 글이 작성됩니다.">i</span></label>
           <textarea id=memo placeholder="예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요."></textarea>
-          <label class=f>수집 <span class=hint data-tip="선택 사항이에요. 맛집 플레이스 URL을 붙여넣거나 상품 검색어를 적으면 정보를 자동으로 수집합니다.">i</span></label>
-          <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력">
-          <div class=kindseg id=kindseg style="margin-top:8px">
-            <button data-k=place class=on><span class=em>🍜</span>맛집</button>
-            <button data-k=product><span class=em>🛍️</span>상품</button>
-            <button data-k=info><span class=em>📚</span>정보</button>
-          </div>
-          <div class=muted id=srchint style="margin-top:6px">링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
-          <div id=preprow style="display:none;gap:8px;margin-top:8px">
-            <button type=button class="btn ghost" id=prepbtn style="flex:1;justify-content:center">🔍 주제 준비 — 팩트시트 자동 채우기</button>
-            <button type=button class="btn ghost" id=prepexport title="API 키 없이 쓰는 경로 — 수집한 원문·시트 틀을 복사해 외부 챗봇에 붙여넣고, 응답을 메모칸에 붙여넣으세요" style="flex:0 0 150px;justify-content:center">📋 챗봇용 복사</button>
-          </div>
           <label class=f>사진 <span class=muted id=psel></span></label>
-          <button type=button class="btn ghost" id=photobtn style="width:100%;justify-content:center;gap:8px">📷 사진 추가·분류 <span class=muted id=photosum>사진 없음</span></button>
+          <button type=button class="btn ghost" id=photobtn style="width:100%;justify-content:center;gap:8px">사진 추가·분류 <span class=muted id=photosum>사진 없음</span></button>
         </div>
         <div class=card style="margin-top:16px">
           <div class=step><span class=stepn>2</span><span class=stept>스타일</span><span class=steps>어떻게 쓸까요? — 모두 선택 사항</span></div>
@@ -794,7 +805,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <div class=kwbox id=kwbox>
             <input type=text id=keywords placeholder="예: 강남맛집 (엔터로 추가)">
           </div>
-          <div class=kwlegend>키워드를 넣으면 노출 가능성을 바로 재요 — <b style="color:var(--green-d)">✅ 노려볼 만</b> · <b style="color:var(--warn-text)">△ 애매</b> · <b style="color:var(--color-accent-2-700)">❌ 경쟁 과다</b> <span class=muted>(칩에 마우스 올리면 문서 수)</span></div>
+          <div class=kwlegend>키워드를 넣으면 노출 가능성을 바로 재요 — <b style="color:var(--green-d)">✓ 노려볼 만</b> · <b style="color:var(--warn-text)">△ 애매</b> · <b style="color:var(--color-accent-2-700)">✕ 경쟁 과다</b> <span class=muted>(칩에 마우스 올리면 문서 수)</span></div>
           <div class=muted id=kwnote style="display:none;margin-top:4px;color:var(--color-accent-700);line-height:1.4"></div>
           <div class=kwrec id=kwrec style="display:none"></div>
           <details class=moreopts id=moreopts>
@@ -822,7 +833,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
         </div>
         <div class=card style="margin-top:16px">
           <div class=step><span class=stepn>3</span><span class=stept>초안 생성</span><span class=steps>보통 30~60초 걸려요</span></div>
-          <div style="margin-top:12px;display:flex;gap:8px"><button class=btn id=gen style="flex:1">초안 생성</button><button class="btn ghost" id=newpost style="flex:0 0 110px" title="입력·사진·분류를 비우고 새 글 시작">✏️ 새 글</button></div>
+          <div style="margin-top:12px;display:flex;gap:8px"><button class=btn id=gen style="flex:1">초안 생성</button><button class="btn ghost" id=newpost style="flex:0 0 110px" title="입력·사진·분류를 비우고 새 글 시작">새 글</button></div>
           <div class=actrow>
             <button class="btn ghost" id=export title="내 프롬프트와 입력 자료를 합쳐 복사 — 다른 챗봇에 붙여넣기"><svg class=ic viewBox="0 0 24 24"><use href="#i-copy"/></svg>프롬프트 복사</button>
             <button class="btn ghost" id=import title="다른 챗봇에서 받은 글을 붙여넣어 미리보기로"><svg class=ic viewBox="0 0 24 24"><use href="#i-inbox"/></svg>받아온 글 붙여넣기</button>
@@ -859,7 +870,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           <div class=dg-steps><span class=dg-s>글감 입력</span><span class=dg-a>→</span><span class=dg-s>초안 생성</span><span class=dg-a>→</span><span class=dg-s>검토 후 임시저장</span></div>
         </div></div>
         <details id=logbox style="display:none;margin-top:14px" class=card>
-          <summary style="cursor:pointer;font-weight:700;font-size:13px">🔍 이번 생성 로그 — 들어간 프롬프트 + 모델 원본 출력</summary>
+          <summary style="cursor:pointer;font-weight:700;font-size:13px">이번 생성 로그 — 들어간 프롬프트 + 모델 원본 출력</summary>
           <div id=logbody style="margin-top:10px"></div>
         </details>
       </div>
@@ -915,10 +926,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
     <div class=card>
       <h3>베이스 프롬프트 <span class=muted id=prompthdr style="font-weight:400">— config/prompts/default.md</span></h3>
       <div class=seg id=promptkindseg style="max-width:490px;margin-bottom:10px">
-        <button type=button data-k=place class=on>🍜 맛집</button>
-        <button type=button data-k=product>🛍️ 상품</button>
-        <button type=button data-k=info>📚 정보</button>
-        <button type=button data-k=common>🧾 공통 포맷</button>
+        <button type=button data-k=place class=on>맛집</button>
+        <button type=button data-k=product>상품</button>
+        <button type=button data-k=info>정보</button>
+        <button type=button data-k=common>공통 포맷</button>
       </div>
       <p class=desc style="margin:0 0 8px">파트를 눌러 펼치고 그 부분만 고치면 돼요. 파트를 새로 만들거나 지울 땐 '원문으로 편집'을 쓰세요.</p>
       <div id=promptsections><div class=muted>불러오는 중…</div></div>
@@ -1018,13 +1029,13 @@ function toast(msg,kind='err',ms){
   if(kind==='err'){centerAlert(msg,'err');return;}
   if(ms==null)ms=kind==='ok'?3500:6000;
   const t=document.createElement('div');t.className='toast '+kind;
-  const ic=kind==='ok'?'✅':kind==='info'?'ℹ️':'⚠️';
+  const ic=kind==='ok'?'✓':kind==='info'?'ℹ':'⚠';
   t.innerHTML='<span class=ic>'+ic+'</span><span class=msg>'+String(msg).replace(/</g,'&lt;')+'</span><span class=x title="닫기">✕</span>';
   const close=()=>{if(t._gone)return;t._gone=true;t.classList.add('out');setTimeout(()=>t.remove(),180);};
   t.querySelector('.x').onclick=close;$('#toasts').appendChild(t);setTimeout(close,ms);}
 // 화면 중앙 알림 카드(오류·확인). 유저가 직접 닫아야 함(꼭 봐야 하는 알림용).
 function centerAlert(msg,kind='err'){
-  const ic=kind==='ok'?'✅':kind==='info'?'ℹ️':'⚠️';
+  const ic=kind==='ok'?'✓':kind==='info'?'ℹ':'⚠';
   const title=kind==='ok'?'완료됐어요':kind==='info'?'알려드려요':'문제가 발생했어요';
   const bg=document.createElement('div');bg.className='alertbg';
   bg.innerHTML=`<div class="alertcard ${kind}"><div class=ai>${ic}</div>
@@ -1040,7 +1051,7 @@ function centerAlert(msg,kind='err'){
 function warnModal(title, items){
   const lis=(items||[]).map(s=>'<li>'+String(s).replace(/</g,'&lt;')+'</li>').join('');
   const bg=document.createElement('div');bg.className='alertbg';
-  bg.innerHTML=`<div class="alertcard info"><div class=ai>⚠️</div>
+  bg.innerHTML=`<div class="alertcard info"><div class=ai>⚠</div>
     <div class=at>${title}</div>
     <ul class=am style="text-align:left;margin:6px 0;padding-left:20px;line-height:1.6">${lis}</ul>
     <div class=ab><button class=btn>확인</button></div></div>`;
@@ -1078,7 +1089,7 @@ function warnLogModal(){
       <ul style="margin:4px 0 0;padding-left:20px">${(e.w||[]).map(s=>'<li>'+esc(s)+'</li>').join('')}</ul></div>`;
   }).join('');
   const bg=document.createElement('div');bg.className='alertbg';
-  bg.innerHTML=`<div class="alertcard info"><div class=ai>⚠️</div>
+  bg.innerHTML=`<div class="alertcard info"><div class=ai>⚠</div>
     <div class=at>확인 필요 기록</div>
     <div class=am style="text-align:left;max-height:55vh;overflow:auto">${secs}</div>
     <div class=ab style="justify-content:center">
@@ -1095,7 +1106,7 @@ renderWarnChip();  // 새로고침해도 지난 기록 칩이 되살아남
 // 예/아니오 확인 모달(최초 1회 안내 등). onYes/onNo 콜백. 배경/Esc는 '아니오'로 닫힘.
 function confirmModal(title, desc, yesLabel, noLabel, onYes, onNo, icon){
   const bg=document.createElement('div');bg.className='alertbg';
-  bg.innerHTML=`<div class="alertcard info"><div class=ai>${icon||'🗑️'}</div>
+  bg.innerHTML=`<div class="alertcard info"><div class=ai>${icon||'⚠'}</div>
     <div class=at>${title}</div>
     <div class=am style="text-align:left;margin:6px 0;line-height:1.6;color:var(--sub);font-size:13px">${desc}</div>
     <div class=ab style="display:flex;gap:8px;justify-content:center">
@@ -1187,29 +1198,48 @@ function spinRow(el){
   };
 }
 // 수집 종류: 'place'(맛집·기본) | 'product'(상품). 입력으로 자동 추정하되 직접 고르면 고정.
-let SRCKIND='place', KINDMANUAL=false;
+let MODE='place', SRCKIND='place', KINDMANUAL=false;
 function autoKind(v){v=(v||'').trim().toLowerCase(); if(!v)return 'place';
   // 쇼핑 링크 → 상품, 그 외 URL/플레이스 → 맛집, 그냥 글자 → 상품(검색어)
   if(/smartstore\.|shopping\.naver|brand\.naver|coupang\.|11st\.|gmarket\.|ssg\.com/.test(v))return 'product';
   if(/^https?:\/\//.test(v)||/naver\.me|place|map\.naver/.test(v))return 'place';
   return 'product';}
-function setKind(k,manual){SRCKIND=k; if(manual)KINDMANUAL=true;
+// 글 종류 = 한 축의 4모드. 맛집/상품(내 경험 + 수집), 정보(AI 메이트 인용을 노리는 전국구 정보글),
+// 리스타일(외부 완성 초안에 내 문체·서식만 입힘 — 수집 없음). 설명은 툴팁이 아니라 상시 노출(.modehint).
+function setKind(k,manual){
+  if(manual)KINDMANUAL=true;
+  const restyle=(k==='restyle');
+  MODE=k; if(!restyle)SRCKIND=k;  // SRCKIND는 백엔드 수집·사진 분류용 실제 종류(리스타일은 이전 값 유지)
+  $('#restyleMode').checked=restyle;  // 생성/내보내기가 읽는 restyle 플래그의 단일 출처
   $$('#kindseg button').forEach(b=>{b.classList.toggle('on',b.dataset.k===k);
     b.classList.toggle('auto',!KINDMANUAL&&b.dataset.k===k);});
   {const pb=$('#prodlinkbox'); if(pb)pb.style.display=(k==='product')?'block':'none';}
-  const KL={place:'맛집',product:'상품',info:'정보'};
-  $('#memo').placeholder=(k==='info')
-    ?'예: 무화과 제철·보관법 정리. 조사한 사실·수치(제철 8~11월, 냉장 3~4일 등)를 여기 붙여넣으세요 — 재료에 없는 수치는 글에 안 들어갑니다. 직접 먹어본 경험도 한두 줄!'
-    :'예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요.';
+  {const sr=$('#srcrow'); if(sr)sr.style.display=restyle?'none':'block';}
+  {const ir=$('#inforec'); if(ir)ir.style.display=(k==='info')?'block':'none';}
+  {const pr=$('#preprow'); if(pr)pr.style.display=(k==='info')?'flex':'none';}
+  $('#srclabel').childNodes[0].nodeValue=(k==='info')?'주제 ':'수집 ';
+  $('#srchintq').dataset.tip=(k==='info')
+    ?'쓸 주제를 입력하거나 위 추천 주제에서 고르세요. [주제 준비]가 이 주제로 상위 글을 조사해 팩트시트를 만들어요.'
+    :'선택 사항이에요. 맛집 플레이스 URL을 붙여넣거나 상품 검색어를 적으면 정보를 자동으로 수집합니다.';
   $('#srcval').placeholder=(k==='info')
     ?'정보 주제 입력 (예: 복숭아 보관법)'
     :'맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력';
-  {const pr=$('#preprow'); if(pr)pr.style.display=(k==='info')?'flex':'none';}
-  $('#srchint').innerHTML=(k==='info')
-    ?'<b>정보</b> 주제를 입력하고 [주제 준비]를 누르면 목차·팩트시트가 메모에 채워져요. 시트의 [내 경험] 두 줄만 직접 채우면 끝.'
-    :(KINDMANUAL
-      ?('<b>'+KL[k]+'</b>으로 수집합니다.')
-      :('입력을 보고 <b>'+KL[k]+'</b>으로 자동 인식했어요. 직접 골라도 돼요.'));}
+  $('#memolabel').childNodes[0].nodeValue=restyle?'외부 초안 붙여넣기':(k==='info'?'자료·메모':'경험 메모');
+  $('#memo').placeholder=restyle
+    ?'여기에 완성된 외부 초안을 통째로 붙여넣으세요 (예: 다른 AI가 쓴 빽다방 칼로리 글 전체)'
+    :(k==='info')
+    ?'예: 무화과 제철·보관법 정리. 조사한 사실·수치(제철 8~11월, 냉장 3~4일 등)를 여기 붙여넣으세요 — 재료에 없는 수치는 글에 안 들어갑니다. 직접 먹어본 경험도 한두 줄!'
+    :'예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요.';
+  const HINTS={
+    place:'내 <b>경험 메모</b>가 글의 중심이 되고, 플레이스 정보를 수집해 살을 붙여요.',
+    product:'내 <b>경험 메모</b>가 글의 중심이 되고, 상품 정보를 수집해 살을 붙여요. 상품 링크는 본문에 카드로 들어가요.',
+    info:'<b>네이버 AI 브리핑 인용(메이트 선정)을 노리는 전국구 정보글</b>이에요. 추천 주제에서 고르거나 직접 입력하고 [주제 준비]를 누르면 목차·팩트시트가 메모에 채워져요 — [내 경험] 두 줄만 직접 채우면 끝.',
+    restyle:'<b>글은 밖에서, 옷은 여기서.</b> 다른 챗봇으로 쓴 완성 초안을 붙여넣으면 구조·정보·수치는 그대로 두고 내 문체·서식·사진만 입혀요. 정보글을 외부 AI로 길게 뽑았을 때의 마무리 단계 — 수집은 안 해요.'};
+  const KL={place:'맛집 후기',product:'상품 리뷰'};
+  $('#srchint').innerHTML=((k==='place'||k==='product')&&!KINDMANUAL
+    ?'입력을 보고 <b>'+KL[k]+'</b>로 자동 인식했어요 — 직접 골라도 돼요. ':'')+HINTS[k];
+  const gb=$('#gen'); if(gb&&gb.textContent.indexOf('취소')<0)gb.textContent=restyle?'내 문체로 변환':'초안 생성';
+}
 // 주제 준비 — 정보 모드: 주제 → /api/prepare-info → 팩트 시트를 메모에 채움
 $('#prepbtn').onclick=async()=>{
   const t=($('#srcval').value||'').trim();
@@ -1217,7 +1247,7 @@ $('#prepbtn').onclick=async()=>{
   const memo=$('#memo');
   if(memo.value.trim()&&!confirm('메모를 새 팩트 시트로 바꿀까요? 기존 내용은 지워져요.'))return;
   const b=$('#prepbtn'); b.disabled=true; const old=b.textContent;
-  b.textContent='🔍 조사 중… 상위 글을 읽고 사실을 추리는 중 (30초 안팎)';
+  b.textContent='조사 중… 상위 글을 읽고 사실을 추리는 중 (30초 안팎)';
   try{
     const r=await fetch('/api/prepare-info',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({topic:t})});
     const d=await r.json(); if(d.error)throw new Error(d.error);
@@ -1238,6 +1268,30 @@ $('#prepexport').onclick=async()=>{
     catch(_){$('#ptext').value=d.prompt; $('#pmodal').style.display='flex';}
   }catch(e){alert('프롬프트 준비 실패: '+(e.message||e));}
   finally{b.disabled=false; b.textContent=old;}
+};
+// 추천 주제 — 시즌 시드(topic_seeds.yaml)로 발굴한 '검색량 대비 경쟁 낮은' 주제 칩.
+// AI 메이트를 노리는 정보글은 주제 선정이 반이라, 정보 모드에서 바로 골라 시작하게 한다.
+let TOPICS=null;
+function renderTopics(){
+  const box=$('#increclist'); if(!box)return; box.innerHTML='';
+  if(!TOPICS||!TOPICS.length){box.innerHTML='<span class=muted>추천할 주제가 없어요 — config/topic_seeds.yaml 시드를 확인해 주세요.</span>';return;}
+  TOPICS.slice(0,10).forEach(t=>{
+    const c=document.createElement('span'); c.className='rc';
+    c.title='월 검색 '+t.volume.toLocaleString()+' · 블로그 문서 '+t.total.toLocaleString()+' · 검색량÷문서수 '+t.ratio+' · 시드: '+t.seed;
+    const w=document.createElement('span'); w.textContent=t.keyword;
+    const p=document.createElement('span'); p.className='rcplus'; p.textContent='+';
+    c.append(w,p);
+    c.onclick=()=>{$('#srcval').value=t.keyword; toast('주제를 넣었어요 — [주제 준비]로 팩트시트를 채워보세요.','ok');};
+    box.appendChild(c);});
+}
+$('#increcbtn').onclick=async()=>{
+  const b=$('#increcbtn'); b.disabled=true; const old=b.textContent; b.textContent='발굴 중… (30초 안팎)';
+  try{
+    const r=await fetch('/api/topic-discover'); const d=await r.json();
+    if(d.error)throw new Error(d.error);
+    TOPICS=d.topics||[]; renderTopics(); b.textContent='새로고침';
+  }catch(e){toast('추천 주제 발굴 실패: '+(e.message||e),'err'); b.textContent=old;}
+  finally{b.disabled=false;}
 };
 // 강조색·구분선/인용구·스티커는 항상 켜둠(즐겨찾기/설정이 없으면 자동으로 안 들어감) — 토글 UI 제거.
 const FMT={emphasis:true,structure:true,stickers:true,stickerAll:false,sponsored:false,sponsorSticker:'',hideDefault:true};
@@ -1395,11 +1449,11 @@ async function prefetchCard(){
   if(!v||v===PREFETCHED||SRCKIND!=='place'||!(/^https?:\/\//.test(v)||v.includes('naver.me')))return;
   PREFETCHED=v;
   const hint=$('#srchint'), esc=s=>String(s).replace(/</g,'&lt;');
-  hint.innerHTML='🍜 가게 정보를 미리 수집하는 중…';
+  hint.innerHTML='가게 정보를 미리 수집하는 중…';
   try{
     const r=await(await fetch('/api/prefetch-card',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({srcval:v,kind:SRCKIND})})).json();
     if($('#srcval').value.trim()!==v)return; // 그 사이 입력이 바뀌었으면 힌트 안 덮음
-    hint.innerHTML=r.ok?('🍜 <b>'+esc(r.name||'가게')+'</b> 정보 수집 완료 — 프롬프트에 자동으로 들어가요')
+    hint.innerHTML=r.ok?('<b>'+esc(r.name||'가게')+'</b> 정보 수집 완료 — 프롬프트에 자동으로 들어가요')
       :'가게 정보를 못 가져왔어요 — 링크 확인해 주세요 (프롬프트 만들기 때 자동 재시도)';
   }catch(e){}
 }
@@ -1493,7 +1547,7 @@ function setDraftListOpen(open){
   if(!open) $('#draftbatch').style.display='none';
   const btn=$('#draftload');
   btn.classList.toggle('on',open);
-  btn.textContent=open?'▲ 목록 접기':'📥 임시저장에서 불러오기';
+  btn.textContent=open?'▲ 목록 접기':'임시저장에서 불러오기';
 }
 // 캐시된 목록을 #draftlist에 렌더(데이터만; 표시 여부는 호출부에서 토글).
 function renderDraftList(){
@@ -1522,7 +1576,7 @@ function updateDraftBatchBtn(){
   if(!wrap) return;
   const n=DRAFTSEL.size;
   wrap.style.display=(DRAFTMULTI&&n>0)?'block':'none';
-  if(btn) btn.textContent=`📥 선택한 ${n}개 글 새 탭으로 불러오기`;
+  if(btn) btn.textContent=`선택한 ${n}개 글 새 탭으로 불러오기`;
 }
 // 네이버에서 목록을 새로 가져와 캐시에 채운다. 성공 시 목록을 펼쳐 보여준다.
 async function fetchDrafts(){
@@ -1603,9 +1657,9 @@ function classifyKw(d){
   const mine = d.mine ? ` · 내 글 ${d.mine}위` : '';
   const vol = d.volume!=null ? ` · 월 검색 ${fmtVol(d.volume)}회` : '';  // 검색광고 키 있을 때만
   const docs = `문서 ${n.toLocaleString()}개`;
-  if(n<1000)  return {cls:'',     badge:'✅', tip:`노려볼 만해요 · ${docs}${vol}${mine}`};
+  if(n<1000)  return {cls:'',     badge:'✓', tip:`노려볼 만해요 · ${docs}${vol}${mine}`};
   if(n<20000) return {cls:'jmid', badge:'△',  tip:`애매 — 상위 글이 대형 블로그로 꽉 찼는지 보고 판단 · ${docs}${vol}${mine}`};
-  return              {cls:'jbad', badge:'❌', tip:`경쟁 과다 — 지금 체급엔 묻히기 쉬워요 · ${docs}${vol}${mine}`};
+  return              {cls:'jbad', badge:'✕', tip:`경쟁 과다 — 지금 체급엔 묻히기 쉬워요 · ${docs}${vol}${mine}`};
 }
 // 검색량 짧은 표기: 12345 → 1.2만
 function fmtVol(v){ v=v||0; return v>=10000 ? ((v/10000).toFixed(v%10000?1:0))+'만' : v.toLocaleString(); }
@@ -1614,7 +1668,7 @@ async function judgeKeyword(kw){
   if(KWJUDGE[key]&&!KWJUDGE[key].fail) return;   // 캐시 — 재조회 안 함(실패는 다음 기회에 다시)
   KWJUDGE[key]={cls:'jwait',badge:'⏳',tip:'노출 가능성 확인 중…'}; kwRender();
   // 실패도 ⚠️로 보이게 — 빈 칩이면 '판정을 아예 안 해준다'로 보인다
-  const bad=m=>({cls:'jwait',badge:'⚠️',tip:'노출 판정 실패 — '+m,fail:true});
+  const bad=m=>({cls:'jwait',badge:'⚠',tip:'노출 판정 실패 — '+m,fail:true});
   try{
     const r=await fetch('/api/keyword-check?q='+encodeURIComponent(kw));
     const d=await r.json();
@@ -1667,7 +1721,7 @@ function kwRecRender(){
   if(!Array.isArray(list)){ box.style.display='none'; box.innerHTML=''; return; }
   // 이미 넣은 키워드는 빼고, ❌(경쟁 과다)도 빼 '유리한' 것만 남긴다.
   const items=list.map(s=>({kw:s.keyword,vol:s.volume,j:classifyKw({total:s.total,volume:s.volume})}))
-    .filter(s=>!kwHas(s.kw)&&s.j.badge!=='❌');
+    .filter(s=>!kwHas(s.kw)&&s.j.badge!=='✕');
   const hasVol=items.some(s=>s.vol!=null);
   box.style.display='block'; box.innerHTML='';
   // 헤더 + '🔄 다시 추천'(넣은 키워드를 돌아가며 새 연관어를 뽑아줌 — 첫 단어에 안 묶임)
@@ -1739,8 +1793,8 @@ function applyDraftTitleKeyword(title){
   judgeKeyword(t); suggestKeywords(t);  // 손으로 넣을 때와 똑같이 노출 판정·연관 추천을 돌린다
   if(note){
     note.textContent = dup
-      ? `📥 불러온 글 제목 "${t}"은(는) 이미 키워드에 있어요.`
-      : `📥 불러온 글 제목 "${t}"을(를) 필수 키워드에 자동으로 넣었어요. 필요 없으면 지워도 돼요.`;
+      ? `불러온 글 제목 "${t}"은(는) 이미 키워드에 있어요.`
+      : `불러온 글 제목 "${t}"을(를) 필수 키워드에 자동으로 넣었어요. 필요 없으면 지워도 돼요.`;
     note.style.display='block';
   }
 }
@@ -1813,7 +1867,7 @@ function updatePhotoSummary(){
   const n=SELP.length, inbox=inboxPhotos().length;
   const ai=AIPROG&&AIPROG.wsid===CURWS;  // 모달 밖(사진 버튼 옆)에서도 분석 진행이 보이게
   const ps=$('#psel'); if(ps) ps.textContent = n? `${n}장` : '';
-  const su=$('#photosum'); if(su) su.textContent = ai? `✨ AI 분석 중 ${AIPROG.done}/${AIPROG.total}장…` : (n? `${n}장 선택됨` : '사진 없음');
+  const su=$('#photosum'); if(su) su.textContent = ai? `AI 분석 중 ${AIPROG.done}/${AIPROG.total}장…` : (n? `${n}장 선택됨` : '사진 없음');
   const stt=$('#phstat'); if(stt) stt.textContent = (n||inbox)? `글에 담김 ${n}장 · 분류 전 ${inbox}장` : '';
 }
 function openPhotoModal(){
@@ -1952,7 +2006,7 @@ function renderPmeta(){
   let h=`<div class=pmthumbbar><span class=pmthumblbl>⭐ 대표 썸네일</span>${tbody}</div>`;
   if(AIPROG&&AIPROG.wsid===CURWS){  // 분석 중엔 상태줄이 진행바로 바뀜 — 모달을 닫았다 열어도 그대로
     const pct=AIPROG.total?Math.round(AIPROG.done/AIPROG.total*100):0;
-    h+=`<div class=pmhead><span class="pmstate on">✨ AI 분석 중 · <b>${AIPROG.done}/${AIPROG.total}장</b> <span id=aisec></span></span><span class=aibar><span class=aifill style="width:${pct}%"></span></span></div>`;
+    h+=`<div class=pmhead><span class="pmstate on">AI 분석 중 · <b>${AIPROG.done}/${AIPROG.total}장</b> <span id=aisec></span></span><span class=aibar><span class=aifill style="width:${pct}%"></span></span></div>`;
   }else{
     h+='<div class=pmhead><span class="pmstate'+(PMSEL.size?' on':'')+'">'
     + (PMSEL.size
@@ -1960,7 +2014,7 @@ function renderPmeta(){
         : (PMACTIVE!=null
             ? `<b>${esc(PMACTIVE)}</b> 칸 활성 — 사진 클릭하면 담겨요 · Shift로 여러 장 선택 후 칸 클릭`
             : '사진 클릭/Shift로 선택 → 담을 칸 클릭. (칸을 클릭하면 활성=클릭으로 담기)'))
-    + `</span><button type=button class=minibtn id=aibtn title="분류함에 담긴 사진을 AI가 알맞은 칸으로 분류하고 세부 설명을 달아줘요">✨ AI 자동 분류·설명${SELP.length?` (${SELP.length}장)`:''}</button></div>`;
+    + `</span><button type=button class=minibtn id=aibtn title="분류함에 담긴 사진을 AI가 알맞은 칸으로 분류하고 세부 설명을 달아줘요">AI 자동 분류·설명${SELP.length?` (${SELP.length}장)`:''}</button></div>`;
   }
   h+='<div class=pmboard>'+pmBuckets().map(b=>{
     const items=SELP.filter(p=>pmBucketOf(p)===b.key);
@@ -2049,7 +2103,7 @@ function captureWS(){
     PHOTOS:PHOTOS.slice(), SELP:SELP.slice(), PLAN,
     PHOTOMETA:JSON.parse(JSON.stringify(PHOTOMETA||{})), THUMB, AISET:new Set(AISET||[]),
     PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})), XCATS:XCATS.slice(), CATORDER:CATORDER.slice(),
-    SRCKIND, KINDMANUAL, IMPORTED_DRAFT,
+    MODE, SRCKIND, KINDMANUAL, IMPORTED_DRAFT,
     memo:$('#memo').value, srcval:$('#srcval').value, keywords:kwGet(), itext:$('#itext').value,
     kwnote:$('#kwnote')?$('#kwnote').textContent:'', kwnoteShow:$('#kwnote')?$('#kwnote').style.display:'none',
     links:$('#links')?$('#links').value:'', prod:$$('#prodlinks .plink').map(i=>i.value),
@@ -2060,7 +2114,7 @@ function captureWS(){
 // 빈 상태(새 글 탭).
 function blankWS(){
   return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,AISET:new Set(),PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},XCATS:[],CATORDER:[],
-    SRCKIND:'place',KINDMANUAL:false,IMPORTED_DRAFT:null,
+    MODE:'place',SRCKIND:'place',KINDMANUAL:false,IMPORTED_DRAFT:null,
     memo:'',srcval:'',keywords:'',itext:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
     previewHTML:EMPTY_DOC,previewClass:'doc empty',saveDisabled:true};
 }
@@ -2077,7 +2131,8 @@ function applyWS(s){
   $('#preview').innerHTML=s.previewHTML||''; $('#preview').className=s.previewClass||'doc empty';
   if(PLAN)renderPreview(PLAN);  // 스냅샷 HTML은 당시 '사진 보기' 설정으로 그린 것 — 현재 설정으로 다시 그린다
   if($('#save')) $('#save').disabled=(s.saveDisabled!==false);
-  setKind(s.SRCKIND||'place', s.KINDMANUAL);  // kind UI + 상품링크칸 표시 동기화
+  SRCKIND=s.SRCKIND||'place';  // 리스타일 탭 복원 시에도 실제 수집 종류를 먼저 되살린다
+  setKind(s.MODE||s.SRCKIND||'place', s.KINDMANUAL);  // 모드 UI + 상품링크칸·restyle 플래그 동기화
   renderInplaceBadge();  // 탭 전환·복원 시 in-place 딱지 표시 동기화
   renderGrid(); renderPmeta(); updatePhotoSummary();
 }
@@ -2424,13 +2479,7 @@ $('#gen').onclick=async()=>{
     else{st('오류: '+e); toast('초안 생성 오류: '+e,'err');}
   }finally{GENABORT=null; $('#gen').disabled=false; $('#gen').textContent=genLabel();}
 };
-// 리스타일 모드 토글 — 메모칸을 '외부 초안 붙여넣기'로 바꾸고 버튼 문구도 전환(백엔드 분기는 restyle 플래그)
-$('#restyleMode').onchange=e=>{
-  const on=e.target.checked;
-  $('#memo').placeholder = on ? '여기에 완성된 외부 초안을 통째로 붙여넣으세요 (예: 다른 AI가 쓴 빽다방 칼로리 글 전체)' : '예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요.';
-  const lab=$('#memolabel'); if(lab&&lab.childNodes[0])lab.childNodes[0].nodeValue = on ? '외부 초안 붙여넣기' : '경험 메모';
-  const gb=$('#gen'); if(gb&&!GENABORT)gb.textContent=genLabel();  // 생성 중이면 [취소] 유지
-};
+// 리스타일은 이제 글 종류 세그먼트의 한 모드 — UI 전환은 setKind가 담당하고, 숨은 체크박스는 플래그 보관용.
 // 프롬프트 내보내기: 모달 안에서 진행바 + 실제 단계 메시지 보여주고, 합쳐진 프롬프트 표시·복사
 let EXPTIMER=null;
 function expLoading(on){
@@ -2942,7 +2991,7 @@ function renderCleanImp(){const c=$('#cleanimp'); if(!c)return; c.innerHTML='';
 function renderAiMark(){const c=$('#aimark'); if(!c)return; c.innerHTML='';
   const row=document.createElement('div'); row.className='setrow';
   row.innerHTML=`<div><div class=t>AI 이미지에 'AI 활용' 표시</div>
-    <div class=d><b>AI로 만든 이미지</b>(🎨 AI 썸네일·🔁 외부 AI 대체)에 네이버 <b>'AI 활용'</b> 아이콘을 자동으로 켜요. 지금은 <b>자율 표기</b>라 안 켜도 노출 불이익은 없지만, 나중 AI 탐지 강화 대비 보험이에요. 실사진은 대상이 아니에요.</div></div>
+    <div class=d><b>AI로 만든 이미지</b>(AI 썸네일·외부 AI 대체)에 네이버 <b>'AI 활용'</b> 아이콘을 자동으로 켜요. 지금은 <b>자율 표기</b>라 안 켜도 노출 불이익은 없지만, 나중 AI 탐지 강화 대비 보험이에요. 실사진은 대상이 아니에요.</div></div>
     <div class="sw ${MARKAI?'on':''}"></div>`;
   row.querySelector('.sw').onclick=function(){MARKAI=!MARKAI; this.classList.toggle('on',MARKAI); savePrefs();
     toast(MARKAI?"AI로 만든 이미지에 'AI 활용' 표시를 켤게요.":"'AI 활용' 표시를 끌게요.",'info');};
@@ -3764,6 +3813,24 @@ def _make_handler(state: dict):
                     self._send(200, json.dumps(
                         keyword_suggest(q), ensure_ascii=False
                     ).encode())
+                except Exception as exc:  # noqa: BLE001 — 키 미설정·네트워크 등 안내로 전달
+                    self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode())
+            elif u.path == "/api/topic-discover":
+                # 정보(AI 메이트) 모드의 추천 주제 — 시즌 시드에서 발굴. 검색광고 API 왕복이
+                # 비싸서(30초 안팎) 하루 한 번만 계산하고 그날은 캐시로 답한다.
+                from datetime import date as _date
+
+                from autoblog.rank import discover_topics, load_topic_seeds
+
+                cache = state.setdefault("topics", {})
+                today = _date.today().isoformat()
+                try:
+                    if cache.get("date") != today:
+                        seeds = load_topic_seeds()
+                        if not seeds:
+                            raise RuntimeError("주제 시드가 없어요 — config/topic_seeds.yaml을 확인해 주세요")
+                        cache.update(date=today, rows=discover_topics(seeds, per_seed=10, max_check=30))
+                    self._send(200, json.dumps({"topics": cache["rows"]}, ensure_ascii=False).encode())
                 except Exception as exc:  # noqa: BLE001 — 키 미설정·네트워크 등 안내로 전달
                     self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode())
             elif u.path == "/api/searchad-key":
