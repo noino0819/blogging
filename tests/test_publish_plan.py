@@ -827,3 +827,20 @@ def test_build_plan_quote_url_moves_to_link_card():
     quote = next(b for b in plan.blocks if b.kind == "quote")
     assert "http" not in quote.text and "좋았다" in quote.text
     assert any(b.kind == "link" and b.link_url == "https://example.com/q" for b in plan.blocks)
+
+
+def test_build_plan_strips_line_edge_whitespace():
+    # 문단 머리/끝 공백은 플랜에 남으면 안 된다 — 저장 후 관문('플랜 줄은 전부 strip')이
+    # 이걸 조립 사고(빗나간 Enter의 문단 분할)로 읽어 매 발행마다 경고가 떴다.
+    # 블록 '가운데' 줄만 재현된다 — flush_text가 합친 텍스트를 통째로 strip해 첫/끝 줄은
+    # 이미 깨끗하다. 들여쓴 줄(원본 line 누적)과 줄 앞 URL 제거 자리(' 텍스트') 둘 다 본다.
+    draft = DraftResult(
+        text="제목\n\n첫 줄.\n  들여쓴 가운데 줄.\nhttps://example.com 링크 뒤 문장.\n끝 줄.\n"
+        "[인용구]\n인용 첫 줄.\n  들여쓴 인용 줄.\n인용 끝 줄.\n[/인용구]"
+    )
+    plan = build_publish_plan(draft, [])
+    for b in plan.blocks:
+        for ln in b.text.split("\n"):
+            assert ln == ln.strip(), f"{b.kind} 문단에 경계 공백: {ln!r}"
+    assert any("링크 뒤 문장" in b.text for b in plan.blocks if b.kind == "text")
+    assert any("들여쓴 인용 줄." in b.text for b in plan.blocks if b.kind == "quote")

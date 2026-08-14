@@ -777,6 +777,10 @@ class BlogPublisher:
     # 떨어져 외부 호스트가 한 번 버벅이자 협찬 배너가 삭제된 채 저장됐다(2026-08-13 실사고).
     # n을 주면 앞에서 n+1장까지만 로드한다 — 앵커 클릭 전 '대상 위쪽' 사진만 정착시키는 용도
     # (아래쪽 사진의 로드는 대상 좌표를 안 움직이므로 기다릴 이유가 없다). 인자 없으면 전부.
+    # 대기 조건은 src 할당이 아니라 complete — src가 박히는 시점과 바이트가 도착해 박스가
+    # 제 높이로 커지는 시점이 달라, src만 보고 넘어가면 그 뒤 로드가 레이아웃을 밀어 앵커
+    # 클릭이 빗나가는 경합이 그대로 남는다(07e3716이 막으려던 그 경합). complete는 로드
+    # 실패·중단에도 true라 죽은 외부 호스트에서 멈추지 않는다(협찬 배너 삭제 사고의 조건).
     _FORCE_LOAD_IMGS_JS = r"""
     async (n) => {
       let imgs = [...document.querySelectorAll('img.se-image-resource')];
@@ -784,10 +788,12 @@ class BlogPublisher:
       for (const im of imgs) {
         im.scrollIntoView({block: 'center'});
         for (let t = 0; t < 25; t++) {
-          if (im.src && !im.src.startsWith('data:')) break;
+          if (im.src && !im.src.startsWith('data:') && im.complete) break;
           await new Promise(r => setTimeout(r, 150));
         }
       }
+      // 마지막 이미지의 리플로우가 그려질 틈 — 클릭 좌표는 이 뒤에 읽힌다
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
     }
     """
 
@@ -1816,12 +1822,16 @@ class BlogPublisher:
                       '.se-component.se-text .se-text-paragraph')]
                     .map(p => (p.textContent || '').replace(/[​﻿]/g, ''))
                     .filter(t => t.trim() && /^[  　]|[  　]$/.test(t))
-                    .length"""
+                    .map(t => ({head: /^[  　]/.test(t),
+                                s: t.trim().slice(0, 20)}))"""
             )
             if stray:
+                detail = "; ".join(
+                    f"{'머리' if p['head'] else '끝'} ‘{p['s']}…’" for p in stray[:3]
+                ) + ("…" if len(stray) > 3 else "")
                 warnings.append(
-                    f"저장본 문단 {stray}곳의 머리/끝에 원문에 없는 공백이 남았어요 — "
-                    "문단이 의도치 않게 쪼개졌을 수 있으니 글을 열어 확인해 주세요."
+                    f"저장본 문단 {len(stray)}곳의 머리/끝에 원문에 없는 공백이 남았어요"
+                    f"({detail}) — 문단이 의도치 않게 쪼개졌을 수 있으니 글을 열어 확인해 주세요."
                 )
         except Exception as exc:  # noqa: BLE001 - 검증 인프라 실패 ≠ 저장 실패
             warnings.append(

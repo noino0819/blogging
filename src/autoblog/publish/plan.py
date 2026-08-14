@@ -75,7 +75,11 @@ _BARE_URL_RE = re.compile(r"https?://[^\s가-힣<>\"']+")
 
 def strip_raw_urls(text: str) -> tuple[str, list[str]]:
     """텍스트에서 URL을 걷어내 (정리된 텍스트, URL 목록)으로. 마크다운 링크는 라벨만
-    남기고, URL만 있던 줄은 통째로 지운다(원래 빈 줄은 문단 간격이므로 보존)."""
+    남기고, URL만 있던 줄은 통째로 지운다(원래 빈 줄은 문단 간격이므로 보존).
+
+    줄 양끝은 rstrip이 아니라 strip — 줄 앞 URL을 걷어낸 자리('URL 텍스트' → ' 텍스트')나
+    LLM이 붙여 온 들여쓰기가 머리 공백으로 남으면, 조립 사고가 전혀 없어도 저장 후 관문의
+    문단 경계 공백 경고가 매 발행마다 뜬다(관문의 전제가 '플랜 줄은 전부 strip'이다)."""
     urls: list[str] = []
 
     def _md(m: re.Match) -> str:
@@ -90,7 +94,7 @@ def strip_raw_urls(text: str) -> tuple[str, list[str]]:
     for ln in text.split("\n"):
         cleaned = _BARE_URL_RE.sub(_bare, _MD_LINK_RE.sub(_md, ln))
         if cleaned.strip() or not ln.strip():
-            kept.append(re.sub(r"[ \t]{2,}", " ", cleaned).rstrip())
+            kept.append(re.sub(r"[ \t]{2,}", " ", cleaned).strip())
     return "\n".join(kept), urls
 
 
@@ -527,7 +531,11 @@ def build_publish_plan(
     기계적 삽입이라 기본은 끄고, 사진 분산은 초안 프롬프트 안내에 맡긴다(prompt.py 사진 구성).
     """
     photos = list(photos or [])
-    lines = draft.text.split("\n")
+    # 줄 양끝 공백은 원천에서 걷어낸다 — 아래 로직은 전부 s = line.strip()로 판정하면서
+    # 버퍼(text_buf/quote_buf)에는 원본 line을 담아, LLM이 붙여 온 들여쓰기가 그대로 본문
+    # 문단에 실렸다. 그러면 조립 사고가 없어도 저장 후 관문의 '문단 경계 공백' 경고가 매
+    # 발행마다 뜬다(관문 전제 = 플랜 줄은 전부 strip). 본문에 들여쓰기는 의미가 없다.
+    lines = [ln.strip() for ln in draft.text.split("\n")]
 
     title = ""
     body_start = 0
