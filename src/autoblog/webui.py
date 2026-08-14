@@ -2115,7 +2115,6 @@ function renderPmeta(){
 // 서로 안 섞이게 한다. 네이버 접속(불러오기·게시)은 여전히 서버 락으로 한 번에 하나씩.
 let WS=[];        // [{id, status, state}]  status: 'edit' | 'importing'
 let CURWS=null;   // 현재 활성 탭 id
-let WSSEQ=0;      // '새 글 N' 번호 매기기용
 function newWSId(){ return (window.crypto&&crypto.randomUUID)?crypto.randomUUID():('w'+Date.now()+'-'+Math.round(Math.random()*1e6)); }
 function findWS(id){ return WS.find(w=>w.id===id); }
 // 화면·전역의 'per-draft' 상태 전부를 평범한 객체로 캡처(탭에 보관용).
@@ -2164,7 +2163,7 @@ function applyWS(s){
   renderInplaceBadge();  // 탭 전환·복원 시 in-place 딱지 표시 동기화
   renderGrid(); renderPmeta(); updatePhotoSummary();
 }
-// 탭 제목: 초안 제목 > 메모 첫 줄 > 불러온 원본 제목 > '새 글 N'.
+// 탭 제목: 초안 제목 > 메모 첫 줄 > 불러온 원본 제목 > '새 글'.
 // 활성 탭은 아직 stash 전이므로 live 값(전역/DOM)을 읽어 실시간 반영한다.
 function wsTitle(w){
   const live=(w.id===CURWS), s=w.state;
@@ -2174,7 +2173,7 @@ function wsTitle(w){
   if(plan&&plan.title) return plan.title;
   const m=(memo||'').trim().split('\n')[0]; if(m) return m.slice(0,20);
   if(imp&&imp.title) return imp.title;
-  return '새 글 '+(w.seq||'');
+  return '새 글';
 }
 // in-place 딱지 배지 — 탭에 IMPORTED_DRAFT가 남아 있으면 '저장 = 기존 글 갱신'임을 저장
 // 버튼 옆에 항상 보여준다. 딱지는 자동으로 지워지지 않아서, 불러오기 탭을 리스타일 등
@@ -2214,7 +2213,7 @@ function stashCur(){ const c=findWS(CURWS); if(c) c.state=captureWS(); }
 // 통째로 날아가던 문제를 막는다. 사진은 경로(작은 문자열)라 50장이어도 용량 문제 없음.
 // PMSEL(Set)만 배열로 직렬화(그 외 전역은 JSON 안전).
 const WS_KEY='autoblog_ws_v1';
-function serWS(w){ return {id:w.id, seq:w.seq, status:w.status,
+function serWS(w){ return {id:w.id, status:w.status,
   state:{...w.state, PMSEL:[...(w.state.PMSEL||[])], AISET:[...(w.state.AISET||[])]}}; }
 function persistWS(){
   try{
@@ -2230,8 +2229,7 @@ function restoreWS(){
   try{
     const raw=localStorage.getItem(WS_KEY); if(!raw) return false;
     const d=JSON.parse(raw); if(!d||!Array.isArray(d.WS)||!d.WS.length) return false;
-    WS=d.WS.map(w=>({id:w.id, seq:w.seq||0, status:w.status||'edit', state:w.state}));
-    WSSEQ=Math.max(0, ...WS.map(w=>w.seq||0));
+    WS=d.WS.map(w=>({id:w.id, status:w.status||'edit', state:w.state}));
     CURWS=(d.CURWS && findWS(d.CURWS)) ? d.CURWS : WS[0].id;
     applyWS(findWS(CURWS).state); renderTabs();
     dropMissingPhotos();  // 복원된 경로 중 파일이 없어진 것 정리(타일이 깨진 아이콘으로 남지 않게)
@@ -2263,7 +2261,7 @@ function switchWS(id){
   stashCur(); CURWS=id; applyWS(t.state); renderTabs();
 }
 // 전환 없이 새 탭을 목록에 추가만 한다(배치 불러오기가 여러 개를 한꺼번에 만들 때).
-function pushWS(state){ const w={id:newWSId(), seq:++WSSEQ, status:'edit', state:state||blankWS()}; WS.push(w); return w; }
+function pushWS(state){ const w={id:newWSId(), status:'edit', state:state||blankWS()}; WS.push(w); return w; }
 function newWS(){
   stashCur();
   const w=pushWS(blankWS()); CURWS=w.id; applyWS(w.state); renderTabs();
@@ -2273,13 +2271,13 @@ function closeWS(id){
   const i=WS.findIndex(w=>w.id===id); if(i<0) return;
   const wasCur=(id===CURWS);
   WS.splice(i,1);
-  if(!WS.length){ const w={id:newWSId(), seq:++WSSEQ, status:'edit', state:blankWS()}; WS.push(w); }
+  if(!WS.length){ const w={id:newWSId(), status:'edit', state:blankWS()}; WS.push(w); }
   if(wasCur){ CURWS=WS[Math.min(i,WS.length-1)].id; applyWS(findWS(CURWS).state); }
   renderTabs();
 }
 // 초기 탭 1개를 지금 화면 상태로 만든다(init 끝에서 호출).
 function initWorkspaces(){
-  const w={id:newWSId(), seq:++WSSEQ, status:'edit', state:captureWS()};
+  const w={id:newWSId(), status:'edit', state:captureWS()};
   WS=[w]; CURWS=w.id; renderTabs();
 }
 
@@ -2831,7 +2829,7 @@ $('#save').onclick=()=>{
   const startMsg=reserve?'예약발행을 시작했어요':'임시저장을 시작했어요';
   confirmModal(startMsg,
     '저장은 뒤에서 진행돼요. 새 글을 작성할까요?<br><span style="color:var(--sub)">새 탭이 열려요 · 이 글 탭은 그대로 남습니다.</span>',
-    '새 글 작성', '이 글 유지', doNewPost, null, '📝');
+    '새 글 작성', '이 글 유지', doNewPost, null, '✎');
 };
 
 // 스티커 탭
