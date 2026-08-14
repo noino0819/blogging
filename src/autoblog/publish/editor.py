@@ -1817,9 +1817,16 @@ class BlogPublisher:
             # 문단 경계 공백 검사 — 플랜 줄은 전부 strip이라 문단 머리/꼬리의 보이는 공백은
             # 전부 조립 사고 흔적(빗나간 Enter의 문단 분할 등, 2026-08-13 실사고)이다.
             # 예방·복구를 뚫고 재발하면 조용히 지나가지 않게 경고로 표면화한다.
+            # 어느 문단인지·머리인지 끝인지까지 넘긴다 — 개수만으론 뜰 때마다 글을 열어 눈으로
+            # 찾아야 하고, 남은 원인(빗나간 Enter의 분할 vs 플랜 잔재)도 구분이 안 된다.
+            # 인용구도 함께 훑는다 — 소제목은 텍스트가 아니라 se-quotation 컴포넌트로 들어가
+            # (plan.py emit_role_block) se-text만 보던 종전 검사엔 안 걸렸다. '공백은 보이는데
+            # 경고는 안 뜨는' 상태가 정확히 여기. 인용구 문단은 실측상 깨끗해 오탐 위험 없음
+            # (저장본 2건 140문단·재현 29문단 전수 0 — 네이버 '출처 입력' 자리표시자 포함).
             stray = page.evaluate(
                 r"""() => [...document.querySelectorAll(
-                      '.se-component.se-text .se-text-paragraph')]
+                      '.se-component.se-text .se-text-paragraph, '
+                      + '.se-component.se-quotation .se-text-paragraph')]
                     .map(p => (p.textContent || '').replace(/[​﻿]/g, ''))
                     .filter(t => t.trim() && /^[  　]|[  　]$/.test(t))
                     .map(t => ({head: /^[  　]/.test(t),
