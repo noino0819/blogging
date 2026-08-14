@@ -580,7 +580,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .sponpick .spc img{width:100%;height:100%;object-fit:contain;padding:4px}
  .sponpick .spc.sel{border-color:var(--color-accent-2);background:var(--color-accent-2-100)}
  .sponpick .spc.sel::after{content:"✓";position:absolute;top:2px;right:4px;color:var(--color-accent-2-700);font-weight:600;font-size:13px}
- .prodlinkbox{margin-top:14px}
+ .prodlinkbox{margin-top:0}
  .plrow{display:flex;gap:6px;margin-top:6px}
  .plrow .plink{flex:1;min-width:0}
  .plrow .plrm{flex:0 0 auto;width:34px;padding:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--sub)}
@@ -779,8 +779,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           </div>
           <div class=modehint id=srchint>링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
           <div id=srcrow>
-            <label class=f id=srclabel>수집 <span class=hint id=srchintq data-tip="선택 사항이에요. 맛집 플레이스 URL을 붙여넣거나 상품 검색어를 적으면 정보를 자동으로 수집합니다.">i</span></label>
-            <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력">
+            <label class=f id=srclabel>수집 <span class=hint id=srchintq data-tip="선택 사항이에요. 맛집 플레이스 URL을 붙여넣으면 가게 정보를 자동으로 수집합니다.">i</span></label>
+            <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기">
+          </div>
+          <div class=prodlinkbox id=prodlinkbox style="display:none">
+            <label class=f>상품 링크 <span class=hint data-tip="상품 리뷰에 꼭 들어가야 하는 링크예요. 본문에 카드 형태로 한 번씩 삽입됩니다. [+ 링크 추가]로 여러 개 넣을 수 있어요.">i</span></label>
+            <div id=prodlinks></div>
+            <button type=button class="btn ghost" id=addprodlink style="width:100%;justify-content:center;gap:6px;margin-top:6px">+ 링크 추가</button>
           </div>
           <div class=kwrec id=inforec style="display:none;margin-top:8px">
             <div class=kwrec-t>추천 주제 — 검색량 대비 경쟁 낮은 순 <button type=button class=kwrec-re id=increcbtn>불러오기</button></div>
@@ -815,11 +820,6 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
             <label class=f>최소 글자 수 <span class=hint data-tip="본문이 이 글자 수(공백 제외) 이상이 되도록 써요. 비우면 1500자가 적용됩니다.">i</span></label>
             <input type=number id=minchars placeholder="1500" min=0 step=100>
           </details>
-          <div class=prodlinkbox id=prodlinkbox style="display:none">
-            <label class=f>상품 링크 <span class=hint data-tip="상품 리뷰에 꼭 들어가야 하는 링크예요. 본문에 카드 형태로 한 번씩 삽입됩니다. [+ 링크 추가]로 여러 개 넣을 수 있어요.">i</span></label>
-            <div id=prodlinks></div>
-            <button type=button class="btn ghost" id=addprodlink style="width:100%;justify-content:center;gap:6px;margin-top:6px">+ 링크 추가</button>
-          </div>
           <div class=togrow>
             <div class=tl>협찬 글 <span class=hint data-tip="켜면 즐겨찾기 스티커 중 고른 고지 스티커가 본문 맨 위에 들어가고, 아래 쿠팡파트너스 링크가 본문 중간중간 카드로 분산 삽입됩니다.">i</span></div>
             <div class=sw id=sponsw></div>
@@ -1199,11 +1199,11 @@ function spinRow(el){
 }
 // 수집 종류: 'place'(맛집·기본) | 'product'(상품). 입력으로 자동 추정하되 직접 고르면 고정.
 let MODE='place', SRCKIND='place', KINDMANUAL=false;
+const SRCVAL=()=>MODE==='product'?'':$('#srcval').value;  // 상품은 수집칸이 숨어 잔존값이 새지 않게 항상 빈 값
 function autoKind(v){v=(v||'').trim().toLowerCase(); if(!v)return 'place';
-  // 쇼핑 링크 → 상품, 그 외 URL/플레이스 → 맛집, 그냥 글자 → 상품(검색어)
+  // 쇼핑 링크 → 상품, 그 외는 맛집. (상품 검색어 수집이 사라져 '그냥 글자 → 상품' 규칙도 제거)
   if(/smartstore\.|shopping\.naver|brand\.naver|coupang\.|11st\.|gmarket\.|ssg\.com/.test(v))return 'product';
-  if(/^https?:\/\//.test(v)||/naver\.me|place|map\.naver/.test(v))return 'place';
-  return 'product';}
+  return 'place';}
 // 글 종류 = 한 축의 4모드. 맛집/상품(내 경험 + 수집), 정보(AI 메이트 인용을 노리는 전국구 정보글),
 // 리스타일(외부 완성 초안에 내 문체·서식만 입힘 — 수집 없음). 설명은 툴팁이 아니라 상시 노출(.modehint).
 function setKind(k,manual){
@@ -1214,7 +1214,7 @@ function setKind(k,manual){
   $$('#kindseg button').forEach(b=>{b.classList.toggle('on',b.dataset.k===k);
     b.classList.toggle('auto',!KINDMANUAL&&b.dataset.k===k);});
   {const pb=$('#prodlinkbox'); if(pb)pb.style.display=(k==='product')?'block':'none';}
-  {const sr=$('#srcrow'); if(sr)sr.style.display=restyle?'none':'block';}
+  {const sr=$('#srcrow'); if(sr)sr.style.display=(restyle||k==='product')?'none':'block';}  // 상품은 수집 대신 상품 링크가 소스
   {const ir=$('#inforec'); if(ir)ir.style.display=(k==='info')?'block':'none';}
   {const pr=$('#preprow'); if(pr)pr.style.display=(k==='info')?'flex':'none';}
   $('#srclabel').childNodes[0].nodeValue=(k==='info')?'주제 ':'수집 ';
@@ -1223,16 +1223,18 @@ function setKind(k,manual){
     :'선택 사항이에요. 맛집 플레이스 URL을 붙여넣거나 상품 검색어를 적으면 정보를 자동으로 수집합니다.';
   $('#srcval').placeholder=(k==='info')
     ?'정보 주제 입력 (예: 복숭아 보관법)'
-    :'맛집 플레이스 URL 붙여넣기, 또는 상품 검색어 입력';
+    :'맛집 플레이스 URL 붙여넣기';
   $('#memolabel').childNodes[0].nodeValue=restyle?'외부 초안 붙여넣기':(k==='info'?'자료·메모':'경험 메모');
   $('#memo').placeholder=restyle
     ?'여기에 완성된 외부 초안을 통째로 붙여넣으세요 (예: 다른 AI가 쓴 빽다방 칼로리 글 전체)'
     :(k==='info')
     ?'예: 무화과 제철·보관법 정리. 조사한 사실·수치(제철 8~11월, 냉장 3~4일 등)를 여기 붙여넣으세요 — 재료에 없는 수치는 글에 안 들어갑니다. 직접 먹어본 경험도 한두 줄!'
+    :(k==='product')
+    ?'예: 한 달 써보니 배터리가 하루 반은 가요. 무게가 가벼워서 출퇴근 가방에 넣고 다녀요.'
     :'예: 비 오는 날 들렀는데 따뜻한 우동이 정말 맛있었어요. 사장님도 친절하셨고 분위기도 아늑했어요.';
   const HINTS={
     place:'내 <b>경험 메모</b>가 글의 중심이 되고, 플레이스 정보를 수집해 살을 붙여요.',
-    product:'내 <b>경험 메모</b>가 글의 중심이 되고, 상품 정보를 수집해 살을 붙여요. 상품 링크는 본문에 카드로 들어가요.',
+    product:'내 <b>경험 메모</b>가 글의 중심이 돼요. 상품 링크는 본문에 카드로 들어가요 — 여러 개면 중간중간 나눠 들어갑니다.',
     info:'<b>네이버 AI 브리핑 인용(메이트 선정)을 노리는 전국구 정보글</b>이에요. 추천 주제에서 고르거나 직접 입력하고 [주제 준비]를 누르면 목차·팩트시트가 메모에 채워져요 — [내 경험] 두 줄만 직접 채우면 끝.',
     restyle:'<b>글은 밖에서, 옷은 여기서.</b> 다른 챗봇으로 쓴 완성 초안을 붙여넣으면 구조·정보·수치는 그대로 두고 내 문체·서식·사진만 입혀요. 정보글을 외부 AI로 길게 뽑았을 때의 마무리 단계 — 수집은 안 해요.'};
   const KL={place:'맛집 후기',product:'상품 리뷰'};
@@ -1440,7 +1442,15 @@ function renderRanks(rows){
 }
 // 수집 종류: 직접 클릭 → 고정, 안 골랐으면 입력으로 자동 추정
 $$('#kindseg button').forEach(b=>b.onclick=()=>setKind(b.dataset.k,true));
-$('#srcval').oninput=()=>{if(!KINDMANUAL)setKind(autoKind($('#srcval').value),false);};
+$('#srcval').oninput=()=>{if(KINDMANUAL)return;
+  const k=autoKind($('#srcval').value);
+  if(k==='product'){  // 쇼핑 링크를 수집칸에 붙여넣으면 상품 모드로 넘어가며 링크칸으로 옮겨준다
+    const v=$('#srcval').value.trim(); $('#srcval').value='';
+    const empty=$$('#prodlinks .plink').find(i=>!i.value.trim());
+    if(empty)empty.value=v; else addProdLink(v);
+    setKind('product',false);
+    toast('쇼핑 링크네요 — 상품 리뷰로 바꾸고 상품 링크에 넣었어요.','ok');
+  } else setKind(k,false);};
 // 맛집 URL은 붙여넣는 즉시(또는 포커스가 떠날 때) 미리 수집해 서버 캐시를 데워둔다
 // — '프롬프트 만들기'에서 수집 대기가 사라진다. 상품은 검색어 타이핑 중 오발동이 잦아 제외.
 let PREFETCHED='';
@@ -2376,7 +2386,7 @@ async function runAiCaption(paths, hint, ctx){
   const targets=(paths||[]).filter(p=>!isVid(p));
   if(!targets.length){toast('분석할 사진이 없어요.','info');return;}
   const wsid=CURWS;  // 탭을 바꾸거나 모달을 닫아도 이어지도록 시작 시점의 탭·입력을 붙잡아 둔다
-  ctx=ctx||{memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND};
+  ctx=ctx||{memo:$('#memo').value,srcval:SRCVAL(),kind:SRCKIND};
   AIPROG={wsid,done:0,total:targets.length};
   renderPmeta(); updatePhotoSummary();
   const t0=Date.now();
@@ -2464,7 +2474,7 @@ $('#gen').onclick=async()=>{
   GENABORT=new AbortController(); $('#gen').textContent='✕ 취소';
   $('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:SRCVAL(),kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES,
       draftId:CURWS,  // 이 탭의 글로 서버에 보관(게시 때 이 id로 '그 탭 글'을 정확히 저장)
       restyle:$('#restyleMode').checked,  // 켜면 외부 초안에 내 문체만 재적용(맛집/상품 구조 강제 안 함)
@@ -2500,7 +2510,7 @@ $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
   $('#export').disabled=true; st('프롬프트를 만드는 중…',true);
   try{
-    const body={memo:$('#memo').value,srcval:$('#srcval').value,kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:SRCVAL(),kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES,
       restyle:$('#restyleMode').checked,  // 켜면 export도 restyle.md 사용(원문 표·나열 보존)
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 [영상] 순서 고정 지시를 프롬프트에 포함
@@ -2537,7 +2547,7 @@ $('#iapply').onclick=async()=>{
   if(!text){toast('붙여넣은 글이 비어 있어요.','info');return;}
   $('#iapply').disabled=true;
   try{
-    const body={text,srcval:$('#srcval').value,kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS()};
+    const body={text,srcval:SRCVAL(),kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS()};
     const r=await fetch('/api/import-draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){toast('가져오기 실패: '+(d.error||''),'err');return;}
