@@ -1200,6 +1200,10 @@ function spinRow(el){
 // 수집 종류: 'place'(맛집·기본) | 'product'(상품). 입력으로 자동 추정하되 직접 고르면 고정.
 let MODE='place', SRCKIND='place', KINDMANUAL=false;
 const SRCVAL=()=>MODE==='product'?'':$('#srcval').value;  // 상품은 수집칸이 숨어 잔존값이 새지 않게 항상 빈 값
+// 메모·소스 입력은 모드마다 딴 글감이라 공유하지 않는다 — 모드 전환 시 스토어에 넣었다 꺼낸다.
+const blankModeStore=()=>({place:'',product:'',info:'',restyle:''});
+let MEMOS=blankModeStore(), SRCVALS=blankModeStore();
+let WSRESTORING=false;  // 탭 복원 중엔 flush 없이 로드만(이전 탭 값이 새 탭 스토어에 섞이지 않게)
 function autoKind(v){v=(v||'').trim().toLowerCase(); if(!v)return 'place';
   // 쇼핑 링크 → 상품, 그 외는 맛집. (상품 검색어 수집이 사라져 '그냥 글자 → 상품' 규칙도 제거)
   if(/smartstore\.|shopping\.naver|brand\.naver|coupang\.|11st\.|gmarket\.|ssg\.com/.test(v))return 'product';
@@ -1209,7 +1213,10 @@ function autoKind(v){v=(v||'').trim().toLowerCase(); if(!v)return 'place';
 function setKind(k,manual){
   if(manual)KINDMANUAL=true;
   const restyle=(k==='restyle');
+  const switching=(k!==MODE);
+  if(!WSRESTORING&&switching){MEMOS[MODE]=$('#memo').value; SRCVALS[MODE]=$('#srcval').value;}
   MODE=k; if(!restyle)SRCKIND=k;  // SRCKIND는 백엔드 수집·사진 분류용 실제 종류(리스타일은 이전 값 유지)
+  if(WSRESTORING||switching){$('#memo').value=MEMOS[k]||''; $('#srcval').value=SRCVALS[k]||'';}
   $('#restyleMode').checked=restyle;  // 생성/내보내기가 읽는 restyle 플래그의 단일 출처
   $$('#kindseg button').forEach(b=>{b.classList.toggle('on',b.dataset.k===k);
     b.classList.toggle('auto',!KINDMANUAL&&b.dataset.k===k);});
@@ -1448,7 +1455,9 @@ $('#srcval').oninput=()=>{if(KINDMANUAL)return;
     const v=$('#srcval').value.trim(); $('#srcval').value='';
     const empty=$$('#prodlinks .plink').find(i=>!i.value.trim());
     if(empty)empty.value=v; else addProdLink(v);
+    const carry=$('#memo').value;  // 자동 전환은 '같은 글을 다시 해석'한 것 — 쓰던 메모를 상품 칸으로 데려간다
     setKind('product',false);
+    if(carry.trim()&&!$('#memo').value.trim()){$('#memo').value=carry; MEMOS.place='';}
     toast('쇼핑 링크네요 — 상품 리뷰로 바꾸고 상품 링크에 넣었어요.','ok');
   } else setKind(k,false);};
 // 맛집 URL은 붙여넣는 즉시(또는 포커스가 떠날 때) 미리 수집해 서버 캐시를 데워둔다
@@ -1827,7 +1836,9 @@ function fillStateFromMedia(s, media, title, date){
 // 손 안 댄 빈 '새 글' 탭인지 — 인박스 사진(서버 풀 자동 로드)은 작업으로 안 침.
 function wsIsBlank(s){
   return !s.PLAN && !s.IMPORTED_DRAFT && !(s.SELP&&s.SELP.length)
-    && !((s.memo||'').trim()) && !((s.srcval||'').trim()) && !((s.keywords||'').trim()) && !((s.itext||'').trim())
+    && !Object.values(s.MEMOS||{}).concat([s.memo||'']).some(v=>(v||'').trim())
+    && !Object.values(s.SRCVALS||{}).concat([s.srcval||'']).some(v=>(v||'').trim())
+    && !((s.keywords||'').trim()) && !((s.itext||'').trim())
     && !((s.links||'').trim()) && !(s.prod||[]).some(v=>(v||'').trim())
     && (s.previewClass||'').includes('empty');
 }
@@ -2114,6 +2125,7 @@ function captureWS(){
     PHOTOMETA:JSON.parse(JSON.stringify(PHOTOMETA||{})), THUMB, AISET:new Set(AISET||[]),
     PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})), XCATS:XCATS.slice(), CATORDER:CATORDER.slice(),
     MODE, SRCKIND, KINDMANUAL, IMPORTED_DRAFT,
+    MEMOS:{...MEMOS,[MODE]:$('#memo').value}, SRCVALS:{...SRCVALS,[MODE]:$('#srcval').value},
     memo:$('#memo').value, srcval:$('#srcval').value, keywords:kwGet(), itext:$('#itext').value,
     kwnote:$('#kwnote')?$('#kwnote').textContent:'', kwnoteShow:$('#kwnote')?$('#kwnote').style.display:'none',
     links:$('#links')?$('#links').value:'', prod:$$('#prodlinks .plink').map(i=>i.value),
@@ -2125,6 +2137,7 @@ function captureWS(){
 function blankWS(){
   return {PHOTOS:[],SELP:[],PLAN:null,PHOTOMETA:{},THUMB:null,AISET:new Set(),PMACTIVE:undefined,PMSEL:new Set(),PMANCHOR:null,SUBCATS:{},XCATS:[],CATORDER:[],
     MODE:'place',SRCKIND:'place',KINDMANUAL:false,IMPORTED_DRAFT:null,
+    MEMOS:blankModeStore(),SRCVALS:blankModeStore(),
     memo:'',srcval:'',keywords:'',itext:'',kwnote:'',kwnoteShow:'none',links:'',prod:[''],
     previewHTML:EMPTY_DOC,previewClass:'doc empty',saveDisabled:true};
 }
@@ -2134,7 +2147,10 @@ function applyWS(s){
   PHOTOMETA=JSON.parse(JSON.stringify(s.PHOTOMETA||{})); THUMB=s.THUMB||null; AISET=new Set(s.AISET||[]);
   PMACTIVE=s.PMACTIVE; PMSEL=new Set(s.PMSEL||[]); PMANCHOR=s.PMANCHOR||null; SUBCATS=JSON.parse(JSON.stringify(s.SUBCATS||{})); XCATS=(s.XCATS||[]).slice(); CATORDER=(s.CATORDER||[]).slice(); PMDRAG=null; LANEDRAG=null;
   IMPORTED_DRAFT=s.IMPORTED_DRAFT||null;
-  $('#memo').value=s.memo||''; $('#srcval').value=s.srcval||''; kwSet(s.keywords||''); $('#itext').value=s.itext||'';
+  // 메모·소스는 모드별 스토어로 복원 — 구형 스냅샷(memo/srcval 단일 값)은 당시 모드 칸에 넣는다
+  MEMOS=Object.assign(blankModeStore(), s.MEMOS||{[s.MODE||s.SRCKIND||'place']:s.memo||''});
+  SRCVALS=Object.assign(blankModeStore(), s.SRCVALS||{[s.MODE||s.SRCKIND||'place']:s.srcval||''});
+  kwSet(s.keywords||''); $('#itext').value=s.itext||'';
   if($('#kwnote')){ $('#kwnote').textContent=s.kwnote||''; $('#kwnote').style.display=s.kwnoteShow||'none'; }
   if($('#links')) $('#links').value=s.links||'';
   $('#prodlinks').innerHTML=''; ((s.prod&&s.prod.length)?s.prod:['']).forEach(v=>addProdLink(v));
@@ -2142,7 +2158,9 @@ function applyWS(s){
   if(PLAN)renderPreview(PLAN);  // 스냅샷 HTML은 당시 '사진 보기' 설정으로 그린 것 — 현재 설정으로 다시 그린다
   if($('#save')) $('#save').disabled=(s.saveDisabled!==false);
   SRCKIND=s.SRCKIND||'place';  // 리스타일 탭 복원 시에도 실제 수집 종류를 먼저 되살린다
-  setKind(s.MODE||s.SRCKIND||'place', s.KINDMANUAL);  // 모드 UI + 상품링크칸·restyle 플래그 동기화
+  WSRESTORING=true;
+  setKind(s.MODE||s.SRCKIND||'place', s.KINDMANUAL);  // 모드 UI + 상품링크칸·restyle 플래그 + 메모/소스 로드
+  WSRESTORING=false;
   renderInplaceBadge();  // 탭 전환·복원 시 in-place 딱지 표시 동기화
   renderGrid(); renderPmeta(); updatePhotoSummary();
 }
