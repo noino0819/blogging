@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import difflib
 import re
+import unicodedata
 from pathlib import Path
 
 from autoblog.collect.selectors import NAVER_LOGIN, SMART_EDITOR
@@ -2254,23 +2255,41 @@ class BlogPublisher:
             return "검색 결과는 있었지만 장소 카드가 만들어지지 않았어요."
         return ""
 
-    def _search_place(self, q: str) -> list[dict]:
-        """열려 있는 장소 팝업에서 q로 검색 → 결과 항목 [{title, address}]."""
-        page = self._page
-        page.fill("input.react-autosuggest__input", "")
-        page.fill("input.react-autosuggest__input", q)
-        page.wait_for_timeout(400)
-        # 자동완성 드롭다운이 검색 버튼을 덮으면 Playwright click이 가시성 검사에서 막힌다 — DOM click으로 우회
-        page.evaluate(
-            "()=>{const b=document.querySelector('button.se-place-search-button');if(b)b.click();}"
-        )
-        page.wait_for_timeout(2800)
-        return page.evaluate(
-            r"""()=>[...document.querySelectorAll('.se-place-map-search-result-item')].map(it=>({
+    _PLACE_RESULTS_JS = r"""()=>[...document.querySelectorAll('.se-place-map-search-result-item')].map(it=>({
               title:(it.querySelector('.se-place-map-search-result-title')||{}).textContent||'',
               address:(it.querySelector('.se-place-map-search-result-address')||{}).textContent||'',
             }))"""
-        )
+
+    def _search_place(self, q: str) -> list[dict]:
+        """열려 있는 장소 팝업에서 q로 검색 → 결과 항목 [{title, address}].
+
+        0건은 '네이버에 없다'와 '검색이 안 돌았다'가 구분이 안 된다 — DOM click은 버튼이
+        없거나 disabled면 조용히 아무 일도 안 하고, 그러면 빈 리스트를 그대로 읽어
+        '결과 없음'으로 단정하게 된다('한옥가' 사고). 그래서 2초까지 폴링해 보고,
+        안 나오면 Enter로 한 번 더 검색을 태운다(성공 땐 0.5초에 빠져나와 더 빠르다).
+
+        질의는 NFC로 정규화한다 — 붙여넣기로 들어온 자모 분리(NFD) 문자열은 눈에는
+        같아 보여도 네이버가 실제로 0건을 돌려준다(실측)."""
+        page = self._page
+        q = unicodedata.normalize("NFC", q)
+        page.fill("input.react-autosuggest__input", "")
+        page.fill("input.react-autosuggest__input", q)
+        page.wait_for_timeout(400)
+        for again in (False, True):
+            if again:  # 버튼 클릭이 안 먹었을 수 있으니 이번엔 입력창에서 Enter
+                page.focus("input.react-autosuggest__input")
+                page.keyboard.press("Enter")
+            else:
+                # 자동완성 드롭다운이 검색 버튼을 덮으면 Playwright click이 가시성 검사에서 막힌다 — DOM click으로 우회
+                page.evaluate(
+                    "()=>{const b=document.querySelector('button.se-place-search-button');if(b)b.click();}"
+                )
+            for _ in range(4):  # 2초까지 폴링
+                page.wait_for_timeout(500)
+                items = page.evaluate(self._PLACE_RESULTS_JS)
+                if items:
+                    return items
+        return []
 
     @staticmethod
     def _place_query_variants(name: str) -> list[str]:
