@@ -688,10 +688,10 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
   <input type=text id=catinput placeholder="예: 디저트, 음료" autocomplete=off style="margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;width:100%">
   <div class=modalft><button class=btn id=catok style="flex:1">추가</button><button class="btn ghost" id=catcancel style="flex:0 0 100px">취소</button></div>
 </div></div>
-<div id=capmodal class=modal style="display:none"><div class=modalbox style="width:min(460px,94vw)">
+<div id=capmodal class=modal style="display:none"><div class=modalbox style="width:min(620px,94vw)">
   <div class=modalhd><span>사진 세부 설명</span><button class=mx id=capx>✕</button></div>
   <div class=muted>이 사진에 대해 글에 녹일 설명을 적어주세요. 초안 생성 때 반영되고, 직접 쓴 설명은 발행 시 사진 아래 <b>캡션(사진 설명)</b>에도 그대로 들어가요. (분류: <b id=caplabel></b>)</div>
-  <div style="margin-top:10px;text-align:center"><img id=capimg style="max-width:160px;max-height:160px;border-radius:9px;border:1px solid var(--line);object-fit:cover"></div>
+  <div style="margin-top:10px;text-align:center"><img id=capimg style="max-width:100%;max-height:46vh;border-radius:9px;border:1px solid var(--line);object-fit:contain"></div>
   <textarea id=capinput placeholder="예: 가장 인상 깊었던 메뉴. 겉은 바삭하고 속은 촉촉했어요." style="min-height:110px;margin-top:10px;font-family:inherit;font-size:14px;line-height:1.5;background:var(--color-bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px;width:100%;resize:vertical"></textarea>
   <div class=muted style="margin-top:6px;font-size:11.5px">Enter 로 저장 · Shift+Enter 줄바꿈 · 비우고 저장하면 설명이 삭제돼요</div>
   <div class=modalft><button class=btn id=capok style="flex:1">저장</button><button class="btn ghost" id=capcancel style="flex:0 0 100px">취소</button></div>
@@ -1968,7 +1968,8 @@ let CAPPATH=null;  // 세부 설명 편집 중인 사진 경로(보드 타일 �
 function openCapModal(path){
   CAPPATH=path; const m=PHOTOMETA[path]||{};
   $('#caplabel').textContent = m.label || '미분류';
-  $('#capimg').src = '/photo?path='+encodeURIComponent(path);
+  // 영상은 썸네일 플레이스홀더(▶), 사진은 원본 화질 — 320px 축소본으론 뭘 찍었는지 안 보여 설명을 못 쓴다
+  $('#capimg').src = '/photo?path='+encodeURIComponent(path)+(isVid(path)?'':'&full=1');
   const inp=$('#capinput'); inp.value=m.caption||'';
   $('#capmodal').style.display='flex'; setTimeout(()=>{inp.focus(); inp.select();},30);
 }
