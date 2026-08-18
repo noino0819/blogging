@@ -1661,7 +1661,7 @@ class BlogPublisher:
             elif block.kind == "text":
                 self._type_text_block(block)
             elif block.kind == "divider":
-                self._insert_divider(block.variant, align=block.align)
+                self._insert_divider(block.variant, align=block.align, at_end=False)
             elif block.kind == "quote":
                 # at_end=False: 본문 끝으로 점프하지 않는다(다음 블록이 앵커를 다시 잡음)
                 self._insert_quote(block.text, block.variant, align=block.align, at_end=False)
@@ -2723,16 +2723,38 @@ class BlogPublisher:
         page.click(SMART_EDITOR["color_apply_button"])
         page.wait_for_timeout(350)
 
-    def _insert_divider(self, variant: int = 1, align: str | None = None):
+    def _insert_divider(self, variant: int = 1, align: str | None = None, at_end: bool = True):
         """구분선 삽입. 항상 종류 드롭다운에서 variant번째를 고른다(variant=1=기본선).
 
         기본 빠른버튼(...-default-toolbar-button)을 쓰지 않는 이유: 드롭다운으로 한 번
         다른 종류를 고르면 SE-ONE이 그 종류를 기억해 빠른버튼 클래스가 바뀌어 사라진다.
-        그래서 변형>1 다음 변형1을 넣을 때 기본 버튼을 못 찾는다 → 경로를 드롭다운으로 통일."""
+        그래서 변형>1 다음 변형1을 넣을 때 기본 버튼을 못 찾는다 → 경로를 드롭다운으로 통일.
+
+        at_end=True(새 글 경로)면 구분선 뒤 빈 문단을 클릭해 캐럿을 회수한다 —
+        정렬(_align_divider)이 HR을 '객체 선택'한 채로 끝나는데, 그 상태로 다음 블록을
+        타이핑하면 첫 줄이 통째로 사라진다(Enter가 와야 캐럿이 문단에 들어감). 2026-08-18
+        E2E 실측: 헤더 구분선 뒤 '사실 별 기대 없이…' 한 줄이 저장본에서 증발.
+        in-place는 다음 블록이 앵커를 다시 잡으므로 at_end=False로 두어 커서를 안 옮긴다."""
         self._pick_insert_variant("horizontal-line", max(variant, 1))
         self._page.wait_for_timeout(500)
         if align and align != "left":
             self._align_divider(align)
+        if not at_end:
+            return
+        # 캐럿 회수는 '진짜 클릭'만 통한다 — Escape도 JS Range(selectNodeContents+collapse)도
+        # 안 먹혔다(실측 비교). 인용구가 쓰는 '본문 추가' 버튼은 구분선이 선택된 이 상태에서
+        # 비표시라 클릭이 30초 타임아웃만 태우고 예외로 끝난다 — 그래서 그 경로는 쓰지 않는다.
+        # 회귀 확인: scripts/probe_component_eats_line.py(구분선·인용구·사진 뒤 첫 줄 생존).
+        # 구분선을 넣으면 SE가 그 뒤에 빈 문단을 만들어 두므로 그걸 클릭하면 된다
+        # (빈 문단이라 Playwright의 정중앙 클릭이 글 한가운데 박힐 위험도 없다).
+        comps = self._page.query_selector_all(".se-component.se-text")
+        if not comps:
+            return
+        try:
+            comps[-1].click(timeout=5000)
+            self._page.wait_for_timeout(200)
+        except Exception:  # noqa: BLE001 - 클릭이 막히면 최소한 선택만 푼다
+            self._page.keyboard.press("Escape")
 
     def _align_divider(self, value: str = "center"):
         """방금 넣은 구분선(HR 컴포넌트)을 가운데 등으로 정렬.
