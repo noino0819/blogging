@@ -1721,7 +1721,9 @@ class BlogPublisher:
 
             앵커 한 번이 ~0.7초(프로파일 실측)라 텍스트가 많은 글에서 크게 절약되고,
             앵커 시도 횟수 자체가 줄어 실패 여지도 준다. 블록 사이 빈 줄은 종전 렌더
-            (블록 끝 Enter가 만들던 빈 문단)와 동일하게 \n\n으로 재현. 강조·정렬 복구·
+            (블록 끝 Enter가 만들던 빈 문단)와 동일하게 \n\n으로 재현. 단 tight 블록
+            (헤더의 드립 한 줄)은 \n 하나로 붙인다 — 대제목과 드립 사이에 빈 줄이 박히던
+            원인(유저 보고 2026-08-18, 실측 probe_blank_after_title). 강조·정렬 복구·
             관문은 전부 원본 plan.blocks 기준이라 영향 없음(합친 블록은 타이핑 전용)."""
             out: list = []
             for b in blks:
@@ -1729,7 +1731,9 @@ class BlogPublisher:
                 if (b.kind == "text" and prev is not None and prev.kind == "text"
                         and (prev.align or "left") == (b.align or "left")):
                     out[-1] = PublishBlock(
-                        kind="text", text=prev.text + "\n\n" + b.text, align=prev.align,
+                        kind="text",
+                        text=prev.text + ("\n" if b.tight else "\n\n") + b.text,
+                        align=prev.align,
                     )
                     continue
                 out.append(b)

@@ -321,6 +321,9 @@ def test_structure_styles_header_and_subheading():
     assert drip.emphases[0].style.font_family == "system"
     assert drip.emphases[0].style.font_size == "11"
     assert drip.emphases[0].style.text_color == "#4383BF"
+    # 드립은 대제목에 빈 줄 없이 붙는다(tight) — in-place 저장에서 둘 사이에 빈 문단이
+    # 박히던 문제(2026-08-18 실측 probe_blank_after_title).
+    assert drip.tight is True
     idx = plan.blocks.index(drip)
     assert plan.blocks[idx + 1].kind == "divider" and plan.blocks[idx + 1].variant == 4
 
@@ -346,6 +349,7 @@ def test_drip_line_styled_without_tag_line():
 
     drip = next(b for b in plan.blocks if b.text == "통만 바뀌면 완벽한데 말이야")
     assert drip.align == "center"
+    assert drip.tight is True  # 대제목 바로 아래 — 빈 줄 없이 붙임
     assert len(drip.emphases) == 1
     assert drip.emphases[0].style.font_size == "11"
     assert drip.emphases[0].style.text_color == "#4383BF"

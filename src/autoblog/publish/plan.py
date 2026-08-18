@@ -387,6 +387,9 @@ class PublishBlock(BaseModel):
     sticker_kind: str = ""  # 스티커 분류(감정/구분선/헤더) — 구분선 겹침 방어에 사용
     align: str | None = None  # 단락 정렬: center/right/justify (None=기본 왼쪽)
     place_address: str | None = None  # 장소 카드: 수집 도로명 주소(검색 결과 매칭용)
+    # 바로 위 텍스트 블록에 빈 줄 없이 붙여 렌더(헤더의 드립 한 줄 — 대제목 바로 아래).
+    # 기본 블록 사이는 빈 문단 하나가 문단 간격이지만, 헤더는 대제목-드립이 한 덩어리다.
+    tight: bool = False
 
 
 class PublishPlan(BaseModel):
@@ -660,6 +663,7 @@ def build_publish_plan(
         if drip is not None and prev_is_header:
             st = structure_styles.hashtags
             drip.align = st.align or drip.align
+            drip.tight = True  # 대제목 바로 아래 — 사이에 빈 줄을 넣지 않는다
             drip_lines = [ln.strip() for ln in drip.text.split("\n") if ln.strip()]
             if len(drip_lines) == 2:  # 두 줄 드립은 한 줄로 — 작은 글씨라 줄 나눌 이유 없음
                 drip_lines = [" ".join(drip_lines)]
@@ -681,7 +685,7 @@ def build_publish_plan(
         st = structure_styles.hashtags
         blocks.append(
             PublishBlock(
-                kind="text", text=s, align=st.align or "center",
+                kind="text", text=s, align=st.align or "center", tight=True,
                 emphases=[StyledSpan(text=s, preset_id=None, style=st.to_style())],
             )
         )
