@@ -1652,14 +1652,14 @@ class BlogPublisher:
 
         skipped_ids: set[int] = set()  # 삽입 실패로 경고 처리된 블록 — 저장 전 최종 대조에서 제외
 
-        def _insert_one(block):
+        def _insert_one(block, tail_enter: bool = True):
             if block.kind == "image" and block.image_path:
                 warn = self._insert_image(block.image_path, size=block.image_size)
                 if warn:
                     warnings.append(warn)
                     skipped_ids.add(id(block))
             elif block.kind == "text":
-                self._type_text_block(block)
+                self._type_text_block(block, tail_enter=tail_enter)
             elif block.kind == "divider":
                 self._insert_divider(block.variant, align=block.align, at_end=False)
             elif block.kind == "quote":
@@ -1734,6 +1734,7 @@ class BlogPublisher:
                         kind="text",
                         text=prev.text + ("\n" if b.tight else "\n\n") + b.text,
                         align=prev.align,
+                        tight=prev.tight or b.tight,  # 헤더 덩어리 표식 승계
                     )
                     continue
                 out.append(b)
@@ -1742,9 +1743,16 @@ class BlogPublisher:
         # 각 구간 안에서 블록을 '역순'으로 넣되 매번 구간 앵커를 다시 잡아, 나중 것이 위로 밀려
         # 결과적으로 플랜 순서대로 쌓인다(커서 이어가기에 의존하지 않아 블록 종류가 섞여도 안전).
         for seg_idx, blks in enumerate(segments):
-            for block in reversed(_merge_text_runs(blks)):
+            merged = _merge_text_runs(blks)
+            for i in range(len(merged) - 1, -1, -1):
                 _anchor_segment(seg_idx)
-                _insert_one(block)
+                # 헤더 덩어리(대제목+드립, tight)는 끝 Enter를 생략한다 — in-place에선 그
+                # Enter가 만든 빈 문단을 다음 블록이 안 쓰고 남겨서 드립과 구분선 사이가
+                # 벌어졌다(2026-08-18 유저 요청으로 제거). 본문 문단 사이 빈 줄은 문단
+                # 간격이라 그대로 둔다. 뒤가 텍스트면 생략하지 않는다(한 줄로 붙어버림).
+                nxt = merged[i + 1] if i + 1 < len(merged) else None
+                tail = not (merged[i].tight and nxt is not None and nxt.kind != "text")
+                _insert_one(merged[i], tail_enter=tail)
         # 본문 입력 후 강조 적용(커서 간섭 방지 — 기존 publish와 동일한 후처리 패스).
         # 반드시 '플랜(문서) 순서'로 — 삽입은 역순이지만 강조까지 역순(아래→위)으로 걸면,
         # 직전 선택 위에 뜬 SE 플로팅 서식 툴바가 바로 윗줄(다음 대상)을 덮어 드래그 선택이
@@ -2142,8 +2150,13 @@ class BlogPublisher:
         }""")
         page.wait_for_timeout(300)
 
-    def _type_text_block(self, block: PublishBlock):
+    def _type_text_block(self, block: PublishBlock, tail_enter: bool = True):
         """본문 한 블록 입력. \\n은 Enter(문단), 블록 끝에 빈 줄 하나.
+
+        tail_enter=False면 끝 Enter를 생략한다 — in-place에선 이 Enter가 만든 빈 문단을
+        다음 블록이 이어받지 않아(앵커가 커서를 맨 위로 되돌림) 주인 없이 남기 때문에,
+        헤더(대제목+드립) 뒤가 벌어지는 걸 막을 때 쓴다. 뒤에 텍스트가 이어지는 자리에선
+        생략하면 안 된다(다음 문단과 한 줄로 붙는다) — 호출부가 판단한다.
 
         정렬은 상속에 맡기지 않고 블록마다 명시한다 — SE는 새 문단이 직전 문단이나
         사진 '컴포넌트'의 정렬을 이어받아, 사진 뒤에 앵커된 문단이 사진 정렬(left 등)을
@@ -2153,7 +2166,8 @@ class BlogPublisher:
         if self._current_align() != target:
             self._apply_align(target)
         self._type_with_keycaps(block.text)
-        self._page.keyboard.press("Enter")
+        if tail_enter:
+            self._page.keyboard.press("Enter")
 
     # 키캡 이모지(1️⃣ = 숫자+U+FE0F+U+20E3 결합)는 한 글자씩 치면 결합이 깨져 '1' 따로,
     # 빈 네모(⃣) 따로 들어간다. 통째로 insert_text 하면 브라우저가 한 덩어리로 받아 안 깨진다.
