@@ -1,3 +1,5 @@
+import json
+
 from autoblog import rank
 
 
@@ -79,3 +81,119 @@ def test_keyword_competition_survives_volume_failure(monkeypatch):
     )
     d = rank.keyword_competition("강남맛집")
     assert d["total"] == 42 and d["volume"] is None
+
+
+def test_title_keywords_ngrams():
+    """제목 → 1~3어 n-gram, 한 글자 토큰·기호 제외, 중복 제거."""
+    kws = rank._title_keywords("[더현대] 다이소 팝콘 또 삼")
+    assert "다이소" in kws and "다이소 팝콘" in kws and "더현대 다이소 팝콘" in kws
+    assert "또" not in kws and "[더현대]" not in kws  # 한 글자·기호는 후보 아님
+    assert len(kws) == len(set(kws))
+
+
+def test_exposure_scan_filters_and_scores(tmp_path, monkeypatch):
+    """검색량 하한으로 후보를 거르고, 100위 밖은 버리고, 1페이지 검색량만 점수에 넣는다."""
+    monkeypatch.setattr(rank, "_RANKS_PATH", tmp_path / "ranks.json")
+    monkeypatch.setattr(
+        rank, "load_env",
+        lambda: type("E", (), {"has_searchad": True, "naver_blog_id": "me"})(),
+    )
+    monkeypatch.setattr(rank.time, "sleep", lambda s: None)
+    import autoblog.collect.blog_posts as bp
+
+    monkeypatch.setattr(
+        bp, "fetch_recent_posts",
+        lambda b, n: [{"logNo": "100", "title": "다이소 팝콘 후기", "url": "https://blog.naver.com/me/100"}],
+    )
+    monkeypatch.setattr(bp, "fetch_popular_posts", lambda b, n: [])
+    monkeypatch.setattr(
+        rank, "search_volumes",
+        lambda kws: {"다이소 팝콘": {"volume": 5000}, "후기": {"volume": 3000}, "팝콘": {"volume": 50}},
+    )
+    ranks = {"다이소 팝콘": 3, "후기": None}  # 1페이지 / 100위 밖
+    monkeypatch.setattr(rank, "_OBS_PATH", tmp_path / "obs.json")
+    monkeypatch.setattr(
+        rank, "_search_blog_full",
+        lambda kw: {"total": 5_000,
+                    "items": [{"link": "https://blog.naver.com/me/100"}] if ranks[kw] == 3 else []},
+    )
+    d = rank.exposure_scan()
+    # 진 키워드까지 관측으로 남아야 승률 표본이 된다
+    assert [(o["keyword"], o["rank"]) for o in json.loads((tmp_path / "obs.json").read_text())] == [
+        ("다이소 팝콘", 1), ("후기", None)
+    ]
+    assert [r["keyword"] for r in d["rows"]] == ["다이소 팝콘"]  # 하한 미달·100위 밖 제외
+    assert d["score"] == 5000 and d["top10"] == 1 and d["missed"] == 1
+    assert [e["keyword"] for e in rank.list_entries()] == ["다이소 팝콘"]  # 추적 자동 등록
+
+
+def test_sm_rank_parses_position_and_share(monkeypatch):
+    """슈멤 원본 — 상위 50 목록에 내 아이디가 있는 키워드만, 기여도는 검색량÷순위²."""
+    payload = {"value": [{
+        "rank": 66804, "percentage": 23.21, "adFee": 23637, "score": 110.776,
+        "visitorEx": 136.77, "updatedAt": "2026-08-09T19:13:11.000Z",
+        "keywords": [
+            {"name": "아쿠아슈즈", "mmqccnt": 202900, "cat1": "제품", "cat2": "패션/잡화",
+             "ids": ["a"] * 56 + ["me"] + ["b"] * 3},  # 57/60위
+            {"name": "냉동떡", "mmqccnt": 1530, "cat1": None, "cat2": None,
+             "ids": ["a"] * 11 + ["me"] + ["b"] * 38},  # 12/50위
+            {"name": "남의키워드", "mmqccnt": 999999, "ids": ["a", "b"]},  # 내 아이디 없음 → 제외
+        ],
+        "histories": [{"week": "2026-08-10", "rank": 66804, "score": 110.776, "adFee": 23637,
+                       "percentage": 23.21}],
+    }]}
+    monkeypatch.setattr(
+        rank, "load_env", lambda: type("E", (), {"naver_blog_id": "me"})()
+    )
+    monkeypatch.setattr(
+        rank.requests, "get",
+        lambda *a, **k: type("R", (), {"raise_for_status": lambda s: None, "json": lambda s: payload})(),
+    )
+    d = rank.sm_rank()
+    assert [k["keyword"] for k in d["keywords"]] == ["아쿠아슈즈", "냉동떡"]  # 남의 키워드 제외
+    assert d["keywords"][0]["pos"] == 57 and d["keywords"][0]["of"] == 60
+    assert d["keywords"][0]["share"] > d["keywords"][1]["share"]  # sm_score 기준 아쿠아슈즈가 더 큼
+    assert round(sum(k["share"] for k in d["keywords"])) == 100
+    assert d["rank"] == 66804 and len(d["history"]) == 1
+
+
+def test_sm_score_favors_position_over_volume():
+    """실측 공식의 핵심 — 작은 키워드 1위가 큰 키워드 하위권을 이긴다."""
+    assert rank.sm_score(1000, 1) > rank.sm_score(200000, 30)  # 75 vs 35
+    assert rank.sm_score(500, 1) > rank.sm_score(202900, 57)  # 57 vs 20 (내 아쿠아슈즈)
+    assert rank.sm_score(0, 1) == 0 and rank.sm_score(1000, 0) == 0
+
+
+def test_keyword_suggest_scores_and_sorts_by_payoff(monkeypatch):
+    """추천 목록 — 3위 기준 슈멤 점수를 붙이고, 생검색량이 아니라 페이오프로 정렬."""
+    monkeypatch.setattr(rank, "load_env", lambda: type("E", (), {"has_searchad": True})())
+    monkeypatch.setattr(rank, "_related_terms", lambda kw: ["큰키워드", "작은키워드"])
+    monkeypatch.setattr(rank, "_searchad_related", lambda kw, n, require_tokens=True: [])
+    monkeypatch.setattr(rank, "_total", lambda kw: {"큰키워드": 500000, "작은키워드": 300}[kw])
+    monkeypatch.setattr(
+        rank, "search_volumes",
+        lambda kws: {"큰키워드": {"volume": 200000}, "작은키워드": {"volume": 2000}},
+    )
+    d = rank.keyword_suggest("씨앗")
+    # 검색량은 100배 차이지만 문서수(경쟁)가 1666배라 작은 쪽이 위로 와야 한다
+    assert [s["keyword"] for s in d["suggestions"]] == ["작은키워드", "큰키워드"]
+    assert d["suggestions"][0]["sm3"] == round(rank.sm_score(2000, 3), 1)
+
+
+def test_win_rates_and_expected_score(tmp_path, monkeypatch):
+    """실측 승률 — 경쟁 구간별 1페이지 비율, 기대값은 승률 × 3위 점수."""
+    obs = ([{"keyword": f"a{i}", "total": 5_000, "rank": 3, "t": "x"} for i in range(5)]
+           + [{"keyword": f"b{i}", "total": 5_000, "rank": None, "t": "x"} for i in range(5)]
+           + [{"keyword": f"c{i}", "total": 500_000, "rank": None, "t": "x"} for i in range(20)])
+    p = tmp_path / "obs.json"
+    p.write_text(json.dumps(obs), encoding="utf-8")
+    monkeypatch.setattr(rank, "_OBS_PATH", p)
+    rates = rank.win_rates()
+    mid = [r for r in rates if r["lo"] == 1_000][0]
+    assert mid["n"] == 10 and mid["top10"] == 0.5
+    big = [r for r in rates if r["lo"] == 100_000][0]
+    assert big["top10"] == 0.0
+    # 검색량이 100배 커도 승률 0이면 기대값 0 — 이게 이 기능의 존재 이유
+    assert rank.expected_score(2_000, 5_000)["ev"] == round(0.5 * rank.sm_score(2_000, 3), 1)
+    assert rank.expected_score(200_000, 500_000)["ev"] == 0.0
+    assert rank.expected_score(2_000, 5_000)["ev"] > rank.expected_score(200_000, 500_000)["ev"]

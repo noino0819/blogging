@@ -1005,6 +1005,7 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
       <div id=kwres><div class=muted style="margin-top:8px">키워드를 넣으면 <b>이미 쓰인 블로그 글 수(경쟁)</b>·<b>현재 상위 글</b>·<b>내 글 순위</b>를 보여줘요. 문서 수가 적고 상위가 대형 블로그로 꽉 차 있지 않을수록 노려볼 만해요.</div></div>
       <div id=kwad style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)"></div>
     </div>
+    <div class=card style="margin-top:16px"><h3>슈퍼멤버스 실집계 <span class=muted style="font-weight:400">— 슈멤이 실제로 세고 있는 내 등급·키워드 원본</span></h3><div id=smrank><div class=muted>불러오는 중…</div></div></div>
     <div class=card style="margin-top:16px"><h3>노출 순위 추적 <span class=muted style="font-weight:400">— 블로그 검색 상위 100위(정확도순 근사) 실측</span></h3><div id=ranktrk><div class=muted>불러오는 중…</div></div></div>
   </section>
 </main>
@@ -1338,7 +1339,7 @@ $$('.nav').forEach(n=>n.onclick=()=>{
   $$('.view').forEach(v=>v.classList.remove('on')); $('.view.'+n.dataset.view).classList.add('on');
   if(n.dataset.view==='stickers') loadStickers();
   if(n.dataset.view==='persona') loadPersonas();
-  if(n.dataset.view==='settings'){ loadRanks(); bindKwCheck(); loadKwAd(); }
+  if(n.dataset.view==='settings'){ loadRanks(); loadSmRank(); bindKwCheck(); loadKwAd(); }
 });
 // 키워드 경쟁 확인 — 발행 전에 '노려볼 만한 키워드인지' 가늠(설정 탭)
 function bindKwCheck(){
@@ -1395,6 +1396,10 @@ function renderKwCheck(d){
     ? `월간 검색 <b>${(d.volume||0).toLocaleString()}회</b>(PC+모바일)${d.comp_idx?` · 광고 경쟁 ${esc(d.comp_idx)}`:''} · ` : '';
   let html=`<div class=kwverdict style="color:${color}">${esc(band)}</div>`
     +`<div class=kwmeta>${vol}이미 쓰인 블로그 글 <b>${n.toLocaleString()}개</b> · ${mine} <span class=muted>(문서 수는 절대 기준이 아니라 상대 신호예요)</span></div>`;
+  if(d.sm)html+=`<div class=kwmeta>슈멤 점수 전망 — 1위 <b>+${d.sm['1']}</b> · 3위 +${d.sm['3']} · 10위 +${d.sm['10']} · 30위 +${d.sm['30']}
+    <span class=muted>(검색량보다 순위가 훨씬 큽니다. 1페이지 못 잡을 키워드면 사실상 0점)</span></div>`;
+  if(d.exp)html+=`<div class=kwmeta style="color:${d.exp.ev>=20?'var(--ok)':d.exp.ev>=5?'var(--warn-text)':'var(--red-d)'}">
+    기대 점수 <b>+${d.exp.ev}</b> <span class=muted>= 3위 점수 +${d.sm['3']} × 이 경쟁대에서 내 실측 1페이지 승률 ${Math.round(d.exp.win*100)}% (표본 ${d.exp.n}개)</span></div>`;
   (d.top||[]).forEach((t,i)=>{
     const me = d.mine===i+1 ? ' me' : '';
     html+=`<div class="kwtop${me}"><span class=n>${i+1}</span><span class=bl>${esc(t.blogger||'')}</span>`
@@ -1406,6 +1411,40 @@ function renderKwCheck(d){
 async function loadRanks(){
   const box=$('#ranktrk'); if(!box)return;
   try{const d=await (await fetch('/api/ranks')).json(); renderRanks(d.rows||[]);}catch(e){}
+}
+// 슈퍼멤버스 실집계 — 슈멤 앱이 쓰는 공개 엔드포인트를 그대로 읽어 온 원본 숫자
+async function loadSmRank(){
+  const box=$('#smrank'); if(!box)return;
+  try{
+    const r=await fetch('/api/sm-rank'); const d=await r.json();
+    if(!r.ok)throw new Error(d.error||'서버 오류');
+    const h=d.history||[], prev=h.length>1?h[h.length-2]:null;
+    let trend='';
+    if(prev&&prev.rank&&d.rank){const g=prev.rank-d.rank;
+      trend=g?` <b style="color:${g>0?'var(--ok)':'var(--red-d)'}">${g>0?'▲':'▼'}${Math.abs(g).toLocaleString()}</b>`:'';}
+    box.innerHTML=`<div style="font-size:15px;font-weight:600;margin-bottom:2px">${d.rank.toLocaleString()}위${trend}
+        <span class=muted style="font-weight:400">· 상위 ${d.percentage}% · 광고단가 ${d.adFee.toLocaleString()}원</span></div>
+      <div class=muted style="margin-bottom:8px">점수 ${d.score} · ${d.updated.slice(0,10)} 집계 · 슈멤 키워드 DB에 등록된 단어만 셉니다</div>`
+      +(d.keywords.length?d.keywords.map(k=>`<div class=rkrow><span class=rkrank>${k.pos}/${k.of}위</span>
+        <span class=rkkw>${esc(k.keyword)}</span>
+        <span class=muted style="min-width:84px;text-align:right">월 ${k.volume.toLocaleString()}</span>
+        <span class=muted style="min-width:52px;text-align:right" title="점수 기여 추정 — 검색량^0.4÷순위^0.85">${k.share}%</span></div>`).join('')
+        :'<div class=muted>집계된 키워드가 없어요.</div>')
+      +`<div class=muted style="margin-top:8px">주간 순위: ${h.map(x=>`${x.week.slice(5)} ${x.rank.toLocaleString()}`).join(' · ')}</div>`;
+  }catch(e){box.innerHTML=`<div class=muted>불러오지 못했어요 — ${esc(e.message)}</div>`;}
+}
+// 자동 스캔 결과 — loadRanks가 목록을 다시 그려도 살아 있게 전역에 들고 있는다
+let RKSCAN=null;
+function scanRows(d){
+  if(!d)return '';
+  const head=`<div class=muted style="margin:6px 0">글 ${d.posts}개 스캔 · <b>1페이지(10위 내) ${d.top10}개</b>`
+    +` · 30위 내 ${d.top30}개 · 노출점수 <b>${d.score.toLocaleString()}</b>`
+    +` <span title="1페이지에 뜬 키워드들의 월간 검색량 합">ⓘ</span></div>`;
+  if(!d.rows.length)return head+'<div class=muted>상위 100위 안에 잡힌 키워드가 없었어요.</div>';
+  return head+d.rows.map(r=>`<div class=rkrow><span class=rkrank>${r.rank}위</span>
+    <span class=rkkw>${esc(r.keyword)}</span>
+    <span class=muted style="min-width:88px;text-align:right">월 ${r.volume.toLocaleString()}</span>
+    <a class=rkurl href="${esc(r.url)}" target=_blank rel=noopener title="${esc(r.title)}">글 보기</a></div>`).join('');
 }
 function rankRow(r){
   const cur=r.rank?`${r.rank}위`:(r.checked?'100위 밖':'미확인');
@@ -1422,9 +1461,21 @@ function renderRanks(rows){
   box.innerHTML=`<div class=rkadd><input id=rkkw placeholder="대표 키워드 (예: 성수동 맛집)">
     <input id=rkurl placeholder="게시 글 URL (blog.naver.com/아이디/글번호)">
     <button class="btn ghost" id=rkaddbtn>추가</button>
-    <button class=btn id=rkchk ${rows.length?'':'disabled'}>지금 순위 확인</button></div>`
+    <button class=btn id=rkchk ${rows.length?'':'disabled'}>지금 순위 확인</button></div>
+    <div class=rkadd><button class="btn ghost" id=rkscan>내 노출 키워드 스캔 — 내 글이 뜨는 단어 자동으로 찾기</button></div>`
+    +scanRows(RKSCAN)
     +(rows.length?rows.map(rankRow).join('')
       :'<div class=muted style="margin-top:8px">게시한 글의 대표 키워드와 URL을 등록하면 검색 순위 추이를 기록해요 — 프롬프트 수정 전후 노출을 데이터로 비교할 수 있어요.</div>');
+  $('#rkscan').onclick=async()=>{
+    const b=$('#rkscan'); b.disabled=true; b.textContent='스캔 중… 1분쯤 걸려요';
+    try{const r=await fetch('/api/ranks/scan',{method:'POST'});
+      const d=await r.json(); if(!r.ok)throw new Error(d.error||'서버 오류');
+      RKSCAN=d;
+      toast(`노출 키워드 ${d.rows.length}개 — 30위 안쪽은 아래 추적에 등록했어요.`,'ok');
+      loadRanks();
+    }catch(e){toast('스캔 실패 — '+e.message,'err');
+      b.disabled=false; b.textContent='내 노출 키워드 스캔 — 내 글이 뜨는 단어 자동으로 찾기';}
+  };
   $('#rkaddbtn').onclick=async()=>{
     const kw=$('#rkkw').value.trim(), url=$('#rkurl').value.trim();
     if(!kw||!url){toast('키워드와 글 URL을 모두 입력하세요','info');return;}
@@ -1673,12 +1724,14 @@ let KW=[];
 const KWJUDGE={};
 function classifyKw(d){
   const n=d.total||0;
+  const sm = d.sm ? ` · 슈멤 1위 +${d.sm['1']}/3위 +${d.sm['3']}/10위 +${d.sm['10']}` : '';
+  const ex = d.exp ? ` · 내 1페이지 승률 ${Math.round(d.exp.win*100)}%(표본 ${d.exp.n}) → 기대 +${d.exp.ev}` : '';
   const mine = d.mine ? ` · 내 글 ${d.mine}위` : '';
   const vol = d.volume!=null ? ` · 월 검색 ${fmtVol(d.volume)}회` : '';  // 검색광고 키 있을 때만
   const docs = `문서 ${n.toLocaleString()}개`;
-  if(n<1000)  return {cls:'',     badge:'✓', tip:`노려볼 만해요 · ${docs}${vol}${mine}`};
-  if(n<20000) return {cls:'jmid', badge:'△',  tip:`애매 — 상위 글이 대형 블로그로 꽉 찼는지 보고 판단 · ${docs}${vol}${mine}`};
-  return              {cls:'jbad', badge:'✕', tip:`경쟁 과다 — 지금 체급엔 묻히기 쉬워요 · ${docs}${vol}${mine}`};
+  if(n<1000)  return {cls:'',     badge:'✓', tip:`노려볼 만해요 · ${docs}${vol}${sm}${ex}${mine}`};
+  if(n<20000) return {cls:'jmid', badge:'△',  tip:`애매 — 상위 글이 대형 블로그로 꽉 찼는지 보고 판단 · ${docs}${vol}${sm}${ex}${mine}`};
+  return              {cls:'jbad', badge:'✕', tip:`경쟁 과다 — 지금 체급엔 묻히기 쉬워요 · ${docs}${vol}${sm}${ex}${mine}`};
 }
 // 검색량 짧은 표기: 12345 → 1.2만
 function fmtVol(v){ v=v||0; return v>=10000 ? ((v/10000).toFixed(v%10000?1:0))+'만' : v.toLocaleString(); }
@@ -1739,7 +1792,7 @@ function kwRecRender(){
   const list=KWREC[KWREC_SEED];
   if(!Array.isArray(list)){ box.style.display='none'; box.innerHTML=''; return; }
   // 이미 넣은 키워드는 빼고, ❌(경쟁 과다)도 빼 '유리한' 것만 남긴다.
-  const items=list.map(s=>({kw:s.keyword,vol:s.volume,j:classifyKw({total:s.total,volume:s.volume})}))
+  const items=list.map(s=>({kw:s.keyword,vol:s.volume,sm3:s.sm3,j:classifyKw({total:s.total,volume:s.volume})}))
     .filter(s=>!kwHas(s.kw)&&s.j.badge!=='✕');
   const hasVol=items.some(s=>s.vol!=null);
   box.style.display='block'; box.innerHTML='';
@@ -1747,7 +1800,7 @@ function kwRecRender(){
   const head=document.createElement('div'); head.className='kwrec-t';
   head.append(document.createTextNode('💡 이 키워드는 어때요? '));
   const m=document.createElement('span'); m.className='muted';
-  m.textContent=hasVol?`'${KWREC_SEED}' 연관검색어 중 검색량 대비 경쟁 유리한 순`:`'${KWREC_SEED}' 연관검색어 중 경쟁 낮은 순`;
+  m.textContent=hasVol?`'${KWREC_SEED}' 연관검색어 중 기대 점수(내 승률 × 슈멤 점수) 높은 순`:`'${KWREC_SEED}' 연관검색어 중 경쟁 낮은 순`;
   head.append(m);
   const rb=document.createElement('button'); rb.type='button'; rb.className='kwrec-re'; rb.textContent='🔄 다시 추천';
   rb.title='넣은 키워드를 돌아가며 다른 연관어를 추천해요'; rb.onclick=reSuggest; head.append(rb);
@@ -1763,6 +1816,11 @@ function kwRecRender(){
     b.append(bd,tx);
     if(s.vol!=null){ const vv=document.createElement('span'); vv.className='muted';
       vv.style.cssText='font-size:10.5px;margin-left:4px'; vv.textContent=`월 ${fmtVol(s.vol)}`; b.append(vv); }
+    if(s.sm3){ const sv=document.createElement('span'); sv.className='muted';
+      sv.style.cssText='font-size:10.5px;margin-left:4px;font-weight:600';
+      sv.textContent=s.exp?`기대 +${s.exp.ev}`:`3위면 +${s.sm3}`;
+      sv.title=s.exp?`3위 잡으면 +${s.sm3} × 내 실측 1페이지 승률 ${Math.round(s.exp.win*100)}%(표본 ${s.exp.n}개)`
+                    :'슈멤 점수 전망 — 1페이지(3위) 잡았을 때'; b.append(sv); }
     const pl=document.createElement('span'); pl.className='rcplus'; pl.textContent='+';
     b.append(pl); b.onclick=()=>{ kwAddMany([s.kw],true); }; wrap.append(b); });  // true=추천 클릭 → 씨앗 안 바꿈
   box.append(wrap);
@@ -3861,6 +3919,13 @@ def _make_handler(state: dict):
                     self._send(200, json.dumps({"topics": cache["rows"]}, ensure_ascii=False).encode())
                 except Exception as exc:  # noqa: BLE001 — 키 미설정·네트워크 등 안내로 전달
                     self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode())
+            elif u.path == "/api/sm-rank":
+                from autoblog.rank import sm_rank
+
+                try:
+                    self._send(200, json.dumps(sm_rank(), ensure_ascii=False).encode())
+                except Exception as exc:  # noqa: BLE001 — 비공식 엔드포인트라 조용히 안내로
+                    self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode())
             elif u.path == "/api/searchad-key":
                 from autoblog.config import load_env
 
@@ -4012,6 +4077,14 @@ def _make_handler(state: dict):
                     else:
                         add_entry(body.get("keyword", ""), body.get("url", ""))
                     self._send(200, b'{"ok":true}')
+                elif path == "/api/ranks/scan":
+                    from autoblog.rank import exposure_scan
+
+                    try:
+                        res = exposure_scan()
+                        self._send(200, json.dumps(res, ensure_ascii=False).encode())
+                    except Exception as exc:  # noqa: BLE001 — 키 미설정·네트워크 등 안내로 전달
+                        self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode())
                 elif path == "/api/ranks/check":
                     from autoblog.rank import check_all
 
