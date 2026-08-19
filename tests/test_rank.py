@@ -197,3 +197,88 @@ def test_win_rates_and_expected_score(tmp_path, monkeypatch):
     assert rank.expected_score(2_000, 5_000)["ev"] == round(0.5 * rank.sm_score(2_000, 3), 1)
     assert rank.expected_score(200_000, 500_000)["ev"] == 0.0
     assert rank.expected_score(2_000, 5_000)["ev"] > rank.expected_score(200_000, 500_000)["ev"]
+
+
+def test_keyword_suggest_broadens_to_head_noun(monkeypatch):
+    """'다이소 팝콘'처럼 브랜드+상품이면 핵심 명사로도 넓힌다 — 안 그러면 0점 후보만 나온다."""
+    monkeypatch.setattr(rank, "load_env", lambda: type("E", (), {"has_searchad": True})())
+    monkeypatch.setattr(rank, "_related_terms", lambda kw: [])
+    rel = {
+        "다이소 팝콘": [{"keyword": "다이소 팝콘통", "volume": 310}],
+        "팝콘": [{"keyword": "곤약팝콘", "volume": 780}],  # 씨앗 토큰 필터로는 절대 안 나온다
+    }
+    monkeypatch.setattr(rank, "_searchad_related", lambda kw, n, require_tokens=True: rel.get(kw, []))
+    monkeypatch.setattr(rank, "_total", lambda kw: {"다이소 팝콘통": 9_693, "곤약팝콘": 10_268}[kw])
+    monkeypatch.setattr(rank, "search_volumes", lambda kws: {})
+    monkeypatch.setattr(rank, "win_rates", lambda: [])
+    d = rank.keyword_suggest("다이소 팝콘")
+    assert {s["keyword"] for s in d["suggestions"]} == {"다이소 팝콘통", "곤약팝콘"}
+    assert d["head"] == "팝콘"
+    # 한 토큰짜리 씨앗은 넓힐 게 없다
+    assert rank.keyword_suggest("팝콘")["head"] == ""
+
+
+def test_keyword_suggest_strips_brand_token(monkeypatch):
+    """'다이소 팝콘 전자레인지' → '전자레인지팝콘' — 어순 둘 다 시도, 검색량으로 거른다."""
+    monkeypatch.setattr(rank, "load_env", lambda: type("E", (), {"has_searchad": True})())
+    monkeypatch.setattr(rank, "_related_terms", lambda kw: [])
+    monkeypatch.setattr(
+        rank, "_searchad_related",
+        lambda kw, n, require_tokens=True:
+            [{"keyword": "다이소 팝콘 전자레인지", "volume": 10}] if kw == "다이소 팝콘" else [],
+    )
+    # 붙여쓴 '전자레인지팝콘'만 실검색어 — 뒤집힌 '팝콘전자레인지'는 하한 미달로 탈락
+    monkeypatch.setattr(
+        rank, "search_volumes",
+        lambda kws: {k: {"volume": 1590} for k in kws if k == "전자레인지팝콘"}
+        | {k: {"volume": 20} for k in kws if k == "팝콘전자레인지"},
+    )
+    monkeypatch.setattr(rank, "_total", lambda kw: 38_640)
+    monkeypatch.setattr(rank, "win_rates", lambda: [])
+    got = {s["keyword"] for s in rank.keyword_suggest("다이소 팝콘")["suggestions"]}
+    assert "전자레인지팝콘" in got and "팝콘전자레인지" not in got
+
+
+def test_keyword_suggest_drops_below_sm_floor(monkeypatch):
+    """월 300 미만은 슈멤 DB 하한 아래라 추천에서 뺀다 — 1위를 해도 집계가 안 된다."""
+    monkeypatch.setattr(rank, "load_env", lambda: type("E", (), {"has_searchad": True})())
+    monkeypatch.setattr(rank, "_related_terms", lambda kw: [])
+    monkeypatch.setattr(
+        rank, "_searchad_related",
+        lambda kw, n, require_tokens=True: [
+            {"keyword": "쓸만한키워드", "volume": 890},
+            {"keyword": "티끌키워드", "volume": 25},  # 하한 미달 → 제외
+        ] if kw == "씨앗" else [],
+    )
+    calls = []
+    monkeypatch.setattr(rank, "_total", lambda kw: calls.append(kw) or 3_669)
+    monkeypatch.setattr(rank, "search_volumes", lambda kws: {})
+    monkeypatch.setattr(rank, "win_rates", lambda: [])
+    d = rank.keyword_suggest("씨앗")
+    assert [s["keyword"] for s in d["suggestions"]] == ["쓸만한키워드"]
+    assert calls == ["쓸만한키워드"]  # 버릴 후보엔 문서수 조회(API 1회)를 쓰지 않는다
+
+
+def test_find_targets_ranks_by_expected_score(monkeypatch):
+    """노려볼 키워드 — 씨앗은 슈멤 집계 키워드, 순위는 기대 점수(못 잡는 큰 건 바닥)."""
+    monkeypatch.setattr(rank, "load_env", lambda: type("E", (), {"has_searchad": True})())
+    monkeypatch.setattr(rank, "sm_rank", lambda *a, **k: {"keywords": [{"keyword": "냉동떡"}]})
+    monkeypatch.setattr(rank.time, "sleep", lambda s: None)
+    monkeypatch.setattr(
+        rank, "_searchad_related",
+        lambda kw, n, require_tokens=True: [
+            {"keyword": "큰거못잡음", "volume": 50_000},
+            {"keyword": "작지만잡음", "volume": 900},
+        ],
+    )
+    monkeypatch.setattr(
+        rank, "_total", lambda kw: {"큰거못잡음": 500_000, "작지만잡음": 3_000}[kw]
+    )
+    monkeypatch.setattr(rank, "win_rates", lambda: [
+        {"lo": 1_000, "hi": 10_000, "n": 15, "top10": 0.47, "top30": 0.6},
+        {"lo": 100_000, "hi": 10**12, "n": 135, "top10": 0.0, "top30": 0.0},
+    ])
+    d = rank.find_targets()
+    assert d["source"] == "슈멤 집계 중인 내 키워드"
+    assert [r["keyword"] for r in d["rows"]] == ["작지만잡음", "큰거못잡음"]
+    assert d["rows"][0]["exp"]["ev"] > 0 and d["rows"][1]["exp"]["ev"] == 0.0

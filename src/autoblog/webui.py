@@ -1005,6 +1005,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
       <div id=kwres><div class=muted style="margin-top:8px">키워드를 넣으면 <b>이미 쓰인 블로그 글 수(경쟁)</b>·<b>현재 상위 글</b>·<b>내 글 순위</b>를 보여줘요. 문서 수가 적고 상위가 대형 블로그로 꽉 차 있지 않을수록 노려볼 만해요.</div></div>
       <div id=kwad style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)"></div>
     </div>
+    <div class=card style="margin-top:16px"><h3>노려볼 키워드 <span class=muted style="font-weight:400">— 슈멤이 세고, 지금 내 체급으로 이길 수 있는 것만</span></h3>
+      <button class="btn ghost" id=tgtbtn>키워드 찾기</button><div id=tgtres></div></div>
     <div class=card style="margin-top:16px"><h3>슈퍼멤버스 실집계 <span class=muted style="font-weight:400">— 슈멤이 실제로 세고 있는 내 등급·키워드 원본</span></h3><div id=smrank><div class=muted>불러오는 중…</div></div></div>
     <div class=card style="margin-top:16px"><h3>노출 순위 추적 <span class=muted style="font-weight:400">— 블로그 검색 상위 100위(정확도순 근사) 실측</span></h3><div id=ranktrk><div class=muted>불러오는 중…</div></div></div>
   </section>
@@ -1339,7 +1341,7 @@ $$('.nav').forEach(n=>n.onclick=()=>{
   $$('.view').forEach(v=>v.classList.remove('on')); $('.view.'+n.dataset.view).classList.add('on');
   if(n.dataset.view==='stickers') loadStickers();
   if(n.dataset.view==='persona') loadPersonas();
-  if(n.dataset.view==='settings'){ loadRanks(); loadSmRank(); bindKwCheck(); loadKwAd(); }
+  if(n.dataset.view==='settings'){ loadRanks(); loadSmRank(); bindTargets(); bindKwCheck(); loadKwAd(); }
 });
 // 키워드 경쟁 확인 — 발행 전에 '노려볼 만한 키워드인지' 가늠(설정 탭)
 function bindKwCheck(){
@@ -1411,6 +1413,26 @@ function renderKwCheck(d){
 async function loadRanks(){
   const box=$('#ranktrk'); if(!box)return;
   try{const d=await (await fetch('/api/ranks')).json(); renderRanks(d.rows||[]);}catch(e){}
+}
+// 노려볼 키워드 — 슈멤 집계 대상이면서 내 실측 승률로 이길 만한 것만 기대점수 순
+function bindTargets(){
+  const b=$('#tgtbtn'); if(!b)return;
+  b.onclick=async()=>{
+    b.disabled=true; b.textContent='찾는 중… 1~2분 걸려요';
+    try{
+      const r=await fetch('/api/targets',{method:'POST'}); const d=await r.json();
+      if(!r.ok)throw new Error(d.error||'서버 오류');
+      const rows=(d.rows||[]).filter(x=>x.exp&&x.exp.ev>0).slice(0,30);
+      $('#tgtres').innerHTML=`<div class=muted style="margin:8px 0">씨앗 ${d.seeds}개(${esc(d.source)})에서 발굴 · 기대 점수 순</div>`
+        +(rows.length?rows.map(x=>`<div class=rkrow><span class=rkrank>+${x.exp.ev}</span>
+          <span class=rkkw>${esc(x.keyword)}</span>
+          <span class=muted style="min-width:80px;text-align:right">월 ${x.volume.toLocaleString()}</span>
+          <span class=muted style="min-width:92px;text-align:right">문서 ${x.total.toLocaleString()}</span>
+          <span class=muted style="min-width:70px;text-align:right" title="이 씨앗에서 나왔어요">${esc(x.seed)}</span></div>`).join('')
+          :'<div class=muted>지금 체급으로 이길 만한 게 안 나왔어요. 발행·스캔을 더 쌓고 다시 눌러보세요.</div>');
+    }catch(e){$('#tgtres').innerHTML=`<div class=muted>실패 — ${esc(e.message)}</div>`;}
+    finally{ b.disabled=false; b.textContent='키워드 찾기'; }
+  };
 }
 // 슈퍼멤버스 실집계 — 슈멤 앱이 쓰는 공개 엔드포인트를 그대로 읽어 온 원본 숫자
 async function loadSmRank(){
@@ -1800,7 +1822,9 @@ function kwRecRender(){
   const head=document.createElement('div'); head.className='kwrec-t';
   head.append(document.createTextNode('💡 이 키워드는 어때요? '));
   const m=document.createElement('span'); m.className='muted';
-  m.textContent=hasVol?`'${KWREC_SEED}' 연관검색어 중 기대 점수(내 승률 × 슈멤 점수) 높은 순`:`'${KWREC_SEED}' 연관검색어 중 경쟁 낮은 순`;
+  const hd=(KWREC[KWREC_SEED]||[]).head;
+  m.textContent=hasVol?`'${KWREC_SEED}'${hd?` + '${hd}' 계열`:''} 연관검색어 — 내가 잡을 확률까지 따져 유리한 순`
+                      :`'${KWREC_SEED}' 연관검색어 중 경쟁 낮은 순`;
   head.append(m);
   const rb=document.createElement('button'); rb.type='button'; rb.className='kwrec-re'; rb.textContent='🔄 다시 추천';
   rb.title='넣은 키워드를 돌아가며 다른 연관어를 추천해요'; rb.onclick=reSuggest; head.append(rb);
@@ -1818,9 +1842,10 @@ function kwRecRender(){
       vv.style.cssText='font-size:10.5px;margin-left:4px'; vv.textContent=`월 ${fmtVol(s.vol)}`; b.append(vv); }
     if(s.sm3){ const sv=document.createElement('span'); sv.className='muted';
       sv.style.cssText='font-size:10.5px;margin-left:4px;font-weight:600';
-      sv.textContent=s.exp?`기대 +${s.exp.ev}`:`3위면 +${s.sm3}`;
-      sv.title=s.exp?`3위 잡으면 +${s.sm3} × 내 실측 1페이지 승률 ${Math.round(s.exp.win*100)}%(표본 ${s.exp.n}개)`
-                    :'슈멤 점수 전망 — 1페이지(3위) 잡았을 때'; b.append(sv); }
+      sv.textContent=`노출시 +${s.sm3}`;
+      const cond='\n※ 슈멤 키워드 DB에 있는 단어일 때만 실제 점수가 됩니다. 일반 상품명·지역+업종은 잘 잡히고, 브랜드+신상품 조합은 빠지는 경우가 있어요.';
+      sv.title=(s.exp?`1페이지 노출 기준 슈멤 점수 +${s.sm3} · 내 실측 승률 ${Math.round(s.exp.win*100)}%(표본 ${s.exp.n}개) → 기대 +${s.exp.ev}`
+                    :`1페이지 노출 기준 슈멤 점수 +${s.sm3}`)+cond; b.append(sv); }
     const pl=document.createElement('span'); pl.className='rcplus'; pl.textContent='+';
     b.append(pl); b.onclick=()=>{ kwAddMany([s.kw],true); }; wrap.append(b); });  // true=추천 클릭 → 씨앗 안 바꿈
   box.append(wrap);
@@ -1840,7 +1865,8 @@ async function suggestKeywords(seed){
   KWREC[seed]=null;
   const box=$('#kwrec'); if(box){ box.style.display='block'; box.innerHTML='<div class=kwrec-t><span class=muted>유리한 연관 키워드 찾는 중…</span></div>'; }
   try{ const r=await fetch('/api/keyword-suggest?q='+encodeURIComponent(seed)); const d=await r.json();
-       KWREC[seed]=(r.ok&&Array.isArray(d.suggestions))?d.suggestions:[]; }
+       const arr=(r.ok&&Array.isArray(d.suggestions))?d.suggestions:[];
+       arr.head=(r.ok&&d.head)||''; KWREC[seed]=arr; }
   catch(e){ KWREC[seed]=[]; }
   kwRecRender();
 }
@@ -4077,6 +4103,13 @@ def _make_handler(state: dict):
                     else:
                         add_entry(body.get("keyword", ""), body.get("url", ""))
                     self._send(200, b'{"ok":true}')
+                elif path == "/api/targets":
+                    from autoblog.rank import find_targets
+
+                    try:
+                        self._send(200, json.dumps(find_targets(), ensure_ascii=False).encode())
+                    except Exception as exc:  # noqa: BLE001 — 키 미설정·네트워크 등 안내로 전달
+                        self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode())
                 elif path == "/api/ranks/scan":
                     from autoblog.rank import exposure_scan
 

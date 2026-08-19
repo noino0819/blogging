@@ -332,6 +332,7 @@ def discover_topics(
     per_seed: int = 15,
     min_volume: int = 1000,
     max_check: int = 60,
+    rank_by: str = "ratio",
 ) -> list[dict]:
     """주제 발굴 — 시드 키워드들에서 연관 주제를 넓게 확장해 수요/공급 비율로 랭킹.
 
@@ -372,22 +373,70 @@ def discover_topics(
             break
         i += 1
     out: list[dict] = []
+    rates = win_rates() if rank_by == "ev" else []
     for c in candidates:
         try:
             total = _total(c["keyword"])
         except Exception:  # noqa: BLE001 — 개별 실패는 건너뛰고 나머지로 발굴
             continue
-        out.append({**c, "total": total, "ratio": round(c["volume"] / (total + 1), 2)})
-    out.sort(key=lambda x: x["ratio"], reverse=True)
+        row = {**c, "total": total, "ratio": round(c["volume"] / (total + 1), 2)}
+        if rank_by == "ev":
+            row["sm3"] = round(sm_score(c["volume"], 3), 1)
+            row["exp"] = expected_score(c["volume"], total, rates)
+        out.append(row)
+    if rank_by == "ev":
+        # 기대 점수 = 내 실측 승률 × 잡았을 때 점수. 못 잡을 큰 키워드는 알아서 바닥으로.
+        out.sort(key=lambda x: ((x.get("exp") or {}).get("ev", 0), x.get("sm3", 0)), reverse=True)
+    else:
+        out.sort(key=lambda x: x["ratio"], reverse=True)
     return out
 
 
-def keyword_suggest(keyword: str, limit: int = 8) -> dict:
+def find_targets(per_seed: int = 12, min_volume: int = 300, max_check: int = 120) -> dict:
+    """노려볼 만한 키워드 — 슈멤이 세고, 내가 이길 수 있고, 점수가 붙는 것만 골라 온다.
+
+    씨앗은 지금 슈멤이 집계 중인 내 키워드다. 이미 DB에 있는 게 확인됐고 내 카테고리라,
+    거기서 펼친 연관어는 같은 성질일 확률이 높다. 슈멤 조회가 안 되면 내가 이미 30위
+    안에 든 키워드로, 그것도 없으면 config/topic_seeds.yaml로 물러선다.
+
+    순위는 기대 점수(내 실측 1페이지 승률 × 3위 점수) — '점수는 큰데 못 잡는' 키워드가
+    위로 오지 않게 하는 게 이 함수의 존재 이유다.
+    """
+    seeds: list[str] = []
+    src = ""
+    try:
+        seeds = [k["keyword"] for k in sm_rank()["keywords"]]
+        src = "슈멤 집계 중인 내 키워드"
+    except Exception:  # noqa: BLE001 — 비공식 API라 죽어도 발굴은 계속돼야 한다
+        pass
+    if not seeds:
+        try:
+            obs = json.loads(_OBS_PATH.read_text(encoding="utf-8"))
+            seeds = list({o["keyword"] for o in obs if o.get("rank") and o["rank"] <= 30})
+            src = "내가 30위 안에 든 키워드"
+        except (json.JSONDecodeError, OSError, FileNotFoundError):
+            pass
+    if not seeds:
+        seeds = load_topic_seeds()
+        src = "config/topic_seeds.yaml"
+    if not seeds:
+        raise RuntimeError("씨앗이 없어요 — 슈멤 조회도 실패하고 스캔 이력도 없습니다")
+    rows = discover_topics(seeds, per_seed=per_seed, min_volume=min_volume,
+                           max_check=max_check, rank_by="ev")
+    return {"source": src, "seeds": len(seeds), "rows": rows}
+
+
+def keyword_suggest(keyword: str, limit: int = 8, min_volume: int = 300) -> dict:
     """연관검색어 중 '더 유리한' 키워드 추천.
 
     자동완성으로 실제 검색되는 연관어를 뽑고 각각 문서 수(경쟁 대리 지표)를 잰다.
-    검색광고 키가 있으면 월간 검색량도 붙여 '검색량 대비 경쟁이 유리한' 순으로,
-    없으면 기존대로 문서 수 오름차순으로 정렬한다.
+    씨앗이 '다이소 팝콘'처럼 두 토큰 이상이면 핵심 명사('팝콘')로도 후보를 넓힌다 —
+    슈멤이 집계하는 건 브랜드+상품 조합이 아니라 일반 카테고리명 쪽이라, 씨앗 그대로만
+    확장하면 0점짜리 후보만 나온다(실측: '다이소 팝콘' 추천 8개가 전부 '다이소 ○○').
+    검색광고 키가 있으면 월간 검색량을 붙여 기대 점수 순으로, 없으면 문서 수 오름차순.
+
+    월 min_volume(기본 300) 미만은 아예 뺀다 — 슈멤 키워드 표본 1,723개 중 월 300
+    미만이 0개라 DB 하한이 300이다. 그 밑은 1위를 해도 집계가 안 되니 추천할 이유가 없다.
     """
     kw = (keyword or "").strip()
     if not kw:
@@ -401,23 +450,58 @@ def keyword_suggest(keyword: str, limit: int = 8) -> dict:
         seen.add(n)
         return True
 
-    terms = [t for t in _related_terms(kw) if _fresh(t)][:limit]
+    terms = [t for t in _related_terms(kw) if _fresh(t)][: limit * 2]
     # 검색광고 연관 키워드로 후보 풀 확장 — 검색량이 응답에 이미 있어 추가 조회 불필요
     known_vol = {}
-    for r in _searchad_related(kw, limit) if load_env().has_searchad else []:
+    has_ad = load_env().has_searchad
+    for r in _searchad_related(kw, limit * 2) if has_ad else []:
         if _fresh(r["keyword"]):
             terms.append(r["keyword"])
             known_vol[r["keyword"]] = r["volume"]
+    # '다이소 팝콘'처럼 브랜드+상품 조합이면 핵심 명사('팝콘')로도 넓힌다.
+    # 씨앗 토큰을 전부 요구하는 필터 탓에 '곤약팝콘'·'가정용팝콘기계' 같은 일반
+    # 카테고리형이 후보에 아예 못 들어오는데, 슈멤이 집계하는 건 오히려 그쪽이다.
+    # 자동완성은 여기선 안 쓴다 — '팝콘' 넣으면 팝콘티비 같은 다른 분야가 딸려온다.
+    head = kw.split()[-1] if len(kw.split()) >= 2 else ""
+    broadened = False
+    for r in _searchad_related(head, limit * 2) if (head and has_ad) else []:
+        if _fresh(r["keyword"]):
+            terms.append(r["keyword"])
+            known_vol[r["keyword"]] = r["volume"]
+            broadened = True
+    # 후보에서 씨앗의 수식어(브랜드) 토큰을 떼어 일반형을 만든다 —
+    # '다이소 팝콘 전자레인지' → '전자레인지팝콘'(월 1,590). 검색광고 연관어에는 없지만
+    # 실제로 검색되는 형태이고, 슈멤이 집계하는 것도 이쪽이다. 어순은 둘 다 만들어
+    # 보고 검색량이 잡히는 것만 남긴다(엉뚱한 조합은 검색량 0으로 알아서 걸러진다).
+    mods = set(kw.split()[:-1])
+    if mods and has_ad:
+        variants: set[str] = set()
+        for t in list(terms):
+            toks = [x for x in t.split() if x not in mods]
+            if not toks or len(toks) == len(t.split()):
+                continue
+            variants.add("".join(toks))
+            if len(toks) == 2:
+                variants.add(toks[1] + toks[0])
+        for cand, info in search_volumes([v for v in variants if _fresh(v)]).items():
+            if (info.get("volume") or 0) >= 100:
+                terms.append(cand)
+                known_vol[cand] = info["volume"]
+                broadened = True
+
+    # 문서 수 조회(_total)는 후보당 API 1회라 비싸다 — 검색량으로 먼저 쳐내고 남은 것만 잰다.
+    for k, info in search_volumes([t for t in terms if t not in known_vol]).items():
+        known_vol[k] = info.get("volume") or 0
+    if has_ad:
+        terms = [t for t in terms if (known_vol.get(t) or 0) >= min_volume]
+        terms.sort(key=lambda t: -(known_vol.get(t) or 0))
+        terms = terms[: limit * 2]
     scored = []
     for t in terms:
         try:
-            scored.append({"keyword": t, "total": _total(t)})
+            scored.append({"keyword": t, "volume": known_vol.get(t), "total": _total(t)})
         except Exception:  # noqa: BLE001 — 개별 실패는 건너뛰고 나머지로 추천
             continue
-    vols = search_volumes([s["keyword"] for s in scored if s["keyword"] not in known_vol])
-    for s in scored:
-        v = vols.get(s["keyword"]) or {}
-        s["volume"] = known_vol.get(s["keyword"], v.get("volume"))
     rates = win_rates()
     for s in scored:
         # 1페이지(3위 가정)를 잡았을 때 슈멤 점수가 얼마나 오르는지 — 뽑을지 말지의 기준
@@ -433,7 +517,8 @@ def keyword_suggest(keyword: str, limit: int = 8) -> dict:
         scored.sort(key=lambda x: (x["volume"] or 0) ** _SM_A / (x["total"] + 1), reverse=True)
     else:
         scored.sort(key=lambda x: x["total"])
-    return {"keyword": kw, "suggestions": scored, "has_volume": has_volume}
+    return {"keyword": kw, "suggestions": scored, "has_volume": has_volume,
+            "head": head if broadened else ""}
 
 
 def check_all() -> list[dict]:
@@ -709,6 +794,11 @@ def expected_score(volume: int, total: int, rates: list[dict] | None = None) -> 
 
     점수만 크고 못 잡는 키워드를 걸러내는 게 목적이다 — 문서 10만짜리는 점수가
     아무리 커도 승률이 0이면 기대값도 0이다. 표본(n)이 작으면 신뢰도가 낮으니 같이 준다.
+
+    남은 전제 하나: 슈멤 키워드 DB에 없는 단어는 1위를 해도 0점인데, DB를 열람할
+    방법이 없어 여기서는 걸러내지 못한다(UI 툴팁에 명시). 실측 경향은 일반 상품
+    카테고리명·지역+업종은 수록되고, 브랜드+신상품 조합·고유명사는 빠지는 편이다
+    — 내 1페이지 키워드 13개가 미집계로 확인된 데서 나온 경향이다.
     """
     w = win_rate_for(total, rates)
     if w is None or not volume:
