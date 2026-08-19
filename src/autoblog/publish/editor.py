@@ -2169,20 +2169,34 @@ class BlogPublisher:
         if tail_enter:
             self._page.keyboard.press("Enter")
 
-    # 키캡 이모지(1️⃣ = 숫자+U+FE0F+U+20E3 결합)는 한 글자씩 치면 결합이 깨져 '1' 따로,
-    # 빈 네모(⃣) 따로 들어간다. 통째로 insert_text 하면 브라우저가 한 덩어리로 받아 안 깨진다.
-    _KEYCAP_RE = re.compile(r"[0-9](?:️)?⃣")
+    # 여러 코드포인트가 한 글자로 결합되는 이모지 — 키캡(1️⃣ = 숫자+U+FE0F+U+20E3), 피부톤
+    # (👍🏻 = 👍+U+1F3FB), ZWJ 조합(👩‍👧), 변이 선택자. Playwright의 keyboard.type은 코드포인트
+    # 단위로 쪼개 치므로 이런 글자는 결합이 깨지고(키캡: '1' 따로 빈 네모 따로), 결합 처리
+    # 직후에 오는 Enter가 SE의 비동기 내부 모델에 씹혀 다음 줄이 같은 문단에 붙기도 한다
+    # (2026-08-19 실사고: '…적혀 있어요 👍🏻' 다음 줄 '이런 안내 은근히 고맙죠'가 한 문단으로
+    # 붙어 저장 전 관문에 걸림). 통째로 insert_text 하면 브라우저가 한 덩어리로 받아 안 깨진다.
+    # 결합 이모지의 base(이모지·기호·키캡 숫자)와, 뒤에 붙어 한 글자를 이루는 결합자
+    # (변이 선택자 FE0E/FE0F, 키캡 20E3, 피부톤 1F3FB~1F3FF, ZWJ 200D).
+    _EMOJI_BASE = r"[0-9#*\u00A9\u00AE\u2000-\u32FF\U0001F000-\U0001FAFF]"
+    _CLUSTER_RE = re.compile(
+        _EMOJI_BASE
+        + r"(?:[\uFE0E\uFE0F\u20E3\U0001F3FB-\U0001F3FF]|\u200D" + _EMOJI_BASE + r")+"
+    )
 
     def _type_with_keycaps(self, text: str):
-        """키캡 이모지 구간만 insert_text로 통째 넣고, 나머지는 기존대로 한 글자씩 친다.
+        """결합 이모지 구간만 insert_text로 통째 넣고, 나머지는 기존대로 한 글자씩 친다.
 
-        키캡 외 구간은 \\n을 그대로 넘겨 기존 keyboard.type의 문단(Enter) 처리를 유지한다.
+        이모지 외 구간은 \\n을 그대로 넘겨 기존 keyboard.type의 문단(Enter) 처리를 유지한다.
         키캡은 변이 선택자(U+FE0F)를 붙인 표준형으로 정규화해 컬러 이모지로 또렷이 렌더한다."""
         pos = 0
-        for m in self._KEYCAP_RE.finditer(text):
+        for m in self._CLUSTER_RE.finditer(text):
             if m.start() > pos:
                 self._page.keyboard.type(text[pos : m.start()], delay=4)
-            self._page.keyboard.insert_text(m.group()[0] + "️⃣")
+            g = m.group()
+            self._page.keyboard.insert_text(g[0] + "️⃣" if g.endswith("⃣") else g)
+            # 결합 글자를 넣은 직후의 Enter가 씹히던 사고 대비 — SE가 반영할 틈을 준다.
+            # ponytail: 고정 대기(글당 이모지 몇 개라 비용 무시 가능). 폴링할 신호가 없다.
+            self._page.wait_for_timeout(60)
             pos = m.end()
         if pos < len(text):
             self._page.keyboard.type(text[pos:], delay=4)
