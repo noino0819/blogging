@@ -229,6 +229,9 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .wtab.wadd{color:var(--sub);font-weight:600;font-size:15px;line-height:1;padding:6px 11px}
  .wtab.importing{border-color:var(--color-accent-300);background:var(--color-accent-100)}
  .wtab.importing .wt{color:var(--color-accent-700)}
+ /* 임시저장이 끝난 탭 — 살짝 구운색으로 눕혀 '이제 닫아도 된다'는 표시 */
+ .wtab.saved{background:var(--color-accent-200);border-color:var(--color-accent-300);color:var(--color-accent-800)}
+ .wtab.on.saved{border-color:var(--color-accent)}
  .wtab .wspin{width:11px;height:11px;flex:none;border:2px solid var(--color-accent-200);border-top-color:var(--color-accent);border-radius:50%;animation:wsp .7s linear infinite;display:none}
  .wtab.importing .wspin{display:inline-block}
  @keyframes wsp{to{transform:rotate(360deg)}}
@@ -2321,7 +2324,8 @@ function renderTabs(){
   const bar=$('#workbar'); if(!bar) return; bar.innerHTML='';
   WS.forEach(w=>{
     const t=document.createElement('div');
-    t.className='wtab'+(w.id===CURWS?' on':'')+(w.status==='importing'?' importing':'');
+    t.className='wtab'+(w.id===CURWS?' on':'')+(w.status==='importing'?' importing':'')+(w.status==='saved'?' saved':'');
+    if(w.status==='saved') t.title='임시저장 완료 — 이 탭은 닫아도 돼요';
     t.innerHTML='<span class=wspin></span><span class=wt></span>'+(WS.length>1?'<button class=wx title="탭 닫기">✕</button>':'');
     t.querySelector('.wt').textContent=wsTitle(w);
     t.onclick=e=>{ if(e.target.closest('.wx'))return; switchWS(w.id); };
@@ -2623,6 +2627,7 @@ $('#gen').onclick=async()=>{
     const r=await fetch('/api/generate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:GENABORT.signal});
     const d=await r.json();
     if(!r.ok){genDone(false); $('#preview').innerHTML='<div class=genload><div style="font-size:40px">😢</div><div class=genmsg>생성 실패</div><div class=gensub>'+(d.error||'')+'</div></div>'; st('실패'); errNotice('초안 생성 실패', d.error); return;}
+    { const w=findWS(CURWS); if(w&&w.status==='saved') w.status='edit'; }  // 새 초안 = 다시 저장할 거리
     genDone(true); PLAN=d; setTimeout(()=>renderPreview(d),350); st('생성 완료. 검토 후 임시저장하세요.'); toast('초안 생성 완료! 오른쪽 미리보기를 확인하세요.','ok'); $('#save').disabled=false; renderTabs();
     if(d.debug)showLog(d.debug);
   }catch(e){genDone(false);
@@ -2859,6 +2864,10 @@ function runSave(r, retryId){
       if(!res.ok) throw new Error(d.error||'알 수 없는 오류');
       const sec=r.timer?r.timer.stop():0; r.timer=null;
       const warns=d.warnings||[], infos=d.infos||[];  // infos=정상 동작 안내(확인 불필요)
+      // 저장이 된 건 여기서 확정 — ⚠(확인 필요)든 아니든 그 글의 작업 탭을 '구운색'으로.
+      // 확인할 게 있으면 어차피 알림·⚠ 기록으로 따로 뜬다.
+      const w=findWS(r.body&&r.body.draftId);
+      if(w&&w.status!=='importing'){ w.status='saved'; renderTabs(); persistWS(); }
       if(warns.length){
         tabSetState(r,'warn','⚠'); cntEl.textContent='확인 필요';
         const wTitle=`'${r.title}' 임시저장됨 — 일부 항목 확인 필요`;
