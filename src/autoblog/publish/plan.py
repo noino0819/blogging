@@ -625,9 +625,8 @@ def build_publish_plan(
             carded_urls.add(url)
             blocks.append(PublishBlock(kind="link", link_url=url))
 
-    def flush_text():
-        text = "\n".join(text_buf).strip()
-        text_buf.clear()
+    def emit_text(lines: list[str]):
+        text = "\n".join(lines).strip()
         if not text:
             return
         text, urls = strip_raw_urls(text)  # 생링크는 본문에 노출하지 않는다
@@ -636,6 +635,20 @@ def build_publish_plan(
             spans = [e for e in draft.emphases if e.text and e.text in text]
             blocks.append(PublishBlock(kind="text", text=text, emphases=spans, align="center"))
         emit_link_cards(urls)
+
+    def flush_text():
+        buf, seg = text_buf[:], []
+        text_buf.clear()
+        for ln in buf:
+            # URL만 있는 줄 → 카드는 '쓴 자리'에. 문단을 여기서 끊는다(안 끊으면 문단을
+            # 다 내보낸 뒤 카드가 붙어서, 문단 첫 줄에 쓴 링크가 문단 아래로 밀린다).
+            if _BARE_URL_RE.fullmatch(ln.strip()):
+                emit_text(seg)
+                seg = []
+                emit_link_cards([ln.strip().rstrip(".,;:!?)]")])
+            else:
+                seg.append(ln)
+        emit_text(seg)
 
     def flush_table():
         buf = table_buf[:]

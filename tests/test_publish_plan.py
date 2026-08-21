@@ -848,3 +848,18 @@ def test_build_plan_strips_line_edge_whitespace():
             assert ln == ln.strip(), f"{b.kind} 문단에 경계 공백: {ln!r}"
     assert any("링크 뒤 문장" in b.text for b in plan.blocks if b.kind == "text")
     assert any("들여쓴 인용 줄." in b.text for b in plan.blocks if b.kind == "quote")
+
+
+def test_link_card_keeps_written_position():
+    # URL만 있는 줄은 그 자리에 카드 — 문단 첫 줄에 쓴 링크가 문단 아래로 밀리지 않는다
+    draft = DraftResult(text="제목\n\nhttps://blog.naver.com/x/1\n기다림이 안 아까웠어요.\n다음에 또 갈래요.")
+    plan = build_publish_plan(draft)
+    kinds = [b.kind for b in plan.blocks]  # 첫 줄 "제목"은 제목으로 빠진다
+    assert kinds == ["link", "text"]
+    assert plan.blocks[0].link_url == "https://blog.naver.com/x/1"
+    assert plan.blocks[1].text.startswith("기다림이")
+
+    # 문장 중간 URL은 그대로 문단 뒤에(문단을 쪼갤 자리가 없음)
+    d2 = DraftResult(text="제목\n\n여기 https://a.com/b 좋아요.\n또 갈래요.")
+    p2 = build_publish_plan(d2)
+    assert [b.kind for b in p2.blocks] == ["text", "link"]
