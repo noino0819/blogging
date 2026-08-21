@@ -928,8 +928,11 @@ class BlogPublisher:
             page.evaluate(self._FORCE_LOAD_IMGS_JS)
         except Exception:  # noqa: BLE001
             pass
-        failed: list[str] = []
+        # 실패는 (캡션 앞머리, 이유)로 모은다 — 이유를 안 남기면 다섯 갈래(매핑/구조/클릭
+        # 가로챔/핸들 유실/캐럿 이탈) 중 무엇인지 사후에 알 방법이 없다(2026-08-21 실사고).
+        failed: list[tuple[str, str]] = []
         for k, cap in todo:
+            step = "사진 찾기"  # 예외가 난 단계 — 아래로 내려가며 갱신
             try:
                 handle = page.evaluate_handle(
                     r"""(k) => {
@@ -944,31 +947,39 @@ class BlogPublisher:
                     k,
                 )
                 comp = handle.as_element()
-                cap_el = comp.query_selector(SMART_EDITOR["image_caption"]) if comp else None
+                if comp is None:  # 플랜 k번째 ↔ 본문 k번째 매핑이 어긋남(본문에 사진이 더/덜 있음)
+                    failed.append((cap[:15], f"본문에서 {k + 1}번째 사진을 못 찾음(사진 매핑 어긋남)"))
+                    continue
+                cap_el = comp.query_selector(SMART_EDITOR["image_caption"])
                 if cap_el is None:
-                    failed.append(cap[:15])
+                    failed.append((cap[:15], "사진에 캡션칸이 없음(에디터 구조 변경?)"))
                     continue
                 if "se-is-empty" not in (cap_el.get_attribute("class") or ""):
                     continue  # 이미 캡션 있음(재시도 등) — 덧붙이면 중복
                 comp.scroll_into_view_if_needed()
+                step = "사진 클릭"
                 comp.query_selector("img.se-image-resource").click()  # 객체 선택 → 캡션 활성
                 page.wait_for_timeout(300)
+                step = "캡션칸 클릭"
                 cap_el.click()
                 page.wait_for_timeout(300)
+                step = "타이핑"
                 page.keyboard.type(cap, delay=15)
                 page.wait_for_timeout(200)
                 # 실측: 타이핑이 실제 캡션 요소에 실렸는지(캐럿이 딴 데 있었으면 여기서 걸림)
                 if self._sig(cap, 10) not in self._sig(cap_el.text_content() or ""):
-                    failed.append(cap[:15])
-            except Exception:  # noqa: BLE001 - 캡션은 보조, 실패해도 저장 진행
-                failed.append(cap[:15])
+                    failed.append((cap[:15], "타이핑이 캡션칸에 안 실림(캐럿이 딴 데 있었음)"))
+            except Exception as exc:  # noqa: BLE001 - 캡션은 보조, 실패해도 저장 진행
+                why = str(exc).strip().splitlines()[0][:60] if str(exc).strip() else ""
+                failed.append((cap[:15], f"{step} 중 {type(exc).__name__}: {why}"))
                 page.keyboard.press("Escape")
         page.keyboard.press("Escape")  # 캡션 편집 상태 정리(다음 후처리 단계로)
         if failed:
-            names = ", ".join(f"‘{c}…’" for c in failed[:3])
+            names = "; ".join(f"‘{c}…’ {why}" for c, why in failed[:3])
             warnings.append(
-                f"사진 캡션 자동 입력 실패 {len(failed)}건({names}) — 에디터에서 사진 아래 "
-                "‘사진 설명’에 직접 적어 주세요."
+                f"사진 캡션 자동 입력 실패 {len(failed)}건 — {names}"
+                + ("…" if len(failed) > 3 else "")
+                + " — 에디터에서 사진 아래 ‘사진 설명’에 직접 적어 주세요."
             )
 
     def _mark_ai_images(self, plan) -> None:
