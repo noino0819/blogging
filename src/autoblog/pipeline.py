@@ -66,8 +66,24 @@ def _place_info(card: FactCard | None) -> tuple[bool, str | None, str | None]:
     return False, None, None
 
 
+def _collect_place(url: str, use_cache: bool, say: Callable[[str], None]) -> FactCard:
+    """플레이스 URL 1개 → 카드(세션 캐시 재사용). 여러 개 수집의 단위."""
+    key = "place:" + url
+    cached = _SCRAPE_CACHE.get(key) if use_cache else None
+    if cached is not None:
+        say("저장해둔 가게 정보를 재사용하는 중…")
+        return cached.model_copy(deep=True)
+    say("네이버 지도에서 가게 정보를 가져오는 중…")
+    from autoblog.collect.place import collect_place_from_url
+
+    card = collect_place_from_url(url)
+    if use_cache and not card.is_fallback:  # 실패 카드는 캐시하지 않음(다음에 재시도)
+        _SCRAPE_CACHE[key] = card.model_copy(deep=True)
+    return card
+
+
 def collect_card(
-    place_url: str | None = None,
+    place_url: str | list[str] | None = None,
     product: str | None = None,
     photos: list[str] | None = None,
     photo_meta: dict[str, dict] | None = None,
@@ -91,19 +107,17 @@ def collect_card(
         if progress:
             progress(msg)
 
-    if place_url:
-        key = "place:" + place_url
-        cached = _SCRAPE_CACHE.get(key) if use_cache else None
-        if cached is not None:
-            _say("저장해둔 가게 정보를 재사용하는 중…")
-            card = cached.model_copy(deep=True)
-        else:
-            _say("네이버 지도에서 가게 정보를 가져오는 중…")
-            from autoblog.collect.place import collect_place_from_url
-
-            card = collect_place_from_url(place_url)
-            if use_cache and not card.is_fallback:  # 실패 카드는 캐시하지 않음(다음에 재시도)
-                _SCRAPE_CACHE[key] = card.model_copy(deep=True)
+    urls = [place_url] if isinstance(place_url, str) else list(place_url or [])
+    urls = [u for u in (u.strip() for u in urls) if u]
+    if urls:
+        card = _collect_place(urls[0], use_cache, _say)
+        for url in urls[1:]:  # 2번째 이후 가게 — 대표 카드에 붙여 한 글에 같이 실린다
+            other = _collect_place(url, use_cache, _say)
+            if other.place:
+                card.extra_places.append(other.place)
+            else:
+                card.warnings.append(f"추가 가게 수집 실패: {url}")
+            card.warnings += other.warnings
     elif product:
         key = "product:" + product
         cached = _SCRAPE_CACHE.get(key) if use_cache else None
@@ -143,8 +157,7 @@ def build_photo_context(card: FactCard | None, memo: str = "") -> str:
     parts: list[str] = []
     if memo and memo.strip():
         parts.append(f"메모: {memo.strip()}")
-    if card and card.place:
-        p = card.place
+    for p in (([card.place] if card and card.place else []) + list(card.extra_places if card else [])):
         if p.name:
             parts.append("가게: " + p.name + (f" ({p.category})" if p.category else ""))
         if p.description:
@@ -180,7 +193,7 @@ def _categories_for(card: FactCard | None, review_type: str | None) -> list[str]
 def caption_photos(
     memo: str = "",
     *,
-    place_url: str | None = None,
+    place_url: str | list[str] | None = None,
     product: str | None = None,
     photos: list[str] | None = None,
     review_type: str | None = None,
@@ -211,7 +224,7 @@ def build_export_prompt(
     memo: str,
     *,
     card: FactCard | None = None,
-    place_url: str | None = None,
+    place_url: str | list[str] | None = None,
     product: str | None = None,
     card_kind: str | None = None,
     photos: list[str] | None = None,
@@ -383,7 +396,7 @@ def run_pipeline(
     memo: str,
     *,
     card: FactCard | None = None,
-    place_url: str | None = None,
+    place_url: str | list[str] | None = None,
     product: str | None = None,
     card_kind: str | None = None,
     photos: list[str] | None = None,

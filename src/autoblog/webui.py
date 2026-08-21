@@ -583,7 +583,8 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
  .prodlinkbox{margin-top:0}
  .plrow{display:flex;gap:6px;margin-top:6px}
  .plrow .plink{flex:1;min-width:0}
- .plrow .plrm{flex:0 0 auto;width:34px;padding:0;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--sub)}
+ .plrow .plrm,.plrow .pladd{flex:0 0 auto;width:34px;padding:0;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--sub)}
+ .plrow .pladd{font-size:15px;line-height:1}  /* +는 ✕보다 작게 그려져 눈으로 크기를 맞춘다 */
  /* 보조 액션(복사/붙여넣기) — 한 줄에 작게 */
  .actrow{display:flex;gap:8px;margin-top:9px}
  .actrow .btn{padding:10px;font-size:12px}
@@ -779,13 +780,13 @@ _PAGE = r"""<!doctype html><html lang=ko><head><meta charset=utf-8>
           </div>
           <div class=modehint id=srchint>링크를 붙여넣으면 알아서 맞춰져요 — 따로 안 골라도 됩니다.</div>
           <div id=srcrow>
-            <label class=f id=srclabel>수집 <span class=hint id=srchintq data-tip="선택 사항이에요. 맛집 플레이스 URL을 붙여넣으면 가게 정보를 자동으로 수집합니다.">i</span></label>
-            <input type=text id=srcval placeholder="맛집 플레이스 URL 붙여넣기">
+            <label class=f id=srclabel>수집 <span class=hint id=srchintq data-tip="선택 사항이에요. 맛집 플레이스 URL을 붙여넣으면 가게 정보를 자동으로 수집합니다. 칸 옆 ＋로 가게를 여러 곳 넣으면 한 글에 다 실려요.">i</span></label>
+            <div id=srcbox><div class=plrow><input type=text id=srcval class=plink placeholder="맛집 플레이스 URL 붙여넣기"></div></div>
+            <div class=modehint id=srcstat style="display:none"></div>
           </div>
           <div class=prodlinkbox id=prodlinkbox style="display:none">
-            <label class=f>상품 링크 <span class=hint data-tip="상품 리뷰에 꼭 들어가야 하는 링크예요. 본문에 카드 형태로 한 번씩 삽입됩니다. [+ 링크 추가]로 여러 개 넣을 수 있어요.">i</span></label>
+            <label class=f>상품 링크 <span class=hint data-tip="상품 리뷰에 꼭 들어가야 하는 링크예요. 본문에 카드 형태로 한 번씩 삽입됩니다. 칸 옆 ＋로 여러 개 넣을 수 있어요.">i</span></label>
             <div id=prodlinks></div>
-            <button type=button class="btn ghost" id=addprodlink style="width:100%;justify-content:center;gap:6px;margin-top:6px">+ 링크 추가</button>
           </div>
           <div class=kwrec id=inforec style="display:none;margin-top:8px">
             <div class=kwrec-t>추천 주제 — 검색량 대비 경쟁 낮은 순 <button type=button class=kwrec-re id=increcbtn>불러오기</button></div>
@@ -1203,6 +1204,43 @@ function spinRow(el){
 // 수집 종류: 'place'(맛집·기본) | 'product'(상품). 입력으로 자동 추정하되 직접 고르면 고정.
 let MODE='place', SRCKIND='place', KINDMANUAL=false;
 const SRCVAL=()=>MODE==='product'?'':$('#srcval').value;  // 상품은 수집칸이 숨어 잔존값이 새지 않게 항상 빈 값
+// 여러 칸 입력(가게 수집·상품 링크) 공통 — 칸마다 ＋(한 칸 아래 추가)·✕(그 칸 삭제).
+// 전용 [+ 추가] 버튼을 한 줄 더 두지 않는다. ＋는 마지막 칸에만 보여 줄줄이 늘어나지 않게.
+function wireRow(row, box, mk){
+  const add=document.createElement('button'); add.type='button'; add.className='btn ghost pladd'; add.title='한 칸 추가'; add.textContent='+';
+  add.onclick=()=>{const n=mk(''); row.after(n); wireRow(n,box,mk); syncRows(box); n.querySelector('.plink').focus();};
+  const rm=document.createElement('button'); rm.type='button'; rm.className='btn ghost plrm'; rm.title='이 칸 삭제'; rm.textContent='✕';
+  rm.onclick=()=>{const inp=row.querySelector('.plink');
+    if(box.children.length>1)row.remove(); else inp.value='';  // 한 칸만 남으면 지우지 않고 비운다
+    syncRows(box);};
+  row.append(add,rm); return row;}
+function syncRows(box){const rows=[...box.children];
+  rows.forEach((r,i)=>{const a=r.querySelector('.pladd'), x=r.querySelector('.plrm');
+    // ＋는 마지막 칸에만 '보이게' — display로 지우면 그 칸만 입력 폭이 넓어져 ✕가 어긋난다
+    if(a){a.style.display='flex'; a.style.visibility=(i===rows.length-1)?'visible':'hidden';}
+    if(x)x.style.display='flex';});}
+function inputRow(ph,val,type){
+  const row=document.createElement('div'); row.className='plrow';
+  const inp=document.createElement('input'); inp.type=type||'text'; inp.className='plink'; inp.placeholder=ph; inp.value=val||'';
+  row.appendChild(inp); return row;}
+// 맛집은 가게를 여러 곳 수집할 수 있다(#srcbox 칸들 = 가게 하나씩).
+// 모드별 스토어엔 줄바꿈으로 이어 붙여 넣는다(구형 스냅샷=한 줄과 그대로 호환).
+const SRCINPUTS=()=>$$('#srcbox .plink');
+const SRCLIST=()=>MODE==='place'?SRCINPUTS().map(i=>i.value.trim()).filter(Boolean):[];
+function srcText(){ return MODE==='place'?SRCINPUTS().map(i=>i.value).filter(v=>v.trim()).join('\n'):$('#srcval').value; }
+function srcRow(val){
+  const row=inputRow('맛집 플레이스 URL 붙여넣기',val);
+  const inp=row.querySelector('.plink');
+  inp.addEventListener('change',()=>prefetchCard(inp));
+  inp.addEventListener('paste',()=>setTimeout(()=>prefetchCard(inp),0));
+  return row;}
+function setSrcText(t){
+  const lines=String(t||'').split('\n'), box=$('#srcbox');
+  while(box.children.length>1)box.lastElementChild.remove();  // 첫 칸(#srcval)은 고정, 나머지만 갈아끼움
+  $('#srcval').value=lines[0]||'';
+  lines.slice(1).filter(v=>v.trim()).forEach(v=>{const n=srcRow(v); box.appendChild(n); wireRow(n,box,srcRow);});
+  syncRows(box);
+}
 // 메모·소스 입력은 모드마다 딴 글감이라 공유하지 않는다 — 모드 전환 시 스토어에 넣었다 꺼낸다.
 const blankModeStore=()=>({place:'',product:'',info:'',restyle:''});
 let MEMOS=blankModeStore(), SRCVALS=blankModeStore();
@@ -1217,20 +1255,24 @@ function setKind(k,manual){
   if(manual)KINDMANUAL=true;
   const restyle=(k==='restyle');
   const switching=(k!==MODE);
-  if(!WSRESTORING&&switching){MEMOS[MODE]=$('#memo').value; SRCVALS[MODE]=$('#srcval').value;}
+  if(!WSRESTORING&&switching){MEMOS[MODE]=$('#memo').value; SRCVALS[MODE]=srcText();}
   MODE=k; if(!restyle)SRCKIND=k;  // SRCKIND는 백엔드 수집·사진 분류용 실제 종류(리스타일은 이전 값 유지)
-  if(WSRESTORING||switching){$('#memo').value=MEMOS[k]||''; $('#srcval').value=SRCVALS[k]||'';}
+  if(WSRESTORING||switching){$('#memo').value=MEMOS[k]||''; setSrcText(SRCVALS[k]||'');}
   $('#restyleMode').checked=restyle;  // 생성/내보내기가 읽는 restyle 플래그의 단일 출처
   $$('#kindseg button').forEach(b=>{b.classList.toggle('on',b.dataset.k===k);
     b.classList.toggle('auto',!KINDMANUAL&&b.dataset.k===k);});
   {const pb=$('#prodlinkbox'); if(pb)pb.style.display=(k==='product')?'block':'none';}
   {const sr=$('#srcrow'); if(sr)sr.style.display=(restyle||k==='product')?'none':'block';}  // 상품은 수집 대신 상품 링크가 소스
+  {const st=$('#srcstat'); if(st&&k!=='place')st.style.display='none';}  // 수집 상태줄은 맛집에서만
+  {const sb=$('#srcbox');  // 여러 칸(＋/✕)은 맛집만 — 정보 모드의 '주제'는 한 칸
+   if(sb&&k==='place')syncRows(sb);
+   else if(sb)$$('#srcbox .pladd,#srcbox .plrm').forEach(b=>b.style.display='none');}
   {const ir=$('#inforec'); if(ir)ir.style.display=(k==='info')?'block':'none';}
   {const pr=$('#preprow'); if(pr)pr.style.display=(k==='info')?'flex':'none';}
   $('#srclabel').childNodes[0].nodeValue=(k==='info')?'주제 ':'수집 ';
   $('#srchintq').dataset.tip=(k==='info')
     ?'쓸 주제를 입력하거나 위 추천 주제에서 고르세요. [주제 준비]가 이 주제로 상위 글을 조사해 팩트시트를 만들어요.'
-    :'선택 사항이에요. 맛집 플레이스 URL을 붙여넣거나 상품 검색어를 적으면 정보를 자동으로 수집합니다.';
+    :'선택 사항이에요. 맛집 플레이스 URL을 붙여넣으면 가게 정보를 자동으로 수집합니다. 칸 옆 ＋로 가게를 여러 곳 넣으면 한 글에 다 실려요.';
   $('#srcval').placeholder=(k==='info')
     ?'정보 주제 입력 (예: 복숭아 보관법)'
     :'맛집 플레이스 URL 붙여넣기';
@@ -1312,13 +1354,9 @@ let CATEGORY='';
 const RESERVE_READY = ("/*RESERVE_READY*/"==="true");
 const LINKS=()=>($('#links').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
 // 상품 링크 — 상품 리뷰에 꼭 넣을 링크. 카드로 한 번씩 삽입. 기본 1행 + [+ 링크 추가].
-function prodLinkRow(val){
-  const row=document.createElement('div'); row.className='plrow';
-  const inp=document.createElement('input'); inp.type='url'; inp.className='plink'; inp.placeholder='https:// 상품 링크 붙여넣기'; inp.value=val||'';
-  const rm=document.createElement('button'); rm.type='button'; rm.className='btn ghost plrm'; rm.title='삭제'; rm.textContent='✕';
-  rm.onclick=()=>{const box=$('#prodlinks'); if(box.children.length>1)row.remove(); else inp.value='';};
-  row.append(inp,rm); return row;}
-function addProdLink(val){$('#prodlinks').appendChild(prodLinkRow(val)); return $('#prodlinks').lastElementChild;}
+const prodLinkRow=val=>inputRow('https:// 상품 링크 붙여넣기',val,'url');
+function addProdLink(val){const box=$('#prodlinks'), row=prodLinkRow(val);
+  box.appendChild(row); wireRow(row,box,prodLinkRow); syncRows(box); return row;}
 function resetProdLinks(){$('#prodlinks').innerHTML=''; addProdLink('');}
 const PRODLINKS=()=>SRCKIND==='product'?$$('#prodlinks .plink').map(i=>i.value.trim()).filter(Boolean):[];
 const RULES={mobile_friendly:true,authenticity:true,structure_guide:true,seo:true,emoji:false};
@@ -1536,21 +1574,22 @@ $('#srcval').oninput=()=>{if(KINDMANUAL)return;
 // 맛집 URL은 붙여넣는 즉시(또는 포커스가 떠날 때) 미리 수집해 서버 캐시를 데워둔다
 // — '프롬프트 만들기'에서 수집 대기가 사라진다. 상품은 검색어 타이핑 중 오발동이 잦아 제외.
 let PREFETCHED='';
-async function prefetchCard(){
-  const v=$('#srcval').value.trim();
+async function prefetchCard(inp){
+  inp=inp||$('#srcval');
+  const v=inp.value.trim();
   if(!v||v===PREFETCHED||SRCKIND!=='place'||!(/^https?:\/\//.test(v)||v.includes('naver.me')))return;
   PREFETCHED=v;
-  const hint=$('#srchint'), esc=s=>String(s).replace(/</g,'&lt;');
-  hint.innerHTML='가게 정보를 미리 수집하는 중…';
+  const hint=$('#srcstat'), esc=s=>String(s).replace(/</g,'&lt;');
+  hint.style.display='block'; hint.innerHTML='가게 정보를 미리 수집하는 중…';
   try{
     const r=await(await fetch('/api/prefetch-card',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({srcval:v,kind:SRCKIND})})).json();
-    if($('#srcval').value.trim()!==v)return; // 그 사이 입력이 바뀌었으면 힌트 안 덮음
+    if(inp.value.trim()!==v)return; // 그 사이 입력이 바뀌었으면 힌트 안 덮음
     hint.innerHTML=r.ok?('<b>'+esc(r.name||'가게')+'</b> 정보 수집 완료 — 프롬프트에 자동으로 들어가요')
       :'가게 정보를 못 가져왔어요 — 링크 확인해 주세요 (프롬프트 만들기 때 자동 재시도)';
   }catch(e){}
 }
-$('#srcval').addEventListener('change',prefetchCard);
-$('#srcval').addEventListener('paste',()=>setTimeout(prefetchCard,0));
+$('#srcval').addEventListener('change',()=>prefetchCard());
+$('#srcval').addEventListener('paste',()=>setTimeout(()=>prefetchCard(),0));
 // 협찬 토글 — 켜면 고지 스티커 픽커·쿠팡 링크 입력을 펼침
 $('#sponsw').onclick=function(){FMT.sponsored=!FMT.sponsored;
   this.classList.toggle('on',FMT.sponsored);
@@ -2209,7 +2248,7 @@ function captureWS(){
     PHOTOMETA:JSON.parse(JSON.stringify(PHOTOMETA||{})), THUMB, AISET:new Set(AISET||[]),
     PMACTIVE, PMSEL:new Set(PMSEL||[]), PMANCHOR, SUBCATS:JSON.parse(JSON.stringify(SUBCATS||{})), XCATS:XCATS.slice(), CATORDER:CATORDER.slice(),
     MODE, SRCKIND, KINDMANUAL, IMPORTED_DRAFT,
-    MEMOS:{...MEMOS,[MODE]:$('#memo').value}, SRCVALS:{...SRCVALS,[MODE]:$('#srcval').value},
+    MEMOS:{...MEMOS,[MODE]:$('#memo').value}, SRCVALS:{...SRCVALS,[MODE]:srcText()},
     memo:$('#memo').value, srcval:$('#srcval').value, keywords:kwGet(), itext:$('#itext').value,
     kwnote:$('#kwnote')?$('#kwnote').textContent:'', kwnoteShow:$('#kwnote')?$('#kwnote').style.display:'none',
     links:$('#links')?$('#links').value:'', prod:$$('#prodlinks .plink').map(i=>i.value),
@@ -2488,7 +2527,7 @@ async function runAiCaption(paths, hint, ctx){
   const targets=(paths||[]).filter(p=>!isVid(p));
   if(!targets.length){toast('분석할 사진이 없어요.','info');return;}
   const wsid=CURWS;  // 탭을 바꾸거나 모달을 닫아도 이어지도록 시작 시점의 탭·입력을 붙잡아 둔다
-  ctx=ctx||{memo:$('#memo').value,srcval:SRCVAL(),kind:SRCKIND};
+  ctx=ctx||{memo:$('#memo').value,srcval:SRCVAL(),srcvals:SRCLIST(),kind:SRCKIND};
   AIPROG={wsid,done:0,total:targets.length};
   renderPmeta(); updatePhotoSummary();
   const t0=Date.now();
@@ -2499,7 +2538,7 @@ async function runAiCaption(paths, hint, ctx){
       if(wsid!==CURWS && !findWS(wsid)) break;  // 시작한 탭이 닫혔으면 중단
       const chunk=targets.slice(i,i+AIBATCH);
       const r=await fetch('/api/photos/caption',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({memo:ctx.memo,srcval:ctx.srcval,kind:ctx.kind,reviewType:ctx.kind,photos:chunk,hint:hint||''})});
+        body:JSON.stringify({memo:ctx.memo,srcval:ctx.srcval,srcvals:ctx.srcvals||[],kind:ctx.kind,reviewType:ctx.kind,photos:chunk,hint:hint||''})});
       const d=await r.json().catch(()=>({}));
       if(!r.ok)throw new Error(d.error||'알 수 없는 오류');
       aiApply(wsid,d.photos);
@@ -2576,7 +2615,7 @@ $('#gen').onclick=async()=>{
   GENABORT=new AbortController(); $('#gen').textContent='✕ 취소';
   $('#save').disabled=true; st('생성 중…',true); genLoading();
   try{
-    const body={memo:$('#memo').value,srcval:SRCVAL(),kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:SRCVAL(),srcvals:SRCLIST(),kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS(),rules:RULES,
       draftId:CURWS,  // 이 탭의 글로 서버에 보관(게시 때 이 id로 '그 탭 글'을 정확히 저장)
       restyle:$('#restyleMode').checked,  // 켜면 외부 초안에 내 문체만 재적용(맛집/상품 구조 강제 안 함)
@@ -2612,7 +2651,7 @@ $('#export').onclick=async()=>{
   if(!$('#memo').value.trim()){toast('경험 메모를 먼저 입력하세요.','info');return;}
   $('#export').disabled=true; st('프롬프트를 만드는 중…',true);
   try{
-    const body={memo:$('#memo').value,srcval:SRCVAL(),kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
+    const body={memo:$('#memo').value,srcval:SRCVAL(),srcvals:SRCLIST(),kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),tone:$('#tone').value,personaId:PERSONA_ID,keywords:kwGet(),minChars:$('#minchars').value,
       emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),rules:RULES,
       restyle:$('#restyleMode').checked,  // 켜면 export도 restyle.md 사용(원문 표·나열 보존)
       inplace:!!IMPORTED_DRAFT};  // 불러온 글이면 [영상] 순서 고정 지시를 프롬프트에 포함
@@ -2649,7 +2688,7 @@ $('#iapply').onclick=async()=>{
   if(!text){toast('붙여넣은 글이 비어 있어요.','info');return;}
   $('#iapply').disabled=true;
   try{
-    const body={text,srcval:SRCVAL(),kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS()};
+    const body={text,srcval:SRCVAL(),srcvals:SRCLIST(),kind:SRCKIND,photos:orderedSel(),photoMeta:photoMetaForSel(),emphasis:FMT.emphasis,structure:FMT.structure,stickers:FMT.stickers,stickerAll:FMT.stickerAll,sponsored:FMT.sponsored,sponsorSticker:FMT.sponsorSticker,links:LINKS(),productLinks:PRODLINKS()};
     const r=await fetch('/api/import-draft',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
     const d=await r.json();
     if(!r.ok){toast('가져오기 실패: '+(d.error||''),'err');return;}
@@ -3586,7 +3625,8 @@ $('#personalist').onclick=async e=>{
     toast('수정이 저장됐어요','ok'); await loadPersonas();
   }catch(e){}finally{sv.disabled=false;}};
 
-$('#addprodlink').onclick=()=>addProdLink(''); resetProdLinks();
+resetProdLinks();
+wireRow($('#srcbox').firstElementChild, $('#srcbox'), srcRow); syncRows($('#srcbox'));  // 첫 수집칸에도 ＋/✕
 setKind('place',false); loadPhotos(); setupUpload(); setupDraftImport(); loadPrefs(); loadModels(); loadEmphasis(); loadPrompt(); loadPool(); loadVariants(); loadCategories(); loadPhotoCats(); loadPersonas();
 $('#photobtn').onclick=openPhotoModal; $('#phclose').onclick=closePhotoModal; $('#phdone').onclick=closePhotoModal;
 $('#phmodal').onclick=e=>{ if(e.target===$('#phmodal'))closePhotoModal(); };
@@ -4166,6 +4206,21 @@ def _make_handler(state: dict):
             is_url = srcval.startswith("http") or "naver.me" in srcval or "place" in srcval
             return srcval, ("place" if (srcval and is_url) else ("product" if srcval else None))
 
+        @classmethod
+        def _resolve_srcs(cls, body):
+            """맛집 수집칸 여러 개(첫 칸 srcval + [+ 수집 추가] srcvals) → (URL 목록, src).
+
+            맛집이 아니면 기존 단수 동작 그대로(목록은 0~1개)."""
+            srcval, src = cls._resolve_src(body)
+            urls = [srcval] if srcval else []
+            if src == "place":
+                urls += [
+                    v.strip()
+                    for v in (body.get("srcvals") or [])
+                    if isinstance(v, str) and v.strip()
+                ]
+            return list(dict.fromkeys(urls)), src
+
         def _export_prompt(self, body):
             """수집+내 프롬프트+지시문을 한 텍스트로 합쳐 반환(다른 챗봇에 붙여넣기용)."""
             from autoblog.draft.rules import CommonRules
@@ -4201,7 +4256,7 @@ def _make_handler(state: dict):
             try:
                 text = build_export_prompt(
                     body.get("memo", ""),
-                    place_url=None if restyle else (srcval if src == "place" else None),
+                    place_url=None if restyle else (self._resolve_srcs(body)[0] if src == "place" else None),
                     product=None if restyle else (srcval if src == "product" else None),
                     card_kind="place" if restyle else src,
                     base_prompt=base_prompt,
@@ -4275,7 +4330,7 @@ def _make_handler(state: dict):
             try:
                 items = caption_photos(
                     body.get("memo", ""),
-                    place_url=srcval if src == "place" else None,
+                    place_url=self._resolve_srcs(body)[0] if src == "place" else None,
                     product=srcval if src == "product" else None,
                     photos=photos,
                     review_type=(body.get("reviewType") or src or None),
@@ -4436,9 +4491,10 @@ def _make_handler(state: dict):
                 base_prompt = load_restyle_prompt()
             dv, qv = _enabled_variants()  # 활성 종류 중 첫 번째를 기본 적용(다중 중 우선)
             dkeys, qkeys = _enabled_variant_keys()  # 프롬프트에 안내할 고른 종류 전체
+            place_urls = self._resolve_srcs(body)[0]
             result = run_pipeline(
                 body["memo"],
-                place_url=None if restyle else (srcval if src == "place" else None),
+                place_url=None if restyle else (place_urls if src == "place" else None),
                 product=None if restyle else (srcval if src == "product" else None),
                 card_kind="place" if restyle else src,
                 base_prompt=base_prompt,

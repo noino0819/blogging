@@ -125,3 +125,25 @@ def test_client_error_reaches_server_log(page, capfd):
     page.wait_for_timeout(500)
     out = capfd.readouterr().out
     assert "프런트 에러" in out and "smokeTestBoom" in out  # 스택까지 남는다
+
+
+def test_multi_place_rows(page):
+    """수집칸 ＋/✕: 칸이 늘고 줄고, 탭을 오갔다 와도 여러 URL이 그대로 남는다."""
+    page.fill("#srcval", "https://naver.me/aaa")
+    page.press("#srcval", "Tab")  # 포커스 이동 = 미리 수집 시작(안내 문구 갱신)까지 끝내고 클릭
+    page.wait_for_timeout(300)
+    page.click("#srcbox .plrow:last-child .pladd")  # ＋는 마지막 칸에만
+    assert page.locator("#srcbox .plrow").count() == 2
+    page.fill("#srcbox .plrow:last-child .plink", "https://naver.me/bbb")
+    assert page.evaluate("SRCLIST()") == ["https://naver.me/aaa", "https://naver.me/bbb"]
+    page.click("#workbar .wadd")  # 새 탭 → 빈 칸
+    assert page.evaluate("SRCLIST()") == []
+    page.click("#workbar .wtab")  # 첫 탭 복귀 → 두 칸 복원
+    assert page.evaluate("SRCLIST()") == ["https://naver.me/aaa", "https://naver.me/bbb"]
+    page.click("#srcbox .plrow:last-child .plrm")  # ✕로 둘째 칸 삭제
+    assert page.evaluate("SRCLIST()") == ["https://naver.me/aaa"]
+    page.click("#srcbox .plrow:last-child .plrm")  # 한 칸만 남으면 삭제가 아니라 비우기
+    assert page.evaluate("SRCLIST()") == [] and page.locator("#srcbox .plrow").count() == 1
+    # 맛집이 아닌 종류(정보=주제 한 칸)에선 ＋/✕가 숨는다
+    page.click("#kindseg [data-k=info]")
+    assert page.locator("#srcbox .pladd:visible").count() == 0

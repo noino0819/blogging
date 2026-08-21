@@ -12,41 +12,49 @@ from autoblog.draft.rules import CommonRules
 from autoblog.draft.style import StyleProfile
 
 
+def _place_lines(p) -> list[str]:
+    """가게 하나 → 사실 요약 줄들."""
+    lines = [f"가게명: {p.name}"]
+    if p.category:
+        lines.append(f"분류: {p.category}")
+    if p.road_address:
+        lines.append(f"주소: {p.road_address}")
+    if p.business_hours:
+        lines.append(f"영업시간: {p.business_hours}")
+    if p.phone:
+        lines.append(f"전화: {p.phone}")
+    if p.rating:
+        lines.append(f"평점: {p.rating}")
+    if p.description:
+        lines.append(f"소개: {p.description}")
+    if p.menus:
+        menu_str = ", ".join(f"{m.name}({m.price})" if m.price else m.name for m in p.menus[:12])
+        lines.append(f"메뉴: {menu_str}")
+    if p.directions:
+        lines.append(f"찾아가는 길·주차 안내: {p.directions}")
+    if p.conveniences:
+        lines.append(f"편의시설: {', '.join(p.conveniences)}")
+    if p.payment_info:
+        lines.append(f"결제수단: {', '.join(p.payment_info)}")
+    if p.review_keywords:
+        kw = ", ".join(f"{k.name}({k.count})" for k in p.review_keywords[:8])
+        lines.append(f"방문자 키워드: {kw}")
+    if p.reviews:
+        snippet = " / ".join(r.body[:60] for r in p.reviews[:3])
+        lines.append(f"방문자 리뷰 일부: {snippet}")
+    return lines
+
+
 def render_fact_card(card: FactCard) -> str:
     """사실 카드 → 초안 재료용 한국어 사실 요약(조연)."""
     lines: list[str] = []
-    if card.place:
-        p = card.place
-        lines.append(f"가게명: {p.name}")
-        if p.category:
-            lines.append(f"분류: {p.category}")
-        if p.road_address:
-            lines.append(f"주소: {p.road_address}")
-        if p.business_hours:
-            lines.append(f"영업시간: {p.business_hours}")
-        if p.phone:
-            lines.append(f"전화: {p.phone}")
-        if p.rating:
-            lines.append(f"평점: {p.rating}")
-        if p.description:
-            lines.append(f"소개: {p.description}")
-        if p.menus:
-            menu_str = ", ".join(
-                f"{m.name}({m.price})" if m.price else m.name for m in p.menus[:12]
-            )
-            lines.append(f"메뉴: {menu_str}")
-        if p.directions:
-            lines.append(f"찾아가는 길·주차 안내: {p.directions}")
-        if p.conveniences:
-            lines.append(f"편의시설: {', '.join(p.conveniences)}")
-        if p.payment_info:
-            lines.append(f"결제수단: {', '.join(p.payment_info)}")
-        if p.review_keywords:
-            kw = ", ".join(f"{k.name}({k.count})" for k in p.review_keywords[:8])
-            lines.append(f"방문자 키워드: {kw}")
-        if p.reviews:
-            snippet = " / ".join(r.body[:60] for r in p.reviews[:3])
-            lines.append(f"방문자 리뷰 일부: {snippet}")
+    places = ([card.place] if card.place else []) + list(card.extra_places)
+    for i, p in enumerate(places, 1):
+        if len(places) > 1:  # 여러 가게 — 어느 정보가 어느 가게 것인지 섞이지 않게 번호를 붙인다
+            lines.append(f"[가게 {i}]")
+        lines += _place_lines(p)
+        if len(places) > 1:
+            lines.append("")
     if card.product:
         pr = card.product
         lines.append(f"상품명: {pr.name}")

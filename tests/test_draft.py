@@ -677,3 +677,28 @@ def test_greedy_wrap_balanced():
     near = "오늘 카페에서 마신 라떼가 정말 부드럽고 고소해서 좋았던"  # 31자
     assert len(near) == 31
     assert body(near) == [near]
+
+
+def test_multi_place_card_and_map_markers(monkeypatch):
+    """수집칸 여러 개(맛집 2곳) — 재료에 두 가게가 다 실리고 지도 마커도 가게마다."""
+    from autoblog.collect import place as place_mod
+    from autoblog.publish.plan import build_place_instruction
+
+    cards = {
+        "u1": _place_card(),
+        "u2": FactCard(type=CardType.place, place=PlaceFacts(name="옆집 카페")),
+    }
+    monkeypatch.setattr(place_mod, "collect_place_from_url", lambda url: cards[url])
+    from autoblog.pipeline import collect_card
+
+    card = collect_card(place_url=["u1", "u2"])
+    assert card.place.name == "언제나 초밥"  # 대표는 첫 칸
+    assert [p.name for p in card.extra_places] == ["옆집 카페"]
+
+    text = render_fact_card(card)
+    assert "[가게 1]" in text and "언제나 초밥" in text and "옆집 카페" in text
+
+    instr = build_place_instruction([card.place.name] + [p.name for p in card.extra_places])
+    assert "[지도:언제나 초밥]" in instr and "[지도:옆집 카페]" in instr
+    # 한 곳이면 예전 그대로(마커 하나)
+    assert build_place_instruction("언제나 초밥").count("[지도:") >= 1

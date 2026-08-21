@@ -215,12 +215,25 @@ def build_structure_instruction(
 STRUCTURE_INSTRUCTION = build_structure_instruction()
 
 
-def build_place_instruction(place_name: str | None = None) -> str:
+def build_place_instruction(place_name: str | list[str] | None = None) -> str:
     """장소(지도) 마커 지시문 — 맛집 글에서 위치 안내 자리에 지도 카드를 넣게 안내.
 
     place_name(수집된 가게명)을 주면 [지도:가게명] 마커를 쓰게 한다 — 초안이 가게
     정보를 스스로 갖고 있어, 외부 챗봇 결과를 수집 링크 없는 탭이나 재시작 뒤에
-    붙여넣어도 지도가 살아난다(세션 캐시 의존 제거)."""
+    붙여넣어도 지도가 살아난다(세션 캐시 의존 제거).
+    가게명을 여러 개 주면(수집칸 [+ 추가]) 가게마다 자기 지도 마커를 하나씩 쓰게 한다."""
+    names = [place_name] if isinstance(place_name, str) else [n for n in (place_name or []) if n]
+    if len(names) > 1:
+        markers = ", ".join(f"[지도:{n}]" for n in names)
+        return (
+            f"{markers} — 가게가 {len(names)}곳입니다. 가게마다 그 가게를 다룬 섹션의 위치 안내 "
+            "자리에 해당 마커를 그 줄에 혼자 한 번씩 넣으세요(가게당 딱 한 번). 시스템이 네이버 "
+            "'장소'를 검색해 지도 카드(주소·지도 미리보기)로 바꿉니다.\n"
+            "- 마커는 위 표기 그대로 쓰세요(가게명을 바꾸거나 빼지 마세요). 다른 가게 마커를 "
+            "그 가게 섹션에 넣지 마세요.\n"
+            "- 마커는 화면에 글자로 안 보이고 지도 카드로 바뀝니다. 문장 안에 섞지 마세요."
+        )
+    place_name = names[0] if names else None
     marker = f"[지도:{place_name}]" if place_name else "[지도]"
     name_rule = (
         f"- 마커는 정확히 {marker} 그대로 쓰세요(가게명을 바꾸거나 빼지 마세요).\n"

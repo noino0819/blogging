@@ -121,6 +121,9 @@ class FactCard(BaseModel):
     sources: list[Source] = Field(default_factory=list)
     is_fallback: bool = False
     place: PlaceFacts | None = None
+    # 한 글에 여러 가게(수집칸 [+ 추가])를 담을 때 2번째 이후 가게 — place는 대표(첫) 가게로 둔다.
+    # 리스트로 합치지 않는 이유: place를 읽는 곳(지도 폴백·사진 맥락·상품 판정)이 많아 단수 유지가 싸다.
+    extra_places: list[PlaceFacts] = Field(default_factory=list)
     product: ProductFacts | None = None
     # 입력 사진 + Vision 자동 분류 (1단계 정보 수집)
     photos: list[PhotoItem] = Field(default_factory=list)
